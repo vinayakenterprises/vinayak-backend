@@ -17,6 +17,10 @@ const config = {
     database: process.env.DB_DATABASE || 'postgres',
     password: process.env.DB_PASSWORD || 'postgres',
     port: parseInt(process.env.DB_PORT || '5432', 10),
+  },
+  jwt: {
+    secret: process.env.JWT_SECRET || 'VinayakEnterprises',
+    expiresIn: process.env.JWT_EXPIRES_IN || '60d',
   }
 };
 
