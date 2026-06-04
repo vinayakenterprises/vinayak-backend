@@ -6,7 +6,7 @@ import { tenderUpload } from '../middlewares/upload.middleware.js';
 const router = Router();
 
 // All tender routes require authentication
-router.get('/', authMiddleware, tenderController.getAll);
+router.get('/get-all', authMiddleware, tenderController.getAll);
 router.get('/:id', authMiddleware, tenderController.getById);
 router.post('/create-tender', authMiddleware, tenderController.create);
 router.put('/:id', authMiddleware, tenderUpload, tenderController.update);

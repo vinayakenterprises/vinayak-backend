@@ -17,7 +17,10 @@ class TenderController {
   // GET /api/v1/tenders
   getAll = async (req, res, next) => {
     try {
-      const tenders = await tenderService.getAllTenders();
+
+      const userId = req.user?.id;
+
+      const tenders = await tenderService.getAllTenders(userId);
 
       return res.status(200).json({
         status: 'success',

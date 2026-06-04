@@ -53,9 +53,10 @@ class TenderService {
 
 
   // ─── get tenders ──────────────────────────────────────────
-  async getAllTenders() {
+  async getAllTenders(userId) {
     const { rows } = await pool.query(
-      'SELECT * FROM tender_information ORDER BY id DESC'
+      'SELECT * FROM tender_information where createdBy = $1 ORDER BY id DESC',
+      [userId]
     );
     return rows;
   }
