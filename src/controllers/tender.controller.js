@@ -187,6 +187,29 @@ class TenderController {
       next(error);
     }
   };
+
+
+
+
+  uploadFileToS3 = async (req, res, next) => {
+    try {
+      const file = req.files?.['pdf-file']?.[0];
+      if (!file) {
+        throw new BadRequestError('File is required');
+      }
+      const s3Url = await uploadToS3(file, config.s3.bucketName, 'tenders/documents');
+      return res.status(200).json({
+        status: 'success',
+        message: 'File uploaded successfully',
+        data: { url: s3Url },
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 }
+
+
+
 
 export default new TenderController();

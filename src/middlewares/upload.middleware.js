@@ -21,4 +21,5 @@ export const tenderUpload = upload.fields([
   { name: 'contract_agreement', maxCount: 1 },
   { name: 'warranty', maxCount: 1 },
   { name: 'acceptance_letter', maxCount: 1 },
+  { name: 'pdf-file', maxCount: 1 },
 ]);

@@ -11,4 +11,7 @@ router.get('/:id', authMiddleware, tenderController.getById);
 router.post('/', authMiddleware, tenderUpload, tenderController.create);
 router.put('/:id', authMiddleware, tenderUpload, tenderController.update);
 
+
+router.post('/upload-document', authMiddleware, tenderUpload, tenderController.uploadFileToS3);
+
 export default router;
