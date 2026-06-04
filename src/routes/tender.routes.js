@@ -8,7 +8,7 @@ const router = Router();
 // All tender routes require authentication
 router.get('/', authMiddleware, tenderController.getAll);
 router.get('/:id', authMiddleware, tenderController.getById);
-router.post('/', authMiddleware, tenderUpload, tenderController.create);
+router.post('/create-tender', authMiddleware, tenderController.create);
 router.put('/:id', authMiddleware, tenderUpload, tenderController.update);
 
 

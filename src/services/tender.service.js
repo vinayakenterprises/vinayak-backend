@@ -70,48 +70,80 @@ class TenderService {
   }
 
   // ─── create tender (tender_agent only) ────────────────────
-  async createTender(body, role) {
+  async createTender(body, role, userId) {
     if (role !== 'tender_agent') {
       throw new ForbiddenError('Only tender_agent can create tenders');
     }
 
-    // 1. Validate required fields
-    if (!body.tender_id || !body.tender_title) {
-      throw new BadRequestError('tender_id and tender_title are required');
-    }
 
-    // 2. Filter allowed agent columns for creation
-    const insertData = this._filterColumns(body, TENDER_AGENT_COLUMNS);
+    const {
+      tender_id,
+      tender_ref_no,
+      tender_documents,
+      tender_title,
+      tender_organization,
+      cable_length_km,
+      publish_date,
+      closing_date,
+      tender_value_cr,
+      tender_fee_inr,
+      emd_inr,
+      state,
+    } = body;
 
-    // If stage is not provided, default to STAGE_1_DRAFT
-    if (!insertData.tender_stage) {
-      insertData.tender_stage = 1;
-    }
 
-    // 3. Validate and format JSON fields
-    if (insertData.payment_type !== undefined) {
-      this._validatePaymentType(insertData.payment_type);
-      insertData.payment_type = insertData.payment_type ? JSON.stringify(insertData.payment_type) : null;
-    }
 
-    insertData.tender_documents = JSON.stringify(insertData.tender_documents || []);
-    insertData.docs_resubmitted = JSON.stringify(insertData.docs_resubmitted || []);
 
-    // 4. Construct dynamic INSERT SQL statement
-    const keys = Object.keys(insertData);
-    const values = Object.values(insertData);
-
-    const columnsClause = keys.map(key => `"${key}"`).join(', ');
-    const placeholdersClause = keys.map((_, index) => `$${index + 1}`).join(', ');
 
     const query = `
-      INSERT INTO tender_information (${columnsClause})
-      VALUES (${placeholdersClause})
-      RETURNING *;
+        INSERT INTO tender_information (
+            tender_id,
+            tender_ref_no,
+            tender_documents,
+            tender_title,
+            tender_organization,
+            cable_length_km,
+            publish_date,
+            closing_date,
+            tender_value_cr,
+            tender_fee_inr,
+            emd_inr,
+            state,
+            tender_stage,
+            accounts_assignee_id
+        )
+        VALUES (
+            $1, $2, $3, $4, $5, $6,
+            $7, $8, $9, $10, $11, $12,
+            $13,
+            $14
+        )
+        RETURNING *;
     `;
 
-    const { rows } = await pool.query(query, values);
-    return rows[0];
+    const values = [
+      tender_id,
+      tender_ref_no,
+      JSON.stringify(tender_documents || []),
+      tender_title,
+      tender_organization,
+      cable_length_km,
+      publish_date,
+      closing_date,
+      tender_value_cr,
+      tender_fee_inr,
+      emd_inr,
+      state,
+      '1',
+      userId
+    ];
+
+    const result = await pool.query(query, values);
+
+
+
+    return result;
+
   }
 
   // ─── update tender (role-gated) ───────────────────────────

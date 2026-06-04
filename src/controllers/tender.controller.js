@@ -45,115 +45,122 @@ class TenderController {
     }
   };
 
-  _processRequestData = async (req) => {
-    // 1. Convert empty string inputs to null for numeric/date fields
-    const numericOrDateFields = [
-      'cable_length_km', 'tender_value_cr', 'tender_fee_inr', 'emd_inr',
-      'publish_date', 'closing_date', 'submission_expected', 'submission_actual',
-      'submit_to_govt_portal_at', 'approved_at'
-    ];
-    for (const field of numericOrDateFields) {
-      if (req.body[field] === '') {
-        req.body[field] = null;
-      }
-    }
+  // _processRequestData = async (req) => {
+  //   // 1. Convert empty string inputs to null for numeric/date fields
+  //   const numericOrDateFields = [
+  //     'cable_length_km', 'tender_value_cr', 'tender_fee_inr', 'emd_inr',
+  //     'publish_date', 'closing_date', 'submission_expected', 'submission_actual',
+  //     'submit_to_govt_portal_at', 'approved_at'
+  //   ];
+  //   for (const field of numericOrDateFields) {
+  //     if (req.body[field] === '') {
+  //       req.body[field] = null;
+  //     }
+  //   }
 
-    // Convert shortfall to boolean if provided
-    if (req.body.shortfall !== undefined) {
-      req.body.shortfall = req.body.shortfall === 'true' || req.body.shortfall === true;
-    }
+  //   // Convert shortfall to boolean if provided
+  //   if (req.body.shortfall !== undefined) {
+  //     req.body.shortfall = req.body.shortfall === 'true' || req.body.shortfall === true;
+  //   }
 
-    // 2. Upload single document fields to S3 if files are provided
-    const singleFileFields = [
-      'rank_file', 'counter_offer', 'loi', 'po',
-      'contract_agreement', 'warranty', 'acceptance_letter'
-    ];
-    for (const field of singleFileFields) {
-      const file = req.files?.[field]?.[0];
-      if (file) {
-        const s3Url = await uploadToS3(file, config.s3.bucketName, `tenders/${field}`);
-        req.body[field] = s3Url;
-      }
-    }
+  //   // 2. Upload single document fields to S3 if files are provided
+  //   const singleFileFields = [
+  //     'rank_file', 'counter_offer', 'loi', 'po',
+  //     'contract_agreement', 'warranty', 'acceptance_letter'
+  //   ];
+  //   for (const field of singleFileFields) {
+  //     const file = req.files?.[field]?.[0];
+  //     if (file) {
+  //       const s3Url = await uploadToS3(file, config.s3.bucketName, `tenders/${field}`);
+  //       req.body[field] = s3Url;
+  //     }
+  //   }
 
-    // 3. Process payment_type JSON field (handles both JSON object and S3 file upload)
-    const paymentFile = req.files?.payment_type?.[0] || req.files?.payment_type_file?.[0];
-    let paymentType = req.body.payment_type;
-    if (paymentType !== undefined) {
-      paymentType = safeParse(paymentType);
-    }
+  //   // 3. Process payment_type JSON field (handles both JSON object and S3 file upload)
+  //   const paymentFile = req.files?.payment_type?.[0] || req.files?.payment_type_file?.[0];
+  //   let paymentType = req.body.payment_type;
+  //   if (paymentType !== undefined) {
+  //     paymentType = safeParse(paymentType);
+  //   }
 
-    if (paymentFile) {
-      const s3Url = await uploadToS3(paymentFile, config.s3.bucketName, 'tenders/payments');
-      const docType = (typeof paymentType === 'object' ? paymentType?.type || paymentType?.doc_type : paymentType) || 'online_payment';
-      paymentType = {
-        url: s3Url,
-        type: docType,
-        document_url: s3Url,
-        doc_type: docType
-      };
-      req.body.payment_type = paymentType;
-    } else if (paymentType !== undefined) {
-      // Normalize if paymentType was sent as object/string without a file
-      if (typeof paymentType === 'string') {
-        paymentType = {
-          url: '',
-          type: paymentType,
-          document_url: '',
-          doc_type: paymentType
-        };
-      } else if (paymentType && typeof paymentType === 'object') {
-        const url = paymentType.url || paymentType.document_url || '';
-        const type = paymentType.type || paymentType.doc_type || 'online_payment';
-        paymentType = {
-          url,
-          type,
-          document_url: url,
-          doc_type: type
-        };
-      }
-      req.body.payment_type = paymentType;
-    }
+  //   if (paymentFile) {
+  //     const s3Url = await uploadToS3(paymentFile, config.s3.bucketName, 'tenders/payments');
+  //     const docType = (typeof paymentType === 'object' ? paymentType?.type || paymentType?.doc_type : paymentType) || 'online_payment';
+  //     paymentType = {
+  //       url: s3Url,
+  //       type: docType,
+  //       document_url: s3Url,
+  //       doc_type: docType
+  //     };
+  //     req.body.payment_type = paymentType;
+  //   } else if (paymentType !== undefined) {
+  //     // Normalize if paymentType was sent as object/string without a file
+  //     if (typeof paymentType === 'string') {
+  //       paymentType = {
+  //         url: '',
+  //         type: paymentType,
+  //         document_url: '',
+  //         doc_type: paymentType
+  //       };
+  //     } else if (paymentType && typeof paymentType === 'object') {
+  //       const url = paymentType.url || paymentType.document_url || '';
+  //       const type = paymentType.type || paymentType.doc_type || 'online_payment';
+  //       paymentType = {
+  //         url,
+  //         type,
+  //         document_url: url,
+  //         doc_type: type
+  //       };
+  //     }
+  //     req.body.payment_type = paymentType;
+  //   }
 
-    // 4. Process tender_documents (JSONB array)
-    if (req.body.tender_documents !== undefined || req.files?.tender_documents) {
-      let existingDocs = safeParse(req.body.tender_documents, []);
-      if (!Array.isArray(existingDocs)) {
-        existingDocs = existingDocs ? [existingDocs] : [];
-      }
-      const newDocs = [];
-      if (req.files?.tender_documents) {
-        for (const file of req.files.tender_documents) {
-          const s3Url = await uploadToS3(file, config.s3.bucketName, 'tenders/documents');
-          newDocs.push({ name: file.originalname, url: s3Url });
-        }
-      }
-      req.body.tender_documents = [...existingDocs, ...newDocs];
-    }
+  //   // 4. Process tender_documents (JSONB array)
+  //   if (req.body.tender_documents !== undefined || req.files?.tender_documents) {
+  //     let existingDocs = safeParse(req.body.tender_documents, []);
+  //     if (!Array.isArray(existingDocs)) {
+  //       existingDocs = existingDocs ? [existingDocs] : [];
+  //     }
+  //     const newDocs = [];
+  //     if (req.files?.tender_documents) {
+  //       for (const file of req.files.tender_documents) {
+  //         const s3Url = await uploadToS3(file, config.s3.bucketName, 'tenders/documents');
+  //         newDocs.push({ name: file.originalname, url: s3Url });
+  //       }
+  //     }
+  //     req.body.tender_documents = [...existingDocs, ...newDocs];
+  //   }
 
-    // 5. Process docs_resubmitted (JSONB array)
-    if (req.body.docs_resubmitted !== undefined || req.files?.docs_resubmitted) {
-      let existingResubmitted = safeParse(req.body.docs_resubmitted, []);
-      if (!Array.isArray(existingResubmitted)) {
-        existingResubmitted = existingResubmitted ? [existingResubmitted] : [];
-      }
-      const newResubmitted = [];
-      if (req.files?.docs_resubmitted) {
-        for (const file of req.files.docs_resubmitted) {
-          const s3Url = await uploadToS3(file, config.s3.bucketName, 'tenders/resubmitted');
-          newResubmitted.push({ name: file.originalname, url: s3Url });
-        }
-      }
-      req.body.docs_resubmitted = [...existingResubmitted, ...newResubmitted];
-    }
-  };
+  //   // 5. Process docs_resubmitted (JSONB array)
+  //   if (req.body.docs_resubmitted !== undefined || req.files?.docs_resubmitted) {
+  //     let existingResubmitted = safeParse(req.body.docs_resubmitted, []);
+  //     if (!Array.isArray(existingResubmitted)) {
+  //       existingResubmitted = existingResubmitted ? [existingResubmitted] : [];
+  //     }
+  //     const newResubmitted = [];
+  //     if (req.files?.docs_resubmitted) {
+  //       for (const file of req.files.docs_resubmitted) {
+  //         const s3Url = await uploadToS3(file, config.s3.bucketName, 'tenders/resubmitted');
+  //         newResubmitted.push({ name: file.originalname, url: s3Url });
+  //       }
+  //     }
+  //     req.body.docs_resubmitted = [...existingResubmitted, ...newResubmitted];
+  //   }
+  // };
 
   // POST /api/v1/tenders
+
+
   create = async (req, res, next) => {
     try {
+
       const role = req.user?.role;
-      await this._processRequestData(req);
-      const tender = await tenderService.createTender(req.body, role);
+      const userId = req.user?.id;
+      console.log("user data: ", req.user);
+
+      const tender = await tenderService.createTender(req.body, role, userId);
+
+      // console.log("tender data -> ", tender);
 
       return res.status(201).json({
         status: 'success',
