@@ -48,6 +48,28 @@ class TenderController {
     }
   };
 
+
+  approveTender = async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const role = req.user?.role;
+      if (role !== 'MD') {
+        throw new BadRequestError('Only MD can approve tenders');
+      }
+
+      const tender = await tenderService.approveTender(id);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Tender approved successfully',
+        data: tender,
+      });
+
+    }catch(error){
+      next(error);
+    }
+  }
+
   // _processRequestData = async (req) => {
   //   // 1. Convert empty string inputs to null for numeric/date fields
   //   const numericOrDateFields = [
@@ -198,6 +220,168 @@ class TenderController {
     }
   };
 
+
+
+  sendForApproval = async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const role = req.user?.role;
+      const userId = req.user?.id;
+
+      if (!id) {
+        throw new BadRequestError('Tender ID is required');
+      }
+
+      const tender = await tenderService.sendForApproval(id, role, userId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Tender sent for approval successfully',
+        data: tender,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+
+  getApprovalRequestTenders = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+      const role = req.user?.role;
+
+      // if(role !== 'MD'){
+      //   throw new BadRequestError('Only MD can view approval request tenders');
+      // }
+
+      const tenders = await tenderService.getApprovalRequestTenders(userId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Tenders retrieved successfully',
+        data: tenders,
+      });
+
+    } catch(error){
+      next(error);
+    }
+  }
+
+
+  getApprovedTenders = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+      const role = req.user?.role;
+      if(role !== 'MD'){
+        throw new BadRequestError('Only MD can view approved tenders');
+      }
+
+
+      const tenders = await tenderService.getApprovedTenders(userId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Approved tenders retrieved successfully',
+        data: tenders,
+      });
+
+
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+  getTendersForAccountsTeam = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+      const role = req.user?.role;
+      if(role !== 'tender_handler_accounts'){
+        throw new BadRequestError('Only Accounts Team can view tenders assigned to them');
+      }
+
+      const tenders = await tenderService.getTendersForAccountsTeam(userId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Tenders for Accounts Team retrieved successfully',
+        data: tenders,
+      });
+
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+  getCompletedTendersForAccountsTeam = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+      const role = req.user?.role;
+      if(role !== 'tender_handler_accounts'){
+        throw new BadRequestError('Only Accounts Team can view completed tenders assigned to them');
+      }
+
+      const tenders = await tenderService.getCompletedTendersForAccountsTeam(userId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Completed Tenders for Accounts Team retrieved successfully',
+        data: tenders,
+      });
+
+
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+  updateTenderByAccountsTeam = async (req, res, next) => {
+    try{
+
+      const role = req.user?.role;
+      const userId = req.user?.id;
+
+      if(role !== 'tender_handler_accounts'){
+        throw new BadRequestError('Only Accounts Team can update tender details assigned to them');
+      }
+
+      const tender = await tenderService.updateTenderByAccountsTeam(req.body, userId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Tender updated successfully by Accounts Team',
+        data: tender,
+      });
+
+    }catch(error){
+      next(error);
+    }
+  }
+
+  markTenderCompleteByAccountsTeam = async (req, res, next) => {
+    try{
+      const role = req.user?.role;
+      const userId = req.user?.id;
+
+      if(role !== 'tender_handler_accounts'){
+        throw new BadRequestError('Only Accounts Team can mark tender as complete assigned to them');
+      }
+      
+      const tender = await tenderService.markTenderCompleteByAccountsTeam(req.body, userId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Tender marked as complete successfully by Accounts Team',
+        data: tender,
+      });
+
+      
+    }catch(error){
+      next(error);
+    }
+  }
 
 
 

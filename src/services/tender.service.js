@@ -70,6 +70,29 @@ class TenderService {
     return rows[0];
   }
 
+
+  async approveTender(id){
+    try{
+
+      // get accounts team data
+      const accountsUserData = await pool.query(`SELECT id FROM users WHERE role = 'tender_handler_accounts'`);
+      const accountsId = accountsUserData.rows[0].id;
+
+
+
+      const updateQuery = `
+        UPDATE tender_information
+        SET approved = $1, approved_at = $2, tender_stage = '3', accounts_assignee_id = $4, assigned_to_accounts_team = $5 where id = $3
+        `;
+
+      const { rows } = await pool.query(updateQuery, [true, new Date(), id, accountsId, true]);
+      return rows[0];
+    }catch(error){
+      throw error
+    }
+  }
+
+
   // ─── create tender (tender_agent only) ────────────────────
   async createTender(body, role, userId) {
     if (role !== 'tender_agent') {
@@ -111,13 +134,14 @@ class TenderService {
             emd_inr,
             state,
             tender_stage,
-            accounts_assignee_id
+            accounts_assignee_id,
+            createdBy
         )
         VALUES (
             $1, $2, $3, $4, $5, $6,
             $7, $8, $9, $10, $11, $12,
             $13,
-            $14
+            $14, $15
         )
         RETURNING *;
     `;
@@ -136,7 +160,8 @@ class TenderService {
       emd_inr,
       state,
       '1',
-      userId
+      userId,
+      userId,
     ];
 
     const result = await pool.query(query, values);
@@ -225,6 +250,151 @@ class TenderService {
     const { rows } = await pool.query(query, values);
     return rows[0];
   }
+
+
+
+
+  async sendForApproval(id, role, userId) {
+    try {
+
+      if (role !== 'tender_agent') {
+        throw new ForbiddenError('Your role does not have permission to send tenders for approval');
+      }
+
+      const mdUserData = await pool.query(`SELECT id FROM users WHERE role = 'MD'`);
+      const mdId = mdUserData.rows[0].id;
+
+      const updateQuery = `
+        UPDATE tender_information
+        SET send_for_approaval = $1, send_for_approaval_at = $2,tender_stage = $3, accounts_assignee_id = $5  where id = $4
+        `;
+
+      const { rows } = await pool.query(updateQuery, [true, new Date(), 2, id, mdId]);
+      return rows[0];
+
+    } catch (error) {
+      throw error
+    }
+  }
+
+
+
+  async getApprovalRequestTenders(userId) {
+
+
+    console.log("userId in service: ", userId);
+    console.log("typeOf userId: ", typeof userId);
+
+    
+    const getApprovalRequestTendersQuery = `
+      SELECT * FROM tender_information
+      WHERE accounts_assignee_id = $1 AND send_for_approaval = true AND tender_stage = '2'
+      ORDER BY id DESC
+    `;
+    const { rows } = await pool.query(getApprovalRequestTendersQuery, [userId]);
+    return rows;
+  }
+
+
+  async getApprovedTenders(userId) {
+    const getApprovedTendersQuery = `
+      SELECT * FROM tender_information
+      WHERE accounts_assignee_id = $1 AND approved = true AND tender_stage = '3'
+      ORDER BY id DESC
+    `;
+
+    console.log(getApprovedTendersQuery);
+
+    const { rows } = await pool.query(getApprovedTendersQuery, [userId]);
+    return rows;
+  }
+
+
+  async getTendersForAccountsTeam(userId) {
+    try{
+      const getTendersForAccountsTeamQuery = `
+        SELECT * FROM tender_information
+        WHERE accounts_assignee_id = $1 AND tender_stage = '3'
+        ORDER BY id DESC
+      `;
+
+      const { rows } = await pool.query(getTendersForAccountsTeamQuery, [userId]);
+      return rows;
+
+
+    }catch(error){
+      throw error;
+    }
+  }
+
+
+  async getCompletedTendersForAccountsTeam(userId) {
+    try{
+      const getCompletedTendersForAccountsTeamQuery = `
+        SELECT * FROM tender_information
+        WHERE is_accounts_team_work_done = true AND tender_stage = '4'
+        ORDER BY id DESC
+      `;
+
+      const { rows } = await pool.query(getCompletedTendersForAccountsTeamQuery, []);
+      return rows;
+
+    }catch(error){
+      throw error;
+    }
+  }
+
+
+
+  async updateTenderByAccountsTeam(body, userId){
+    try{
+      const { payment_type, id } = body;
+
+      const updateQuery = `
+        UPDATE tender_information
+        SET payment_type = $1
+        WHERE id = $2;
+      `;
+
+      const { rows } = await pool.query(updateQuery, [JSON.stringify(payment_type), id]);
+      return rows[0];
+
+
+
+    }catch(error){
+      throw error;
+    }
+  }
+
+
+  async markTenderCompleteByAccountsTeam(body, userId){
+    try{
+
+      const tenderId = body.id;
+
+      const createdBy = await pool.query(`SELECT createdby FROM tender_information WHERE id = $1`, [tenderId]);
+
+
+      const updateQuery = `
+        UPDATE tender_information
+        SET tender_stage = '4', is_accounts_team_work_done = true, accounts_team_work_done_at = $1, updated_at = $1, accounts_assignee_id = $3
+        WHERE id = $2;
+      `;
+
+      const { rows } = await pool.query(updateQuery, [new Date(), tenderId, createdBy.rows[0].createdby]);
+      return rows[0];
+
+    }catch(error){
+      throw error;
+    }
+  }
+
+
+
 }
+
+
+
+
 
 export default new TenderService();

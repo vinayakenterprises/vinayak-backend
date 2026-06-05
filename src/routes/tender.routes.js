@@ -6,10 +6,24 @@ import { tenderUpload } from '../middlewares/upload.middleware.js';
 const router = Router();
 
 // All tender routes require authentication
+router.get('/approval-request-tenders', authMiddleware, tenderController.getApprovalRequestTenders);
+router.get('/get-approved-tenders', authMiddleware, tenderController.getApprovedTenders);
+router.get('/get-tenders-accounts-team', authMiddleware, tenderController.getTendersForAccountsTeam);
+router.get('/get-completed-tenders-accounts-team', authMiddleware, tenderController.getCompletedTendersForAccountsTeam);
+
+router.post('/accounts-team-tender-update', authMiddleware, tenderController.updateTenderByAccountsTeam);
+router.post('/accounts-team-tender-mark-complete', authMiddleware, tenderController.markTenderCompleteByAccountsTeam);
+
 router.get('/get-all', authMiddleware, tenderController.getAll);
 router.get('/:id', authMiddleware, tenderController.getById);
+router.put('/approve-tender/:id', authMiddleware, tenderController.approveTender);
 router.post('/create-tender', authMiddleware, tenderController.create);
 router.put('/:id', authMiddleware, tenderUpload, tenderController.update);
+
+
+
+router.put('/send-for-approval/:id', authMiddleware, tenderController.sendForApproval);
+
 
 
 router.post('/upload-document', authMiddleware, tenderUpload, tenderController.uploadFileToS3);
