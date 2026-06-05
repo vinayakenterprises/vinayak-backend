@@ -1,22 +1,45 @@
-import pool from '../config/database.js';
-import { BadRequestError, ForbiddenError, NotFoundError } from '../errors/customErrors.js';
+import pool from "../config/database.js";
+import {
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+} from "../errors/customErrors.js";
 
 // Column sets per role
 const TENDER_AGENT_COLUMNS = [
-  'tender_id', 'tender_ref_no', 'tender_documents', 'tender_title',
-  'tender_organization', 'cable_length_km', 'publish_date', 'closing_date',
-  'tender_value_cr', 'tender_fee_inr', 'emd_inr', 'state',
-  'submission_expected', 'submission_actual', 'payment_type',
-  'submit_to_govt_portal_at', 'shortfall', 'docs_resubmitted',
-  'rank_file', 'counter_offer', 'loi', 'po',
-  'contract_agreement', 'warranty', 'acceptance_letter', 'tender_stage',
+  "tender_id",
+  "tender_ref_no",
+  "tender_documents",
+  "tender_title",
+  "tender_organization",
+  "cable_length_km",
+  "publish_date",
+  "closing_date",
+  "tender_value_cr",
+  "tender_fee_inr",
+  "emd_inr",
+  "state",
+  "submission_expected",
+  "submission_actual",
+  "payment_type",
+  "submit_to_govt_portal_at",
+  "shortfall",
+  "docs_resubmitted",
+  "rank_file",
+  "counter_offer",
+  "loi",
+  "po",
+  "contract_agreement",
+  "warranty",
+  "acceptance_letter",
+  "tender_stage",
 ];
 
-const MD_COLUMNS = ['approved', 'approved_at'];
+const MD_COLUMNS = ["approved", "approved_at"];
 
-const ACCOUNTS_COLUMNS = ['payment_type', 'emd_inr'];
+const ACCOUNTS_COLUMNS = ["payment_type", "emd_inr"];
 
-const VALID_PAYMENT_TYPES = ['dd', 'bg', 'online_payment'];
+const VALID_PAYMENT_TYPES = ["dd", "bg", "online_payment"];
 
 class TenderService {
   // ─── helpers ──────────────────────────────────────────────
@@ -33,72 +56,74 @@ class TenderService {
   _validatePaymentType(paymentType) {
     if (paymentType === null || paymentType === undefined) return;
 
-    if (typeof paymentType !== 'object' || Array.isArray(paymentType)) {
+    if (typeof paymentType !== "object" || Array.isArray(paymentType)) {
       throw new BadRequestError(
-        'payment_type must be an object with { url: string, type: "dd" | "bg" | "online_payment" }'
+        'payment_type must be an object with { url: string, type: "dd" | "bg" | "online_payment" }',
       );
     }
 
-    if (!paymentType.url || typeof paymentType.url !== 'string') {
-      throw new BadRequestError('payment_type.url is required and must be a string');
+    if (!paymentType.url || typeof paymentType.url !== "string") {
+      throw new BadRequestError(
+        "payment_type.url is required and must be a string",
+      );
     }
 
     if (!VALID_PAYMENT_TYPES.includes(paymentType.type)) {
       throw new BadRequestError(
-        `payment_type.type must be one of: ${VALID_PAYMENT_TYPES.join(', ')}`
+        `payment_type.type must be one of: ${VALID_PAYMENT_TYPES.join(", ")}`,
       );
     }
   }
 
-
-
   // ─── get tenders ──────────────────────────────────────────
   async getAllTenders(userId) {
     const { rows } = await pool.query(
-      'SELECT * FROM tender_information where createdBy = $1 ORDER BY id DESC',
-      [userId]
+      "SELECT * FROM tender_information where createdBy = $1 ORDER BY id DESC",
+      [userId],
     );
     return rows;
   }
 
   async getTenderById(id) {
     const { rows } = await pool.query(
-      'SELECT * FROM tender_information WHERE id = $1',
-      [id]
+      "SELECT * FROM tender_information WHERE id = $1",
+      [id],
     );
     if (!rows[0]) throw new NotFoundError(`Tender with id ${id} not found`);
     return rows[0];
   }
 
-
-  async approveTender(id){
-    try{
-
+  async approveTender(id) {
+    try {
       // get accounts team data
-      const accountsUserData = await pool.query(`SELECT id FROM users WHERE role = 'tender_handler_accounts'`);
+      const accountsUserData = await pool.query(
+        `SELECT id FROM users WHERE role = 'tender_handler_accounts'`,
+      );
       const accountsId = accountsUserData.rows[0].id;
-
-
 
       const updateQuery = `
         UPDATE tender_information
         SET approved = $1, approved_at = $2, tender_stage = '3', accounts_assignee_id = $4, assigned_to_accounts_team = $5 where id = $3
         `;
 
-      const { rows } = await pool.query(updateQuery, [true, new Date(), id, accountsId, true]);
+      const { rows } = await pool.query(updateQuery, [
+        true,
+        new Date(),
+        id,
+        accountsId,
+        true,
+      ]);
       return rows[0];
-    }catch(error){
-      throw error
+    } catch (error) {
+      throw error;
     }
   }
 
-
   // ─── create tender (tender_agent only) ────────────────────
   async createTender(body, role, userId) {
-    if (role !== 'tender_agent') {
-      throw new ForbiddenError('Only tender_agent can create tenders');
+    if (role !== "tender_agent") {
+      throw new ForbiddenError("Only tender_agent can create tenders");
     }
-
 
     const {
       tender_id,
@@ -114,10 +139,6 @@ class TenderService {
       emd_inr,
       state,
     } = body;
-
-
-
-
 
     const query = `
         INSERT INTO tender_information (
@@ -159,17 +180,14 @@ class TenderService {
       tender_fee_inr,
       emd_inr,
       state,
-      '1',
+      "1",
       userId,
       userId,
     ];
 
     const result = await pool.query(query, values);
 
-
-
     return result;
-
   }
 
   // ─── update tender (role-gated) ───────────────────────────
@@ -182,28 +200,34 @@ class TenderService {
 
     // 2. Role and Stage Validation using your top-level arrays
     switch (role) {
-      case 'tender_agent':
+      case "tender_agent":
         allowedColumns = [...TENDER_AGENT_COLUMNS];
         break;
 
-      case 'md':
-        if (currentStage !== '2') {
-          throw new ForbiddenError('MD can only update tenders at tender_stage 2');
+      case "md":
+        if (currentStage !== "2") {
+          throw new ForbiddenError(
+            "MD can only update tenders at tender_stage 2",
+          );
         }
         // Appending 'tender_stage' so the MD can transition the tender to stage 3 or back to 1
-        allowedColumns = [...MD_COLUMNS, 'tender_stage'];
+        allowedColumns = [...MD_COLUMNS, "tender_stage"];
         break;
 
-      case 'accounts':
-        if (currentStage !== '3') {
-          throw new ForbiddenError('Accounts can only update tenders at tender_stage 3');
+      case "accounts":
+        if (currentStage !== "3") {
+          throw new ForbiddenError(
+            "Accounts can only update tenders at tender_stage 3",
+          );
         }
         // Appending 'tender_stage' so Accounts can transition the tender to stage 4
-        allowedColumns = [...ACCOUNTS_COLUMNS, 'tender_stage'];
+        allowedColumns = [...ACCOUNTS_COLUMNS, "tender_stage"];
         break;
 
       default:
-        throw new ForbiddenError('Your role does not have permission to update tenders');
+        throw new ForbiddenError(
+          "Your role does not have permission to update tenders",
+        );
     }
 
     // 3. Filter the incoming body using your predefined allowed columns list
@@ -215,19 +239,25 @@ class TenderService {
     }
 
     if (Object.keys(updateData).length === 0) {
-      throw new BadRequestError('No updatable fields provided for your role');
+      throw new BadRequestError("No updatable fields provided for your role");
     }
 
     // 4. Validate and stringify ONLY the actual JSONB fields from your schema
     if (updateData.payment_type !== undefined) {
       this._validatePaymentType(updateData.payment_type);
-      updateData.payment_type = updateData.payment_type ? JSON.stringify(updateData.payment_type) : null;
+      updateData.payment_type = updateData.payment_type
+        ? JSON.stringify(updateData.payment_type)
+        : null;
     }
     if (updateData.tender_documents !== undefined) {
-      updateData.tender_documents = updateData.tender_documents ? JSON.stringify(updateData.tender_documents) : '[]';
+      updateData.tender_documents = updateData.tender_documents
+        ? JSON.stringify(updateData.tender_documents)
+        : "[]";
     }
     if (updateData.docs_resubmitted !== undefined) {
-      updateData.docs_resubmitted = updateData.docs_resubmitted ? JSON.stringify(updateData.docs_resubmitted) : '[]';
+      updateData.docs_resubmitted = updateData.docs_resubmitted
+        ? JSON.stringify(updateData.docs_resubmitted)
+        : "[]";
     }
 
     // 5. Construct the raw SQL SET clause
@@ -235,7 +265,9 @@ class TenderService {
     const values = Object.values(updateData);
 
     // Wraps column names in double quotes to remain perfectly safe from any SQL keywords
-    const setClause = keys.map((key, index) => `"${key}" = $${index + 1}`).join(', ');
+    const setClause = keys
+      .map((key, index) => `"${key}" = $${index + 1}`)
+      .join(", ");
 
     // Push the ID to the end of the values array for the WHERE clause position
     values.push(id);
@@ -251,17 +283,17 @@ class TenderService {
     return rows[0];
   }
 
-
-
-
   async sendForApproval(id, role, userId) {
     try {
-
-      if (role !== 'tender_agent') {
-        throw new ForbiddenError('Your role does not have permission to send tenders for approval');
+      if (role !== "tender_agent") {
+        throw new ForbiddenError(
+          "Your role does not have permission to send tenders for approval",
+        );
       }
 
-      const mdUserData = await pool.query(`SELECT id FROM users WHERE role = 'MD'`);
+      const mdUserData = await pool.query(
+        `SELECT id FROM users WHERE role = 'MD'`,
+      );
       const mdId = mdUserData.rows[0].id;
 
       const updateQuery = `
@@ -269,23 +301,23 @@ class TenderService {
         SET send_for_approaval = $1, send_for_approaval_at = $2,tender_stage = $3, accounts_assignee_id = $5  where id = $4
         `;
 
-      const { rows } = await pool.query(updateQuery, [true, new Date(), 2, id, mdId]);
+      const { rows } = await pool.query(updateQuery, [
+        true,
+        new Date(),
+        2,
+        id,
+        mdId,
+      ]);
       return rows[0];
-
     } catch (error) {
-      throw error
+      throw error;
     }
   }
 
-
-
   async getApprovalRequestTenders(userId) {
-
-
     console.log("userId in service: ", userId);
     console.log("typeOf userId: ", typeof userId);
 
-    
     const getApprovalRequestTendersQuery = `
       SELECT * FROM tender_information
       WHERE accounts_assignee_id = $1 AND send_for_approaval = true AND tender_stage = '2'
@@ -294,7 +326,6 @@ class TenderService {
     const { rows } = await pool.query(getApprovalRequestTendersQuery, [userId]);
     return rows;
   }
-
 
   async getApprovedTenders(userId) {
     const getApprovedTendersQuery = `
@@ -309,45 +340,60 @@ class TenderService {
     return rows;
   }
 
-
   async getTendersForAccountsTeam(userId) {
-    try{
+    try {
       const getTendersForAccountsTeamQuery = `
         SELECT * FROM tender_information
         WHERE accounts_assignee_id = $1 AND tender_stage = '3'
         ORDER BY id DESC
       `;
 
-      const { rows } = await pool.query(getTendersForAccountsTeamQuery, [userId]);
+      const { rows } = await pool.query(getTendersForAccountsTeamQuery, [
+        userId,
+      ]);
       return rows;
-
-
-    }catch(error){
+    } catch (error) {
       throw error;
     }
   }
 
-
   async getCompletedTendersForAccountsTeam(userId) {
-    try{
+    try {
       const getCompletedTendersForAccountsTeamQuery = `
         SELECT * FROM tender_information
         WHERE is_accounts_team_work_done = true AND tender_stage = '4'
         ORDER BY id DESC
       `;
 
-      const { rows } = await pool.query(getCompletedTendersForAccountsTeamQuery, []);
+      const { rows } = await pool.query(
+        getCompletedTendersForAccountsTeamQuery,
+        [],
+      );
       return rows;
-
-    }catch(error){
+    } catch (error) {
       throw error;
     }
   }
 
+  async getTendersAssignedByAccountsTeam(userId) {
+    try {
+      const getTendersAssignedByAccountsTeamQuery = `
+        SELECT * FROM tender_information
+        WHERE is_accounts_team_work_done = true AND tender_stage = '4' and accounts_assignee_id = $1
+        ORDER BY id DESC
+      `;
 
+      const { rows } = await pool.query(getTendersAssignedByAccountsTeamQuery, [
+        userId,
+      ]);
+      return rows;
+    } catch (error) {
+      throw error;
+    }
+  }
 
-  async updateTenderByAccountsTeam(body, userId){
-    try{
+  async updateTenderByAccountsTeam(body, userId) {
+    try {
       const { payment_type, id } = body;
 
       const updateQuery = `
@@ -356,24 +402,24 @@ class TenderService {
         WHERE id = $2;
       `;
 
-      const { rows } = await pool.query(updateQuery, [JSON.stringify(payment_type), id]);
+      const { rows } = await pool.query(updateQuery, [
+        JSON.stringify(payment_type),
+        id,
+      ]);
       return rows[0];
-
-
-
-    }catch(error){
+    } catch (error) {
       throw error;
     }
   }
 
-
-  async markTenderCompleteByAccountsTeam(body, userId){
-    try{
-
+  async markTenderCompleteByAccountsTeam(body, userId) {
+    try {
       const tenderId = body.id;
 
-      const createdBy = await pool.query(`SELECT createdby FROM tender_information WHERE id = $1`, [tenderId]);
-
+      const createdBy = await pool.query(
+        `SELECT createdby FROM tender_information WHERE id = $1`,
+        [tenderId],
+      );
 
       const updateQuery = `
         UPDATE tender_information
@@ -381,20 +427,114 @@ class TenderService {
         WHERE id = $2;
       `;
 
-      const { rows } = await pool.query(updateQuery, [new Date(), tenderId, createdBy.rows[0].createdby]);
+      const { rows } = await pool.query(updateQuery, [
+        new Date(),
+        tenderId,
+        createdBy.rows[0].createdby,
+      ]);
       return rows[0];
+    } catch (error) {
+      throw error;
+    }
+  }
 
-    }catch(error){
+  async updateTenderDetails(body, userId) {
+    try {
+      const { id, ...fieldsToUpdate } = body;
+
+      // 1. Validate that an ID was provided
+      if (!id) {
+        // If you are using custom error classes (like BadRequestError), use them here
+        throw new Error("Tender ID is required for updating.");
+      }
+
+      // 2. Verify ownership / assignment
+      // Ensures the agent can only update tenders assigned to/created by them
+      const checkQuery = `SELECT id FROM tender_information WHERE id = $1 AND createdby = $2`;
+      const checkResult = await pool.query(checkQuery, [id, String(userId)]);
+
+      if (checkResult.rowCount === 0) {
+        throw new Error(
+          "Tender not found or you do not have permission to update it.",
+        );
+      }
+
+      // 3. Define allowed columns to update (Security measure against SQL injection)
+      const allowedColumns = [
+        "tender_id",
+        "tender_ref_no",
+        "tender_documents",
+        "tender_title",
+        "tender_organization",
+        "cable_length_km",
+        "publish_date",
+        "closing_date",
+        "tender_value_cr",
+        "tender_fee_inr",
+        "emd_inr",
+        "state",
+        "submission_expected",
+        "submission_actual",
+        "payment_type",
+        "submit_to_govt_portal_at",
+        "shortfall",
+        "docs_resubmitted",
+        "rank_file",
+        "counter_offer",
+        "loi",
+        "po",
+        "contract_agreement",
+        "warranty",
+        "acceptance_letter",
+        "tender_stage",
+        "send_for_approaval",
+        "send_for_approaval_at",
+      ];
+
+      // 4. Build dynamic SET clauses and values array
+      const setClauses = [];
+      const values = [];
+      let paramIndex = 1;
+
+      for (const [key, value] of Object.entries(fieldsToUpdate)) {
+        if (allowedColumns.includes(key)) {
+          // If the value is a JavaScript object/array targeting a JSONB column
+          // (like tender_documents or payment_type), the 'pg' library will serialize it automatically.
+          setClauses.push(`${key} = $${paramIndex}`);
+          values.push(value);
+          paramIndex++;
+        }
+      }
+
+      if (setClauses.length === 0) {
+        throw new Error("No valid fields provided for update.");
+      }
+
+      // Always update the 'updated_at' timestamp
+      setClauses.push(`updated_at = $${paramIndex}`);
+      values.push(new Date());
+      paramIndex++;
+
+      // 5. Execute the dynamic UPDATE query
+      const updateQuery = `
+        UPDATE tender_information
+        SET ${setClauses.join(", ")}
+        WHERE id = $${paramIndex}
+        RETURNING *;
+      `;
+      values.push(id); // push the `id` as the final parameter for the WHERE clause
+
+      const { rows } = await pool.query(updateQuery, values);
+
+      return rows[0];
+    } catch (error) {
       throw error;
     }
   }
 
 
 
+  
 }
-
-
-
-
 
 export default new TenderService();

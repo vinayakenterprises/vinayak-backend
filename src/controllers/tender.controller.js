@@ -337,6 +337,31 @@ class TenderController {
   }
 
 
+  getTendersAssignedByAccountsTeam = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+      const role = req.user?.role;
+
+      // console.log("role and userId in getTendersAssignedByAccountsTeam -> ", role, userId);
+
+      if(role !== 'tender_agent'){
+        throw new BadRequestError('Only Accounts Team can view tenders assigned by them');
+      }
+
+      const tenders = await tenderService.getTendersAssignedByAccountsTeam(userId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Tenders assigned by Accounts Team retrieved successfully',
+        data: tenders,
+      });
+
+    }catch(error){
+      next(error);
+    }
+  }
+
+
   updateTenderByAccountsTeam = async (req, res, next) => {
     try{
 
@@ -378,6 +403,29 @@ class TenderController {
       });
 
       
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+  updateTenderDetails = async (req, res, next) => {
+    try{
+      const role = req.user?.role;
+      const userId = req.user?.id;
+
+      if(role !== 'tender_agent'){
+        throw new BadRequestError('Only Tender Agent can update tender details assigned to them');
+      }
+
+      const tender = await tenderService.updateTenderDetails(req.body, userId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Tender details updated successfully by Tender Agent',
+        data: tender,
+      });
+
     }catch(error){
       next(error);
     }
