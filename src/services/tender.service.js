@@ -123,6 +123,8 @@ class TenderService {
       const submissionExpected = new Date();
       submissionExpected.setDate(submissionExpected.getDate() + 2);
 
+      let finalRows;
+
       if (approveStatus === true) {
         const updateQuery = `
         UPDATE tender_information
@@ -138,10 +140,12 @@ class TenderService {
           submissionExpected,
         ]);
 
+        finalRows = rows;
+
       }else{
         const updateQuery = `
         UPDATE tender_information
-        SET approved = $1, approved_at = $2, tender_stage = '5' where id = $3
+        SET approved = $1, approved_at = $2 where id = $3
         `;
 
         const { rows } = await pool.query(updateQuery, [
@@ -150,9 +154,11 @@ class TenderService {
           id,
         ]);
 
+        finalRows = rows;
+
       }
 
-      return rows[0];
+      return finalRows[0];
     } catch (error) {
       throw error;
     }
