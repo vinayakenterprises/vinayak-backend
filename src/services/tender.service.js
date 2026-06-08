@@ -334,13 +334,13 @@ class TenderService {
   async getApprovedTenders(userId) {
     const getApprovedTendersQuery = `
       SELECT * FROM tender_information
-      WHERE accounts_assignee_id = $1 AND approved = true AND tender_stage = '3'
+      WHERE approved = true
       ORDER BY id DESC
     `;
 
     console.log(getApprovedTendersQuery);
 
-    const { rows } = await pool.query(getApprovedTendersQuery, [userId]);
+    const { rows } = await pool.query(getApprovedTendersQuery, []);
     return rows;
   }
 
