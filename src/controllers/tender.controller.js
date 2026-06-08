@@ -32,6 +32,28 @@ class TenderController {
     }
   };
 
+
+  deleteTender = async (req, res, next) => {
+    try{
+      const { id } = req.params;
+
+      if(!id){
+        throw new BadRequestError('Tender ID is required');
+      }
+
+      await tenderService.deleteTender(id);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Tender deleted successfully',
+      });
+
+
+    }catch(error){
+      next(error);
+    }
+  }
+
   // GET /api/v1/tenders/:id
   getById = async (req, res, next) => {
     try {
@@ -330,6 +352,29 @@ class TenderController {
         data: tenders,
       });
 
+
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+  getTenderCardsCountData = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+      const role = req.user?.role;
+
+      if(role !== 'MD'){
+        throw new BadRequestError('Only MD and Tender Agent can view tender cards count data');
+      }
+
+      const analysis = await tenderService.getTenderCardsCountData(userId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Tender cards count data retrieved successfully',
+        data: analysis,
+      });
 
     }catch(error){
       next(error);

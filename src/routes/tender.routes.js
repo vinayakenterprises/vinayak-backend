@@ -11,6 +11,8 @@ router.get('/get-approved-tenders', authMiddleware, tenderController.getApproved
 router.get('/get-tenders-accounts-team', authMiddleware, tenderController.getTendersForAccountsTeam);
 router.get('/get-completed-tenders-accounts-team', authMiddleware, tenderController.getCompletedTendersForAccountsTeam);
 
+router.get('/tender-cards-count-data', authMiddleware, tenderController.getTenderCardsCountData);
+
 router.get('/assigned-by-accounts-team-to-stage4', authMiddleware, tenderController.getTendersAssignedByAccountsTeam);
 
 router.post('/accounts-team-tender-update', authMiddleware, tenderController.updateTenderByAccountsTeam);
@@ -19,6 +21,9 @@ router.post('/accounts-team-tender-mark-complete', authMiddleware, tenderControl
 router.post('/update-tender-details', authMiddleware, tenderController.updateTenderDetails);
 
 router.get('/get-all', authMiddleware, tenderController.getAll);
+
+router.delete('/delete-tender/:id', authMiddleware, tenderController.deleteTender);
+
 router.get('/:id', authMiddleware, tenderController.getById);
 router.put('/approve-tender/:id', authMiddleware, tenderController.approveTender);
 router.post('/create-tender', authMiddleware, tenderController.create);
