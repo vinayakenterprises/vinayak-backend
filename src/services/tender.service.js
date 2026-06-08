@@ -101,9 +101,12 @@ class TenderService {
       );
       const accountsId = accountsUserData.rows[0].id;
 
+      const submissionExpected = new Date();
+    submissionExpected.setDate(submissionExpected.getDate() + 2);
+
       const updateQuery = `
         UPDATE tender_information
-        SET approved = $1, approved_at = $2, tender_stage = '3', accounts_assignee_id = $4, assigned_to_accounts_team = $5 where id = $3
+        SET approved = $1, approved_at = $2, tender_stage = '3', accounts_assignee_id = $4, assigned_to_accounts_team = $5, submission_expected = $6 where id = $3
         `;
 
       const { rows } = await pool.query(updateQuery, [
@@ -112,6 +115,7 @@ class TenderService {
         id,
         accountsId,
         true,
+        submissionExpected,
       ]);
       return rows[0];
     } catch (error) {
@@ -439,18 +443,22 @@ class TenderService {
   }
 
   async updateTenderDetails(body, userId) {
+    const values = [];
+
     try {
       const { id, ...fieldsToUpdate } = body;
 
-      // 1. Validate that an ID was provided
       if (!id) {
-        // If you are using custom error classes (like BadRequestError), use them here
         throw new Error("Tender ID is required for updating.");
       }
 
-      // 2. Verify ownership / assignment
-      // Ensures the agent can only update tenders assigned to/created by them
-      const checkQuery = `SELECT id FROM tender_information WHERE id = $1 AND createdby = $2`;
+      // Verify ownership
+      const checkQuery = `
+      SELECT id
+      FROM tender_information
+      WHERE id = $1 AND createdby = $2
+    `;
+
       const checkResult = await pool.query(checkQuery, [id, String(userId)]);
 
       if (checkResult.rowCount === 0) {
@@ -459,7 +467,6 @@ class TenderService {
         );
       }
 
-      // 3. Define allowed columns to update (Security measure against SQL injection)
       const allowedColumns = [
         "tender_id",
         "tender_ref_no",
@@ -491,50 +498,57 @@ class TenderService {
         "send_for_approaval_at",
       ];
 
-      // 4. Build dynamic SET clauses and values array
+      const jsonColumns = [
+        "tender_documents",
+        "payment_type",
+        "docs_resubmitted",
+        "counter_offer",
+      ];
+
       const setClauses = [];
-      const values = [];
       let paramIndex = 1;
 
       for (const [key, value] of Object.entries(fieldsToUpdate)) {
-        if (allowedColumns.includes(key)) {
-          // If the value is a JavaScript object/array targeting a JSONB column
-          // (like tender_documents or payment_type), the 'pg' library will serialize it automatically.
+        if (!allowedColumns.includes(key)) continue;
+
+        if (jsonColumns.includes(key)) {
+          setClauses.push(`${key} = $${paramIndex}::jsonb`);
+          values.push(value === null ? null : JSON.stringify(value));
+        } else {
           setClauses.push(`${key} = $${paramIndex}`);
           values.push(value);
-          paramIndex++;
         }
+
+        paramIndex++;
       }
 
       if (setClauses.length === 0) {
         throw new Error("No valid fields provided for update.");
       }
 
-      // Always update the 'updated_at' timestamp
       setClauses.push(`updated_at = $${paramIndex}`);
       values.push(new Date());
       paramIndex++;
 
-      // 5. Execute the dynamic UPDATE query
       const updateQuery = `
-        UPDATE tender_information
-        SET ${setClauses.join(", ")}
-        WHERE id = $${paramIndex}
-        RETURNING *;
-      `;
-      values.push(id); // push the `id` as the final parameter for the WHERE clause
+      UPDATE tender_information
+      SET ${setClauses.join(", ")}
+      WHERE id = $${paramIndex}
+      RETURNING *;
+    `;
+
 
       const { rows } = await pool.query(updateQuery, values);
 
       return rows[0];
-    } catch (error) {
-      throw error;
+    } catch (err) {
+      console.log("Postgres Error:", err.message);
+      console.log("Postgres Detail:", err.detail);
+      console.log("Postgres Position:", err.position);
+      console.log("Values JSON:", JSON.stringify(values, null, 2));
+      throw err;
     }
   }
-
-
-
-  
 }
 
 export default new TenderService();

@@ -418,6 +418,7 @@ class TenderController {
         throw new BadRequestError('Only Tender Agent can update tender details assigned to them');
       }
 
+
       const tender = await tenderService.updateTenderDetails(req.body, userId);
 
       return res.status(200).json({
