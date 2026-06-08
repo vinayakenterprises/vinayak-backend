@@ -8,6 +8,7 @@ const router = Router();
 // All tender routes require authentication
 router.get('/approval-request-tenders', authMiddleware, tenderController.getApprovalRequestTenders);
 router.get('/get-approved-tenders', authMiddleware, tenderController.getApprovedTenders);
+router.get('/get-rejected-tenders', authMiddleware, tenderController.getRejectedTenders);
 router.get('/get-tenders-accounts-team', authMiddleware, tenderController.getTendersForAccountsTeam);
 router.get('/get-completed-tenders-accounts-team', authMiddleware, tenderController.getCompletedTendersForAccountsTeam);
 

@@ -75,11 +75,16 @@ class TenderController {
     try {
       const { id } = req.params;
       const role = req.user?.role;
+      const approveStatus = req.body.approveStatus;
       if (role !== 'MD') {
         throw new BadRequestError('Only MD can approve tenders');
       }
 
-      const tender = await tenderService.approveTender(id);
+      if(approveStatus === undefined){
+        throw new BadRequestError('approveStatus field is required in request body');
+      }
+
+      const tender = await tenderService.approveTender(id, approveStatus);
 
       return res.status(200).json({
         status: 'success',
@@ -304,6 +309,30 @@ class TenderController {
       return res.status(200).json({
         status: 'success',
         message: 'Approved tenders retrieved successfully',
+        data: tenders,
+      });
+
+
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+  getRejectedTenders = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+      const role = req.user?.role;
+
+      if(role !== 'MD'){
+        throw new BadRequestError('Only MD can view rejected tenders');
+      }
+
+      const tenders = await tenderService.getRejectedTenders(userId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Rejected tenders retrieved successfully',
         data: tenders,
       });
 

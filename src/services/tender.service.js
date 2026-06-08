@@ -112,7 +112,7 @@ class TenderService {
     return rows[0];
   }
 
-  async approveTender(id) {
+  async approveTender(id, approveStatus) {
     try {
       // get accounts team data
       const accountsUserData = await pool.query(
@@ -123,19 +123,35 @@ class TenderService {
       const submissionExpected = new Date();
       submissionExpected.setDate(submissionExpected.getDate() + 2);
 
-      const updateQuery = `
+      if (approveStatus === true) {
+        const updateQuery = `
         UPDATE tender_information
         SET approved = $1, approved_at = $2, tender_stage = '3', accounts_assignee_id = $4, assigned_to_accounts_team = $5, submission_expected = $6 where id = $3
         `;
 
-      const { rows } = await pool.query(updateQuery, [
-        true,
-        new Date(),
-        id,
-        accountsId,
-        true,
-        submissionExpected,
-      ]);
+        const { rows } = await pool.query(updateQuery, [
+          approveStatus,
+          new Date(),
+          id,
+          accountsId,
+          true,
+          submissionExpected,
+        ]);
+
+      }else{
+        const updateQuery = `
+        UPDATE tender_information
+        SET approved = $1, approved_at = $2, tender_stage = '5' where id = $3
+        `;
+
+        const { rows } = await pool.query(updateQuery, [
+          approveStatus,
+          new Date(),
+          id,
+        ]);
+
+      }
+
       return rows[0];
     } catch (error) {
       throw error;
@@ -361,6 +377,21 @@ class TenderService {
 
     const { rows } = await pool.query(getApprovedTendersQuery, []);
     return rows;
+  }
+
+  async getRejectedTenders(userId) {
+    try {
+      const getRejectedTendersQuery = `
+        SELECT * FROM tender_information
+        WHERE approved = false
+        ORDER BY id DESC
+      `;
+
+      const { rows } = await pool.query(getRejectedTendersQuery, []);
+      return rows;
+    } catch (error) {
+      throw error;
+    }
   }
 
   async getTendersForAccountsTeam(userId) {
