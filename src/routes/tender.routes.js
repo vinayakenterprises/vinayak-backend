@@ -6,6 +6,8 @@ import { tenderUpload } from '../middlewares/upload.middleware.js';
 const router = Router();
 
 // All tender routes require authentication
+
+
 router.get('/approval-request-tenders', authMiddleware, tenderController.getApprovalRequestTenders);
 router.get('/get-approved-tenders', authMiddleware, tenderController.getApprovedTenders);
 router.get('/get-rejected-tenders', authMiddleware, tenderController.getRejectedTenders);
@@ -24,6 +26,13 @@ router.post('/update-tender-details', authMiddleware, tenderController.updateTen
 router.get('/get-all', authMiddleware, tenderController.getAll);
 
 router.delete('/delete-tender/:id', authMiddleware, tenderController.deleteTender);
+
+
+router.get('/get-repetitive-tender-documents', authMiddleware, tenderController.getRepetitiveTenderDocuments);
+
+
+
+
 
 router.get('/:id', authMiddleware, tenderController.getById);
 router.put('/approve-tender/:id', authMiddleware, tenderController.approveTender);

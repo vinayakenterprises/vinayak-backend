@@ -365,7 +365,7 @@ class TenderService {
 
     const getApprovalRequestTendersQuery = `
       SELECT * FROM tender_information
-      WHERE accounts_assignee_id = $1 AND send_for_approaval = true AND tender_stage = '2'
+      WHERE accounts_assignee_id = $1 AND send_for_approaval = true and approved is null AND tender_stage = '2'
       ORDER BY id DESC
     `;
     const { rows } = await pool.query(getApprovalRequestTendersQuery, [userId]);

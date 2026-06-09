@@ -54,6 +54,134 @@ class TenderController {
     }
   }
 
+  getRepetitiveTenderDocuments = async (req, res, next) => {
+    try{
+      const documents = {
+        "pan_card": {
+          "title": "PAN Card",
+          "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/PAN_Mittalu.pdf"
+        },
+        "gst_dausa": {
+          "title": "GST Certificate - Dausa",
+          "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/GST+RC+Dausa+MPL.pdf"
+        },
+        "moa": {
+          "title": "Memorandum of Association",
+          "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/MOA+.pdf"
+        },
+        "audit_and_balance_sheet": {
+          "title": "Audit & Balance Sheet",
+          "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/Audit+%26+Balance+Sheet+2024-25.pdf"
+        },
+        "list_of_manpower": {
+          "title": "List of Manpower",
+          "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/LIST+OF+MAN+POWER+(1).pdf"
+        },
+        "list_of_plant_and_machinery": {
+          "title": "List of Plant & Machinery",
+          "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/LIST+OF+P+%26+M.pdf"
+        },
+        "bis": {
+          "cables": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/bis/Gol_14255.pdf",
+          "acsr_conductor": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/bis/Gol+398+Pt+2.pdf",
+          "aaa_conductor": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/bis/Gol+398+Pt+4.pdf"
+        },
+        "type_test_reports": {
+          "acsr_conductor": [
+            {
+              "file_name": "ACSR Dog Conductor",
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/acsr_conductor/ACSR+Dog+Conductor.pdf"
+            },
+            {
+              "file_name": "ACSR Dog Type Test New",
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/acsr_conductor/ACSR+Dog+Type+Test+New.pdf"
+            },
+            {
+              "file_name": "ACSR Rabbit conductor",
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/acsr_conductor/ACSR+Rabbit+conductor.pdf"
+            },
+            {
+              "file_name": "ACSR Weasel conductor",
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/acsr_conductor/ACSR+Weasel+conductor.pdf"
+            }
+          ],
+          "aaa_conductor": [
+            {
+              "file_name": "ELMEF TTR AAAC Dog Conductor",
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/aaa_conductor/ELMEF+TTR+AAAC+Dog+Conductor.pdf"
+            },
+            {
+              "file_name": "ELMEF TTR AAAC Rabbit Conductor",
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/aaa_conductor/ELMEF+TTR+AAAC+Rabbit+Conductor.pdf"
+            },
+            {
+              "file_name": "ELMEF TTR AAAC Weasel Conductor",
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/aaa_conductor/ELMEF+TTR+AAAC+Weasel+Conductor.pdf"
+            }
+          ],
+          "cable": [
+            {
+              "file_name": "3C X 120+16+70", 
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/3C+X+120%2B16%2B70.pdf"
+            },
+            {
+              "file_name": "3C X 150+35+95", 
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/3C+X+150%2B35%2B95.pdf"
+            }, 
+            {
+              "file_name": "3C X 25+25",
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/3C+X+25%2B25.pdf"
+            }, 
+            {
+              "file_name": "3C X 70+16+50", 
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/3C+X+70%2B16%2B50.pdf"
+            },
+            {
+              "file_name": "3cX 50 mm2 LT ABC", 
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/3cX+50+mm2+LT+ABC.pdf"
+            },
+            {
+              "file_name": "ELMEF TTR 3CX35", 
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/ELMEF+TTR+3CX35.pdf"
+            },
+            {
+              "file_name": "ELMEF TTR 3CX50+35+25sqmm Bare Massenger",
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/ELMEF+TTR+3CX50%2B35%2B25sqmm+Bare+Massenger.pdf"
+            },
+            {
+              "file_name": "ELMEF TTR IC X 35+35 Insulated Massenger",
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/ELMEF+TTR+IC+X+35%2B35+Insulated+Massenger.pdf"
+            },
+            {
+              "file_name": "IC X 25+25",
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/IC+X+25%2B25.pdf"
+            },
+            {
+              "file_name": "TTR 1Cx25+25 New",
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/TTR+1Cx25%2B25+New.pdf"
+            },
+            {
+              "file_name": "TTR 1cx25+25",
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/TTR+1cx25%2B25.pdf"
+            },
+            {
+              "file_name": "Type Test Notarized",
+              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/Type+Test+Notarized.pdf"
+            }
+          ]
+        }
+      }
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Repetitive tender documents retrieved successfully',
+        data: documents,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
   // GET /api/v1/tenders/:id
   getById = async (req, res, next) => {
     try {
