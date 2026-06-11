@@ -25,6 +25,14 @@ router.post('/update-tender-details', authMiddleware, tenderController.updateTen
 
 router.get('/get-all', authMiddleware, tenderController.getAll);
 
+router.get('/get-active-tenders', authMiddleware, tenderController.getActiveTenders);
+router.get('/get-pending-md-approval-tenders', authMiddleware, tenderController.getPendingMDApprovalTenders);
+router.get('/get-rejected-tenders-for-tender-agent', authMiddleware, tenderController.getRejectedTendersForTenderAgent);
+router.get('/get-shortfall-tenders', authMiddleware, tenderController.getShortfallTenders);
+router.get('/get-completed-tenders-for-tender-agent', authMiddleware, tenderController.getCompletedTendersForTenderAgent);
+router.get('/get-approved-tenders-for-tender-agent', authMiddleware, tenderController.getApprovedTendersForTenderAgent);
+
+
 router.delete('/delete-tender/:id', authMiddleware, tenderController.deleteTender);
 
 

@@ -33,6 +33,103 @@ class TenderController {
   };
 
 
+  getActiveTenders = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+
+      const tenders = await tenderService.getActiveTenders(userId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Active tenders retrieved successfully',
+        data: tenders,
+      });
+
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+  getPendingMDApprovalTenders = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+      const tenders = await tenderService.getPendingMDApprovalTenders(userId);
+      return res.status(200).json({
+        status: 'success',
+        message: 'Pending MD approval tenders retrieved successfully',
+        data: tenders,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+  getRejectedTendersForTenderAgent = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+
+
+      const tenders = await tenderService.getRejectedTendersForTenderAgent(userId);
+      return res.status(200).json({
+        status: 'success',
+        message: 'Rejected tenders retrieved successfully',
+        data: tenders,
+      });
+
+    }catch(error){
+      next(error);
+    }
+  }
+
+  getShortfallTenders = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+
+      console.log("req.user -> ", req.user);
+
+      const tenders = await tenderService.getShortfallTenders(userId);
+      return res.status(200).json({
+        status: 'success',
+        message: 'Shortfall tenders retrieved successfully',
+        data: tenders,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+  getCompletedTendersForTenderAgent = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+      const tenders = await tenderService.getCompletedTendersForTenderAgent(userId);
+      return res.status(200).json({
+        status: 'success',
+        message: 'Completed tenders retrieved successfully',
+        data: tenders,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+  getApprovedTendersForTenderAgent = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+      const tenders = await tenderService.getApprovedTendersForTenderAgent(userId);
+      return res.status(200).json({
+        status: 'success',
+        message: 'Approved tenders retrieved successfully',
+        data: tenders,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+
   deleteTender = async (req, res, next) => {
     try{
       const { id } = req.params;

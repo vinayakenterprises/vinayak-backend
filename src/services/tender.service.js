@@ -84,6 +84,74 @@ class TenderService {
     return rows;
   }
 
+
+  async getActiveTenders() {
+    try{
+      const getActiveTendersQuery = `select * from tender_information where approved is null order by id desc`;
+      const { rows } = await pool.query(getActiveTendersQuery);
+      return rows;
+    }catch(error){
+      throw error;
+    }
+  }
+
+
+
+  async getPendingMDApprovalTenders(userId) {
+    try{
+      const getPendingMDApprovalTendersQuery = `select * from tender_information where send_for_approval = true and approved is null and createdBy = $1 order by id desc`;
+      const { rows } = await pool.query(getPendingMDApprovalTendersQuery, [userId]);
+      return rows;
+    }catch(error){
+      throw error;
+    }
+  }
+
+
+  async getRejectedTendersForTenderAgent(userId) {
+    try{
+      const getRejectedTendersForTenderAgentQuery = `select * from tender_information where approved = false and createdBy = $1 order by id desc`;
+      const { rows } = await pool.query(getRejectedTendersForTenderAgentQuery, [userId]);
+      return rows;
+    }catch(error){
+      throw error;
+    }
+  }
+
+
+  async getShortfallTenders(userId) {
+    try{
+      const getShortfallTendersQuery = `select * from tender_information where shortfall = true and createdBy = $1 order by id desc`;
+      const { rows } = await pool.query(getShortfallTendersQuery, [userId]);
+      return rows;
+    }catch(error){
+      throw error;
+    }
+  }
+
+
+  async getCompletedTendersForTenderAgent(userId) {
+    try{
+      const getCompletedTendersForTenderAgentQuery = `select * from tender_information where tender_completed_at is not null and createdBy = $1 order by id desc`;
+      const { rows } = await pool.query(getCompletedTendersForTenderAgentQuery, [userId]);
+      return rows;
+    }catch(error){
+      throw error;
+    }
+  }
+
+
+  async getApprovedTendersForTenderAgent(userId) {
+    try{
+      const getApprovedTendersForTenderAgentQuery = `select * from tender_information where approved = true and createdBy = $1 order by id desc`;
+      const { rows } = await pool.query(getApprovedTendersForTenderAgentQuery, [userId]);
+      return rows;
+    }catch(error){
+      throw error;
+    }
+  }
+
+
   async deleteTender(id) {
     try {
       const deleteQuery = `
