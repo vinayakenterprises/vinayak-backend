@@ -36,7 +36,7 @@ router.get('/get-repetitive-tender-documents', authMiddleware, tenderController.
 
 router.get('/:id', authMiddleware, tenderController.getById);
 router.put('/approve-tender/:id', authMiddleware, tenderController.approveTender);
-router.post('/create-tender', authMiddleware, tenderController.create);
+router.post('/create-tender', authMiddleware, tenderController.createTender);
 router.put('/:id', authMiddleware, tenderUpload, tenderController.update);
 
 

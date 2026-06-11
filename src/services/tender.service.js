@@ -176,6 +176,8 @@ class TenderService {
       tender_documents,
       tender_title,
       tender_organization,
+      product_name,
+      product_type,
       cable_length_km,
       publish_date,
       closing_date,
@@ -201,13 +203,15 @@ class TenderService {
             state,
             tender_stage,
             accounts_assignee_id,
-            createdBy
+            createdBy,
+            product_name,
+            product_type
         )
         VALUES (
             $1, $2, $3, $4, $5, $6,
             $7, $8, $9, $10, $11, $12,
             $13,
-            $14, $15
+            $14, $15, $16, $17
         )
         RETURNING *;
     `;
@@ -228,6 +232,8 @@ class TenderService {
       "1",
       userId,
       userId,
+      product_name,
+      product_type,
     ];
 
     const result = await pool.query(query, values);

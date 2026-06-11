@@ -331,12 +331,11 @@ class TenderController {
   // POST /api/v1/tenders
 
 
-  create = async (req, res, next) => {
+  createTender = async (req, res, next) => {
     try {
 
       const role = req.user?.role;
       const userId = req.user?.id;
-      console.log("user data: ", req.user);
 
       const tender = await tenderService.createTender(req.body, role, userId);
 
