@@ -115,10 +115,13 @@ class TenderService {
   async approveTender(id, approveStatus) {
     try {
       // get accounts team data
-      const accountsUserData = await pool.query(
-        `SELECT id FROM users WHERE role = 'tender_handler_accounts'`,
+
+      const createdByUserData = await pool.query(
+        `SELECT createdby FROM tender_information WHERE id = $1`,
+        [id],
       );
-      const accountsId = accountsUserData.rows[0].id;
+
+      const createdById = createdByUserData.rows[0].createdby;
 
       const submissionExpected = new Date();
       submissionExpected.setDate(submissionExpected.getDate() + 2);
@@ -128,16 +131,15 @@ class TenderService {
       if (approveStatus === true) {
         const updateQuery = `
         UPDATE tender_information
-        SET approved = $1, approved_at = $2, tender_stage = '3', accounts_assignee_id = $4, assigned_to_accounts_team = $5, submission_expected = $6 where id = $3
+        SET approved = $1, approved_at = $2, submission_expected = $3, assigned_to = $4 where id = $5
         `;
 
         const { rows } = await pool.query(updateQuery, [
           approveStatus,
           new Date(),
-          id,
-          accountsId,
-          true,
           submissionExpected,
+          createdById,
+          id,
         ]);
 
         finalRows = rows;
@@ -202,7 +204,7 @@ class TenderService {
             emd_inr,
             state,
             tender_stage,
-            accounts_assignee_id,
+            assigned_to,
             createdBy,
             product_name,
             product_type
@@ -349,7 +351,7 @@ class TenderService {
 
       const updateQuery = `
         UPDATE tender_information
-        SET send_for_approaval = $1, send_for_approaval_at = $2,tender_stage = $3, accounts_assignee_id = $5  where id = $4
+        SET send_for_approval = $1, send_for_approval_at = $2,tender_stage = $3, assigned_to = $5  where id = $4
         `;
 
       const { rows } = await pool.query(updateQuery, [
@@ -371,7 +373,7 @@ class TenderService {
 
     const getApprovalRequestTendersQuery = `
       SELECT * FROM tender_information
-      WHERE accounts_assignee_id = $1 AND send_for_approaval = true and approved is null AND tender_stage = '2'
+      WHERE assigned_to = $1 AND send_for_approval = true and approved is null AND tender_stage = '2'
       ORDER BY id DESC
     `;
     const { rows } = await pool.query(getApprovalRequestTendersQuery, [userId]);
@@ -410,7 +412,7 @@ class TenderService {
     try {
       const getTendersForAccountsTeamQuery = `
         SELECT * FROM tender_information
-        WHERE accounts_assignee_id = $1 AND tender_stage = '3'
+        WHERE assigned_to = $1 AND tender_stage = '3'
         ORDER BY id DESC
       `;
 
@@ -496,7 +498,7 @@ class TenderService {
     try {
       const getTendersAssignedByAccountsTeamQuery = `
         SELECT * FROM tender_information
-        WHERE is_accounts_team_work_done = true AND tender_stage = '4' and accounts_assignee_id = $1
+        WHERE is_accounts_team_work_done = true AND tender_stage = '4' and assigned_to = $1
         ORDER BY id DESC
       `;
 
@@ -540,7 +542,7 @@ class TenderService {
 
       const updateQuery = `
         UPDATE tender_information
-        SET tender_stage = '4', is_accounts_team_work_done = true, accounts_team_work_done_at = $1, updated_at = $1, accounts_assignee_id = $3
+        SET tender_stage = '4', is_accounts_team_work_done = true, accounts_team_work_done_at = $1, updated_at = $1, assigned_to = $3
         WHERE id = $2;
       `;
 
@@ -607,8 +609,8 @@ class TenderService {
         "warranty",
         "acceptance_letter",
         "tender_stage",
-        "send_for_approaval",
-        "send_for_approaval_at",
+        "send_for_approval",
+        "send_for_approval_at",
       ];
 
       const jsonColumns = [
