@@ -704,6 +704,9 @@ class TenderService {
         "fee_document",
         "technical_document",
         "boq_filled",
+        "courier",
+        "submit_to_govt_portal_slip",
+        "a9slip"
       ];
 
       const jsonColumns = [
@@ -714,6 +717,10 @@ class TenderService {
         "fee_document",
         "technical_document",
         "boq_filled",
+        "courier",
+        "submit_to_govt_portal_slip",
+        "a9slip",
+        "rank_file"
       ];
 
       const setClauses = [];
@@ -731,6 +738,9 @@ class TenderService {
             "technical_document",
             "boq_filled",
             "docs_resubmitted",
+            "submit_to_govt_portal_slip",
+            "a9slip",
+            "rank_file"
           ];
 
           if (documentColumns.includes(key)) {
