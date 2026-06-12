@@ -447,6 +447,22 @@ class TenderService {
     return rows;
   }
 
+  async getCounterOfferApprovalRequestTenders(userId) {
+    try {
+      const getCounterOfferApprovalRequestTendersQuery = `
+        SELECT *
+        FROM tender_information
+        WHERE counter_offer->>'sent_for_approval' = 'true'
+        ORDER BY id DESC
+      `;
+      const { rows } = await pool.query(getCounterOfferApprovalRequestTendersQuery, []);
+      return rows;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+
   async getApprovedTenders(userId) {
     const getApprovedTendersQuery = `
       SELECT * FROM tender_information

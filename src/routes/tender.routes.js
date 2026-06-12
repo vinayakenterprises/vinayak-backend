@@ -9,6 +9,7 @@ const router = Router();
 
 
 router.get('/approval-request-tenders', authMiddleware, tenderController.getApprovalRequestTenders);
+router.get('/get-counter-offer-approval-request-tenders', authMiddleware, tenderController.getCounterOfferApprovalRequestTenders);
 router.get('/get-approved-tenders', authMiddleware, tenderController.getApprovedTenders);
 router.get('/get-rejected-tenders', authMiddleware, tenderController.getRejectedTenders);
 router.get('/get-tenders-accounts-team', authMiddleware, tenderController.getTendersForAccountsTeam);

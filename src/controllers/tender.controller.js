@@ -518,6 +518,24 @@ class TenderController {
     }
   }
 
+  getCounterOfferApprovalRequestTenders = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+      const role = req.user?.role;
+      // if(role !== 'MD'){
+      //   throw new BadRequestError('Only MD can view counter offer approval request tenders');
+      // }
+      const tenders = await tenderService.getCounterOfferApprovalRequestTenders(userId);
+      return res.status(200).json({
+        status: 'success',
+        message: 'Tenders retrieved successfully',
+        data: tenders,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
 
   getApprovedTenders = async (req, res, next) => {
     try{
