@@ -84,73 +84,74 @@ class TenderService {
     return rows;
   }
 
-
   async getActiveTenders() {
-    try{
-      const getActiveTendersQuery = `select * from tender_information where approved is null order by id desc`;
+    try {
+      const getActiveTendersQuery = `select * from tender_information where approved is null and send_for_approval = false order by id desc`;
       const { rows } = await pool.query(getActiveTendersQuery);
       return rows;
-    }catch(error){
+    } catch (error) {
       throw error;
     }
   }
-
-
 
   async getPendingMDApprovalTenders(userId) {
-    try{
+    try {
       const getPendingMDApprovalTendersQuery = `select * from tender_information where send_for_approval = true and approved is null and createdBy = $1 order by id desc`;
-      const { rows } = await pool.query(getPendingMDApprovalTendersQuery, [userId]);
+      const { rows } = await pool.query(getPendingMDApprovalTendersQuery, [
+        userId,
+      ]);
       return rows;
-    }catch(error){
+    } catch (error) {
       throw error;
     }
   }
-
 
   async getRejectedTendersForTenderAgent(userId) {
-    try{
+    try {
       const getRejectedTendersForTenderAgentQuery = `select * from tender_information where approved = false and createdBy = $1 order by id desc`;
-      const { rows } = await pool.query(getRejectedTendersForTenderAgentQuery, [userId]);
+      const { rows } = await pool.query(getRejectedTendersForTenderAgentQuery, [
+        userId,
+      ]);
       return rows;
-    }catch(error){
+    } catch (error) {
       throw error;
     }
   }
 
-
   async getShortfallTenders(userId) {
-    try{
+    try {
       const getShortfallTendersQuery = `select * from tender_information where shortfall = true and createdBy = $1 order by id desc`;
       const { rows } = await pool.query(getShortfallTendersQuery, [userId]);
       return rows;
-    }catch(error){
+    } catch (error) {
       throw error;
     }
   }
-
 
   async getCompletedTendersForTenderAgent(userId) {
-    try{
+    try {
       const getCompletedTendersForTenderAgentQuery = `select * from tender_information where tender_completed_at is not null and createdBy = $1 order by id desc`;
-      const { rows } = await pool.query(getCompletedTendersForTenderAgentQuery, [userId]);
+      const { rows } = await pool.query(
+        getCompletedTendersForTenderAgentQuery,
+        [userId],
+      );
       return rows;
-    }catch(error){
+    } catch (error) {
       throw error;
     }
   }
-
 
   async getApprovedTendersForTenderAgent(userId) {
-    try{
+    try {
       const getApprovedTendersForTenderAgentQuery = `select * from tender_information where approved = true and createdBy = $1 order by id desc`;
-      const { rows } = await pool.query(getApprovedTendersForTenderAgentQuery, [userId]);
+      const { rows } = await pool.query(getApprovedTendersForTenderAgentQuery, [
+        userId,
+      ]);
       return rows;
-    }catch(error){
+    } catch (error) {
       throw error;
     }
   }
-
 
   async deleteTender(id) {
     try {
@@ -211,8 +212,7 @@ class TenderService {
         ]);
 
         finalRows = rows;
-
-      }else{
+      } else {
         const updateQuery = `
         UPDATE tender_information
         SET approved = $1, approved_at = $2 where id = $3
@@ -225,7 +225,6 @@ class TenderService {
         ]);
 
         finalRows = rows;
-
       }
 
       return finalRows[0];
@@ -628,7 +627,30 @@ class TenderService {
   async updateTenderDetails(body, userId) {
     const values = [];
 
+    // console.log("body in update tender details: ", body);
+
     try {
+      // helper function:
+      function addTimestamp(data) {
+        const timestamp = new Date().toISOString();
+
+        if (Array.isArray(data)) {
+          return data.map((item) => ({
+            ...item,
+            added_at: item?.added_at ?? timestamp,
+          }));
+        }
+
+        if (data && typeof data === "object") {
+          return {
+            ...data,
+            added_at: data?.added_at ?? timestamp,
+          };
+        }
+
+        return data;
+      }
+
       const { id, ...fieldsToUpdate } = body;
 
       if (!id) {
@@ -679,6 +701,9 @@ class TenderService {
         "tender_stage",
         "send_for_approval",
         "send_for_approval_at",
+        "fee_document",
+        "technical_document",
+        "boq_filled",
       ];
 
       const jsonColumns = [
@@ -686,6 +711,9 @@ class TenderService {
         "payment_type",
         "docs_resubmitted",
         "counter_offer",
+        "fee_document",
+        "technical_document",
+        "boq_filled",
       ];
 
       const setClauses = [];
@@ -695,8 +723,22 @@ class TenderService {
         if (!allowedColumns.includes(key)) continue;
 
         if (jsonColumns.includes(key)) {
+          let jsonValue = value;
+
+          const documentColumns = [
+            "tender_documents",
+            "fee_document",
+            "technical_document",
+            "boq_filled",
+            "docs_resubmitted",
+          ];
+
+          if (documentColumns.includes(key)) {
+            jsonValue = addTimestamp(jsonValue);
+          }
+
           setClauses.push(`${key} = $${paramIndex}::jsonb`);
-          values.push(value === null ? null : JSON.stringify(value));
+          values.push(jsonValue === null ? null : JSON.stringify(jsonValue));
         } else {
           setClauses.push(`${key} = $${paramIndex}`);
           values.push(value);
