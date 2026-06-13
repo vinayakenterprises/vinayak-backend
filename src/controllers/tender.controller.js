@@ -322,6 +322,32 @@ class TenderController {
     }
   }
 
+
+  approveCounterOfferTender = async (req, res, next) => {
+    try{
+      const { id } = req.params;
+      const role = req.user?.role;
+      const approveStatus = req.body.approveStatus;
+      if (role !== 'MD') {
+        throw new BadRequestError('Only MD can approve counter offer tenders');
+      }
+
+      if(approveStatus === undefined){
+        throw new BadRequestError('approveStatus field is required in request body');
+      }
+
+      const tender = await tenderService.approveCounterOfferTender(id, approveStatus);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Counter offer tender approved successfully',
+        data: tender,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
   // _processRequestData = async (req) => {
   //   // 1. Convert empty string inputs to null for numeric/date fields
   //   const numericOrDateFields = [
@@ -529,6 +555,42 @@ class TenderController {
       return res.status(200).json({
         status: 'success',
         message: 'Tenders retrieved successfully',
+        data: tenders,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+  getCounterOfferRejectedTenders = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+      const role = req.user?.role;
+      // if(role !== 'MD'){
+      //   throw new BadRequestError('Only MD can view counter offer rejected tenders');
+      // }
+      const tenders = await tenderService.getCounterOfferRejectedTenders(userId);
+      return res.status(200).json({
+        status: 'success',
+        message: 'Counter offer rejected tenders retrieved successfully',
+        data: tenders,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+  getCounterOfferApprovedTenders = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+      const role = req.user?.role;
+      // if(role !== 'MD'){
+      //   throw new BadRequestError('Only MD can view counter offer approved tenders');
+      // }
+      const tenders = await tenderService.getCounterOfferApprovedTenders(userId);
+      return res.status(200).json({
+        status: 'success',
+        message: 'Counter offer approved tenders retrieved successfully',
         data: tenders,
       });
     }catch(error){

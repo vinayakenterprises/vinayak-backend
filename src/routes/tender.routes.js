@@ -10,6 +10,8 @@ const router = Router();
 
 router.get('/approval-request-tenders', authMiddleware, tenderController.getApprovalRequestTenders);
 router.get('/get-counter-offer-approval-request-tenders', authMiddleware, tenderController.getCounterOfferApprovalRequestTenders);
+router.get('/get-counter-offer-rejected-tenders', authMiddleware, tenderController.getCounterOfferRejectedTenders);
+router.get('/get-counter-offer-approved-tenders', authMiddleware, tenderController.getCounterOfferApprovedTenders);
 router.get('/get-approved-tenders', authMiddleware, tenderController.getApprovedTenders);
 router.get('/get-rejected-tenders', authMiddleware, tenderController.getRejectedTenders);
 router.get('/get-tenders-accounts-team', authMiddleware, tenderController.getTendersForAccountsTeam);
@@ -45,6 +47,7 @@ router.get('/get-repetitive-tender-documents', authMiddleware, tenderController.
 
 router.get('/:id', authMiddleware, tenderController.getById);
 router.put('/approve-tender/:id', authMiddleware, tenderController.approveTender);
+router.put('/approve-counter-offer-tender/:id', authMiddleware, tenderController.approveCounterOfferTender);
 router.post('/create-tender', authMiddleware, tenderController.createTender);
 router.put('/:id', authMiddleware, tenderUpload, tenderController.update);
 

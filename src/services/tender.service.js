@@ -233,6 +233,31 @@ class TenderService {
     }
   }
 
+
+
+  async approveCounterOfferTender(id, approveStatus) {
+    try{
+
+      console.log("approveStatus: ", approveStatus);
+      console.log("type of approveStatus: ", typeof approveStatus);
+
+      const counterOfferApproveQuery = `UPDATE tender_information
+      SET counter_offer = counter_offer || jsonb_build_object(
+          'counter_offer_approve_by_md', $1::boolean,
+          'counter_offer_approve_by_md_at', CURRENT_TIMESTAMP
+      )
+      WHERE id = $2
+      RETURNING *;`
+
+      
+      const { rows } = await pool.query(counterOfferApproveQuery, [approveStatus, id]);
+      return rows[0];
+    }catch(error){
+      throw error;
+    }
+  }
+
+
   // ─── create tender (tender_agent only) ────────────────────
   async createTender(body, role, userId) {
     if (role !== "tender_agent") {
@@ -452,12 +477,42 @@ class TenderService {
       const getCounterOfferApprovalRequestTendersQuery = `
         SELECT *
         FROM tender_information
-        WHERE counter_offer->>'sent_for_approval' = 'true'
+        WHERE counter_offer->>'sent_for_approval' = 'true' and counter_offer->>'counter_offer_approve_by_md_at' is null
         ORDER BY id DESC
       `;
       const { rows } = await pool.query(getCounterOfferApprovalRequestTendersQuery, []);
       return rows;
     } catch (error) {
+      throw error;
+    }
+  }
+
+
+  async getCounterOfferRejectedTenders(userId) {
+    try{
+      const getCounterOfferRejectedTendersQuery = `
+        SELECT * FROM tender_information
+        WHERE counter_offer->>'counter_offer_approve_by_md' = 'false'
+        ORDER BY id DESC
+      `;
+      const { rows } = await pool.query(getCounterOfferRejectedTendersQuery, []);
+      return rows;
+    }catch(error){
+      throw error;
+    }
+  }
+
+
+  async getCounterOfferApprovedTenders(userId) {
+    try{
+      const getCounterOfferApprovedTendersQuery = `
+        SELECT * FROM tender_information
+        WHERE counter_offer->>'counter_offer_approve_by_md' = 'true'
+        ORDER BY id DESC
+      `;
+      const { rows } = await pool.query(getCounterOfferApprovedTendersQuery, []);
+      return rows;
+    }catch(error){
       throw error;
     }
   }
