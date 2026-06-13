@@ -34,6 +34,8 @@ router.get('/get-rejected-tenders-for-tender-agent', authMiddleware, tenderContr
 router.get('/get-shortfall-tenders', authMiddleware, tenderController.getShortfallTenders);
 router.get('/get-completed-tenders-for-tender-agent', authMiddleware, tenderController.getCompletedTendersForTenderAgent);
 router.get('/get-approved-tenders-for-tender-agent', authMiddleware, tenderController.getApprovedTendersForTenderAgent);
+router.get('/get-counter-offer-rejected-tender-agent', authMiddleware, tenderController.getCounterOfferRejectedTenderAgent);
+router.put('/mark-as-complete-tender-after-approved-by-md/:id', authMiddleware, tenderController.markAsCompleteTenderAfterApprovedByMD);
 
 
 router.delete('/delete-tender/:id', authMiddleware, tenderController.deleteTender);

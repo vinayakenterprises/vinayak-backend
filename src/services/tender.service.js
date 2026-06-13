@@ -143,15 +143,51 @@ class TenderService {
 
   async getApprovedTendersForTenderAgent(userId) {
     try {
-      const getApprovedTendersForTenderAgentQuery = `select * from tender_information where approved = true and createdBy = $1 order by id desc`;
+      const getApprovedTendersForTenderAgentQuery = `select * from tender_information where approved = true and createdBy = $1 and tender_completed_at is null order by id desc`;
       const { rows } = await pool.query(getApprovedTendersForTenderAgentQuery, [
         userId,
       ]);
+
+      // console.log("rows: ", rows);
+
       return rows;
     } catch (error) {
       throw error;
     }
   }
+
+
+  async getCounterOfferRejectedTenderAgent(userId) {
+    try{
+      const getCounterOfferRejectedTenderAgentQuery = `select * from tender_information where counter_offer->>'counter_offer_approve_by_md' = 'false' and tender_completed_at is not null and createdBy = $1 order by id desc`;
+      const { rows } = await pool.query(getCounterOfferRejectedTenderAgentQuery, [
+        userId,
+      ]);
+      return rows;
+    }catch(error){
+      throw error;
+    }
+  }
+
+
+  async markAsCompleteTenderAfterApprovedByMD(id, userId) {
+    try{
+      const updateQuery = `
+        UPDATE tender_information
+        SET tender_completed_at = CURRENT_TIMESTAMP
+        WHERE id = $2 and createdBy = $1
+      `;
+
+      const { rows } = await pool.query(updateQuery, [
+        userId,
+        id,
+      ]);
+      return rows[0];
+    }catch(error){
+      throw error;
+    }
+  }
+
 
   async deleteTender(id) {
     try {
@@ -238,8 +274,6 @@ class TenderService {
   async approveCounterOfferTender(id, approveStatus) {
     try{
 
-      console.log("approveStatus: ", approveStatus);
-      console.log("type of approveStatus: ", typeof approveStatus);
 
       const counterOfferApproveQuery = `UPDATE tender_information
       SET counter_offer = counter_offer || jsonb_build_object(
@@ -460,8 +494,6 @@ class TenderService {
   }
 
   async getApprovalRequestTenders(userId) {
-    console.log("userId in service: ", userId);
-    console.log("typeOf userId: ", typeof userId);
 
     const getApprovalRequestTendersQuery = `
       SELECT * FROM tender_information

@@ -87,7 +87,6 @@ class TenderController {
     try{
       const userId = req.user?.id;
 
-      console.log("req.user -> ", req.user);
 
       const tenders = await tenderService.getShortfallTenders(userId);
       return res.status(200).json({
@@ -123,6 +122,44 @@ class TenderController {
         status: 'success',
         message: 'Approved tenders retrieved successfully',
         data: tenders,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+  getCounterOfferRejectedTenderAgent = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+      const role = req.user?.role;
+
+      if(role !== 'tender_agent'){
+        throw new BadRequestError('Only Tender Agent can view counter offer rejected tenders');
+      }
+
+      const tenders = await tenderService.getCounterOfferRejectedTenderAgent(userId);
+      return res.status(200).json({
+        status: 'success',
+        message: 'Counter offer rejected tenders retrieved successfully',
+        data: tenders,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+  markAsCompleteTenderAfterApprovedByMD = async (req, res, next) => {
+    try{
+      const { id } = req.params;
+      const role = req.user?.role;
+      const userId = req.user?.id;
+      
+      const tender = await tenderService.markAsCompleteTenderAfterApprovedByMD(id, userId);
+      return res.status(200).json({
+        status: 'success',
+        message: 'Tender marked as complete successfully',
+        data: tender,
       });
     }catch(error){
       next(error);
@@ -795,6 +832,8 @@ class TenderController {
       if(role !== 'tender_agent'){
         throw new BadRequestError('Only Tender Agent can update tender details assigned to them');
       }
+
+
 
 
       const tender = await tenderService.updateTenderDetails(req.body, userId);
