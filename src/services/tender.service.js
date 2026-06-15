@@ -223,12 +223,6 @@ class TenderService {
         [id],
       );
 
-      // tender_ref_no: tender.tender_ref_no,
-      //       tender_title: tender.tender_title,
-      //       tender_organization: tender.tender_organization,
-      //       cable_length_km: tender.cable_length_km,
-      //       tender_value_cr: tender.tender_value_cr,
-      //       approved_at: new Date(tender.approved_at).toLocaleString("en-IN"),
 
       const createdById = tenderInformationFromDB.rows[0].createdby;
 
@@ -273,7 +267,7 @@ class TenderService {
       try {
         const isApproved = approveStatus === true;
 
-        const mailResult = await sendMail({
+        sendMail({
           to: "rinkusingh805764@gmail.com",
           subject: isApproved
             ? `✅ Tender Approved - ${tenderInformationFromDB.rows[0].tender_ref_no}`
@@ -310,7 +304,6 @@ class TenderService {
           },
         });
 
-        // console.log("mailResult: ", mailResult);
       } catch (error) {
         console.log("error in sending mail: ", error);
       }
@@ -526,7 +519,7 @@ class TenderService {
 
       const updateQuery = `
         UPDATE tender_information
-        SET send_for_approval = $1, send_for_approval_at = $2,tender_stage = $3, assigned_to = $5  where id = $4
+        SET send_for_approval = $1, send_for_approval_at = $2,tender_stage = $3, assigned_to = $5  where id = $4 returning *
         `;
 
       const { rows } = await pool.query(updateQuery, [
@@ -536,7 +529,32 @@ class TenderService {
         id,
         mdId,
       ]);
-      return rows[0];
+
+      const tenderData = rows[0];
+
+
+
+      try {
+        sendMail({
+          to: 'rinkusingh805764@gmail.com',
+          subject: `⏳ Action Required: Tender Approval - ${tenderData.tender_ref_no}`,
+          templateName: "send-for-approval-mail", // The HTML file created above
+          replacements: {
+            tender_ref_no: tenderData.tender_ref_no,
+            tender_title: tenderData.tender_title,
+            tender_organization: tenderData.tender_organization,
+            cable_length_km: tenderData.cable_length_km,
+            tender_value_cr: tenderData.tender_value_cr,
+            // sent_at: sentAt.toLocaleString("en-IN"),
+            // action_url: `https://your-frontend-domain.com/tenders/review/${id}`, // Update with your actual URL
+            appName: 'Mittalu Pvt Ltd',
+          },
+        });
+      } catch (error) {
+        console.log("Error sending send-for-approval mail: ", error);
+      }
+
+      return tenderData;
     } catch (error) {
       throw error;
     }

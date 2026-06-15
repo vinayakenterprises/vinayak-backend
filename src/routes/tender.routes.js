@@ -58,7 +58,7 @@ router.post('/create-tender', authMiddleware, tenderController.createTender);
 router.put('/:id', authMiddleware, tenderUpload, tenderController.update);
 
 
-
+// this api is used when tender agent send his tender for approval to md
 router.put('/send-for-approval/:id', authMiddleware, tenderController.sendForApproval);
 
 
