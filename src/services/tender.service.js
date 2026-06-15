@@ -878,6 +878,7 @@ class TenderService {
         "a9slip",
         "pbg",
         "insurance",
+        "npv_bond"
       ];
 
       const jsonColumns = [
@@ -899,6 +900,7 @@ class TenderService {
         "acceptance_letter",
         "pbg",
         "insurance",
+        "npv_bond"
       ];
 
       const setClauses = [];
@@ -926,6 +928,7 @@ class TenderService {
             "acceptance_letter",
             "pbg",
             "insurance",
+            "npv_bond"
           ];
 
           if (documentColumns.includes(key)) {
