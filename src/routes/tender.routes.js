@@ -48,7 +48,11 @@ router.get('/get-repetitive-tender-documents', authMiddleware, tenderController.
 
 
 router.get('/:id', authMiddleware, tenderController.getById);
+
+
+// this api is used to approve/reject tender request by md
 router.put('/approve-tender/:id', authMiddleware, tenderController.approveTender);
+
 router.put('/approve-counter-offer-tender/:id', authMiddleware, tenderController.approveCounterOfferTender);
 router.post('/create-tender', authMiddleware, tenderController.createTender);
 router.put('/:id', authMiddleware, tenderUpload, tenderController.update);

@@ -5,6 +5,8 @@ import {
   NotFoundError,
 } from "../errors/customErrors.js";
 
+import { sendMail } from "./mail.service.js";
+
 // Column sets per role
 const TENDER_AGENT_COLUMNS = [
   "tender_id",
@@ -156,38 +158,33 @@ class TenderService {
     }
   }
 
-
   async getCounterOfferRejectedTenderAgent(userId) {
-    try{
+    try {
       const getCounterOfferRejectedTenderAgentQuery = `select * from tender_information where counter_offer->>'counter_offer_approve_by_md' = 'false' and tender_completed_at is not null and createdBy = $1 order by id desc`;
-      const { rows } = await pool.query(getCounterOfferRejectedTenderAgentQuery, [
-        userId,
-      ]);
+      const { rows } = await pool.query(
+        getCounterOfferRejectedTenderAgentQuery,
+        [userId],
+      );
       return rows;
-    }catch(error){
+    } catch (error) {
       throw error;
     }
   }
 
-
   async markAsCompleteTenderAfterApprovedByMD(id, userId) {
-    try{
+    try {
       const updateQuery = `
         UPDATE tender_information
         SET tender_completed_at = CURRENT_TIMESTAMP
         WHERE id = $2 and createdBy = $1
       `;
 
-      const { rows } = await pool.query(updateQuery, [
-        userId,
-        id,
-      ]);
+      const { rows } = await pool.query(updateQuery, [userId, id]);
       return rows[0];
-    }catch(error){
+    } catch (error) {
       throw error;
     }
   }
-
 
   async deleteTender(id) {
     try {
@@ -221,17 +218,27 @@ class TenderService {
     try {
       // get accounts team data
 
-      const createdByUserData = await pool.query(
-        `SELECT createdby FROM tender_information WHERE id = $1`,
+      const tenderInformationFromDB = await pool.query(
+        `SELECT * FROM tender_information WHERE id = $1`,
         [id],
       );
 
-      const createdById = createdByUserData.rows[0].createdby;
+      // tender_ref_no: tender.tender_ref_no,
+      //       tender_title: tender.tender_title,
+      //       tender_organization: tender.tender_organization,
+      //       cable_length_km: tender.cable_length_km,
+      //       tender_value_cr: tender.tender_value_cr,
+      //       approved_at: new Date(tender.approved_at).toLocaleString("en-IN"),
 
+      const createdById = tenderInformationFromDB.rows[0].createdby;
+
+      const approvedAt = new Date();
       const submissionExpected = new Date();
       submissionExpected.setDate(submissionExpected.getDate() + 2);
 
       let finalRows;
+
+      
 
       if (approveStatus === true) {
         const updateQuery = `
@@ -241,7 +248,7 @@ class TenderService {
 
         const { rows } = await pool.query(updateQuery, [
           approveStatus,
-          new Date(),
+          approvedAt,
           submissionExpected,
           createdById,
           id,
@@ -256,11 +263,56 @@ class TenderService {
 
         const { rows } = await pool.query(updateQuery, [
           approveStatus,
-          new Date(),
+          approvedAt,
           id,
         ]);
 
         finalRows = rows;
+      }
+
+      try {
+        const isApproved = approveStatus === true;
+
+        const mailResult = await sendMail({
+          to: "rinkusingh805764@gmail.com",
+          subject: isApproved
+            ? `✅ Tender Approved - ${tenderInformationFromDB.rows[0].tender_ref_no}`
+            : `❌ Tender Rejected - ${tenderInformationFromDB.rows[0].tender_ref_no}`,
+          templateName: "tender-status", // ← single template for both cases
+          replacements: {
+            // ── dynamic based on status ──
+            header_color: isApproved ? "#1a7f4b" : "#c0392b",
+            header_sub_color: isApproved ? "#d4edda" : "#f5c6cb",
+            header_icon: isApproved ? "🎉" : "⚠️",
+            badge_icon: isApproved ? "✅" : "❌",
+            status_text: isApproved ? "Approved" : "Rejected",
+            status_text_lower: isApproved ? "approved" : "rejected",
+            status_text_upper: isApproved ? "APPROVED" : "REJECTED",
+            status_message: isApproved
+              ? "We are pleased to inform you that the following tender has been <strong>approved by the MD</strong>. Please proceed with the next steps before the expected submission date."
+              : "We regret to inform you that the following tender has been <strong>rejected by the MD</strong>. Please review the details and contact the MD for further clarification.",
+            footer_message: isApproved
+              ? "Please ensure all required documents are prepared and submitted before the expected date."
+              : "If you have any questions, please reach out to your manager for next steps.",
+            submission_row: isApproved
+              ? `<tr><td>Submission Expected By</td><td>${submissionExpected.toLocaleString("en-IN")}</td></tr>`
+              : "", // ← hidden when rejected
+
+            // ── tender data (same for both) ──
+            tender_ref_no: tenderInformationFromDB.rows[0].tender_ref_no,
+            tender_title: tenderInformationFromDB.rows[0].tender_title,
+            tender_organization:
+              tenderInformationFromDB.rows[0].tender_organization,
+            cable_length_km: tenderInformationFromDB.rows[0].cable_length_km,
+            tender_value_cr: tenderInformationFromDB.rows[0].tender_value_cr,
+            approved_at: approvedAt.toLocaleString("en-IN"),
+            appName: 'Mittalu Pvt Ltd',
+          },
+        });
+
+        // console.log("mailResult: ", mailResult);
+      } catch (error) {
+        console.log("error in sending mail: ", error);
       }
 
       return finalRows[0];
@@ -269,28 +321,25 @@ class TenderService {
     }
   }
 
-
-
   async approveCounterOfferTender(id, approveStatus) {
-    try{
-
-
+    try {
       const counterOfferApproveQuery = `UPDATE tender_information
       SET counter_offer = counter_offer || jsonb_build_object(
           'counter_offer_approve_by_md', $1::boolean,
           'counter_offer_approve_by_md_at', CURRENT_TIMESTAMP
       )
       WHERE id = $2
-      RETURNING *;`
+      RETURNING *;`;
 
-      
-      const { rows } = await pool.query(counterOfferApproveQuery, [approveStatus, id]);
+      const { rows } = await pool.query(counterOfferApproveQuery, [
+        approveStatus,
+        id,
+      ]);
       return rows[0];
-    }catch(error){
+    } catch (error) {
       throw error;
     }
   }
-
 
   // ─── create tender (tender_agent only) ────────────────────
   async createTender(body, role, userId) {
@@ -494,7 +543,6 @@ class TenderService {
   }
 
   async getApprovalRequestTenders(userId) {
-
     const getApprovalRequestTendersQuery = `
       SELECT * FROM tender_information
       WHERE assigned_to = $1 AND send_for_approval = true and approved is null AND tender_stage = '2'
@@ -512,43 +560,49 @@ class TenderService {
         WHERE counter_offer->>'sent_for_approval' = 'true' and counter_offer->>'counter_offer_approve_by_md_at' is null
         ORDER BY id DESC
       `;
-      const { rows } = await pool.query(getCounterOfferApprovalRequestTendersQuery, []);
+      const { rows } = await pool.query(
+        getCounterOfferApprovalRequestTendersQuery,
+        [],
+      );
       return rows;
     } catch (error) {
       throw error;
     }
   }
 
-
   async getCounterOfferRejectedTenders(userId) {
-    try{
+    try {
       const getCounterOfferRejectedTendersQuery = `
         SELECT * FROM tender_information
         WHERE counter_offer->>'counter_offer_approve_by_md' = 'false'
         ORDER BY id DESC
       `;
-      const { rows } = await pool.query(getCounterOfferRejectedTendersQuery, []);
+      const { rows } = await pool.query(
+        getCounterOfferRejectedTendersQuery,
+        [],
+      );
       return rows;
-    }catch(error){
+    } catch (error) {
       throw error;
     }
   }
 
-
   async getCounterOfferApprovedTenders(userId) {
-    try{
+    try {
       const getCounterOfferApprovedTendersQuery = `
         SELECT * FROM tender_information
         WHERE counter_offer->>'counter_offer_approve_by_md' = 'true'
         ORDER BY id DESC
       `;
-      const { rows } = await pool.query(getCounterOfferApprovedTendersQuery, []);
+      const { rows } = await pool.query(
+        getCounterOfferApprovedTendersQuery,
+        [],
+      );
       return rows;
-    }catch(error){
+    } catch (error) {
       throw error;
     }
   }
-
 
   async getApprovedTenders(userId) {
     const getApprovedTendersQuery = `
@@ -809,7 +863,7 @@ class TenderService {
         "boq_filled",
         "courier",
         "submit_to_govt_portal_slip",
-        "a9slip"
+        "a9slip",
       ];
 
       const jsonColumns = [
@@ -823,7 +877,7 @@ class TenderService {
         "courier",
         "submit_to_govt_portal_slip",
         "a9slip",
-        "rank_file"
+        "rank_file",
       ];
 
       const setClauses = [];
@@ -843,7 +897,7 @@ class TenderService {
             "docs_resubmitted",
             "submit_to_govt_portal_slip",
             "a9slip",
-            "rank_file"
+            "rank_file",
           ];
 
           if (documentColumns.includes(key)) {

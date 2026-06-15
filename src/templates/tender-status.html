@@ -1,0 +1,80 @@
+<!-- prettier-ignore -->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tender Status Update</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 30px; }
+      .container { max-width: 600px; margin: auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+      .header { background-color: {{header_color}}; padding: 30px; text-align: center; }
+      .header h1 { color: #ffffff; font-size: 24px; }
+      .header p { color: {{header_sub_color}}; margin-top: 6px; font-size: 14px; }
+      .badge { display: inline-block; background-color: #ffffff; color: {{header_color}}; font-weight: bold; padding: 6px 18px; border-radius: 20px; margin-top: 12px; font-size: 14px; }
+      .body { padding: 30px; }
+      .body p { color: #444; font-size: 15px; line-height: 1.6; }
+      .info-table { width: 100%; border-collapse: collapse; margin: 24px 0; }
+      .info-table tr:nth-child(even) { background-color: #f9f9f9; }
+      .info-table td { padding: 12px 16px; font-size: 14px; color: #333; border: 1px solid #e0e0e0; }
+      .info-table td:first-child { font-weight: bold; color: #555; width: 45%; background-color: #f0f0f0; }
+      .footer { background-color: #f4f4f4; text-align: center; padding: 20px; font-size: 12px; color: #999; border-top: 1px solid #e0e0e0; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>{{header_icon}} Tender {{status_text}}</h1>
+        <p>
+          Your tender submission has been reviewed and {{status_text_lower}}
+        </p>
+        <span class="badge">{{badge_icon}} {{status_text_upper}}</span>
+      </div>
+
+      <div class="body">
+        <p>Dear Team,</p>
+        <br />
+        <p>{{status_message}}</p>
+
+        <table class="info-table">
+          <tr>
+            <td>Tender Ref No</td>
+            <td>{{tender_ref_no}}</td>
+          </tr>
+          <tr>
+            <td>Tender Title</td>
+            <td>{{tender_title}}</td>
+          </tr>
+          <tr>
+            <td>Organization</td>
+            <td>{{tender_organization}}</td>
+          </tr>
+          <tr>
+            <td>Cable Length</td>
+            <td>{{cable_length_km}} KM</td>
+          </tr>
+          <tr>
+            <td>Tender Value</td>
+            <td>₹ {{tender_value_cr}} Cr</td>
+          </tr>
+          <tr>
+            <td>{{status_text}} At</td>
+            <td>{{approved_at}}</td>
+          </tr>
+          {{submission_row}}
+        </table>
+
+        <p>{{footer_message}}</p>
+      </div>
+
+      <div class="footer">
+        <p>
+          This is an automated email from {{appName}}. Please do not reply to
+          this email.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>
