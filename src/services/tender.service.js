@@ -223,7 +223,6 @@ class TenderService {
         [id],
       );
 
-
       const createdById = tenderInformationFromDB.rows[0].createdby;
 
       const approvedAt = new Date();
@@ -231,8 +230,6 @@ class TenderService {
       submissionExpected.setDate(submissionExpected.getDate() + 2);
 
       let finalRows;
-
-      
 
       if (approveStatus === true) {
         const updateQuery = `
@@ -300,10 +297,9 @@ class TenderService {
             cable_length_km: tenderInformationFromDB.rows[0].cable_length_km,
             tender_value_cr: tenderInformationFromDB.rows[0].tender_value_cr,
             approved_at: approvedAt.toLocaleString("en-IN"),
-            appName: 'Mittalu Pvt Ltd',
+            appName: "Mittalu Pvt Ltd",
           },
         });
-
       } catch (error) {
         console.log("error in sending mail: ", error);
       }
@@ -532,11 +528,9 @@ class TenderService {
 
       const tenderData = rows[0];
 
-
-
       try {
         sendMail({
-          to: 'rinkusingh805764@gmail.com',
+          to: "rinkusingh805764@gmail.com",
           subject: `⏳ Action Required: Tender Approval - ${tenderData.tender_ref_no}`,
           templateName: "send-for-approval-mail", // The HTML file created above
           replacements: {
@@ -547,7 +541,7 @@ class TenderService {
             tender_value_cr: tenderData.tender_value_cr,
             // sent_at: sentAt.toLocaleString("en-IN"),
             // action_url: `https://your-frontend-domain.com/tenders/review/${id}`, // Update with your actual URL
-            appName: 'Mittalu Pvt Ltd',
+            appName: "Mittalu Pvt Ltd",
           },
         });
       } catch (error) {
@@ -882,6 +876,8 @@ class TenderService {
         "courier",
         "submit_to_govt_portal_slip",
         "a9slip",
+        "pbg",
+        "insurance",
       ];
 
       const jsonColumns = [
@@ -896,6 +892,13 @@ class TenderService {
         "submit_to_govt_portal_slip",
         "a9slip",
         "rank_file",
+        "loi",
+        "po",
+        "contract_agreement",
+        "warranty",
+        "acceptance_letter",
+        "pbg",
+        "insurance",
       ];
 
       const setClauses = [];
@@ -916,6 +919,13 @@ class TenderService {
             "submit_to_govt_portal_slip",
             "a9slip",
             "rank_file",
+            "loi",
+            "po",
+            "contract_agreement",
+            "warranty",
+            "acceptance_letter",
+            "pbg",
+            "insurance",
           ];
 
           if (documentColumns.includes(key)) {

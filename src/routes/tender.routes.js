@@ -24,6 +24,7 @@ router.get('/assigned-by-accounts-team-to-stage4', authMiddleware, tenderControl
 router.post('/accounts-team-tender-update', authMiddleware, tenderController.updateTenderByAccountsTeam);
 router.post('/accounts-team-tender-mark-complete', authMiddleware, tenderController.markTenderCompleteByAccountsTeam);
 
+// this api is used to update tender details
 router.post('/update-tender-details', authMiddleware, tenderController.updateTenderDetails);
 
 router.get('/get-all', authMiddleware, tenderController.getAll);
