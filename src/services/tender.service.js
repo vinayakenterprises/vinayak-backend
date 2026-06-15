@@ -313,17 +313,100 @@ class TenderService {
   async approveCounterOfferTender(id, approveStatus) {
     try {
       const counterOfferApproveQuery = `UPDATE tender_information
-      SET counter_offer = counter_offer || jsonb_build_object(
-          'counter_offer_approve_by_md', $1::boolean,
-          'counter_offer_approve_by_md_at', CURRENT_TIMESTAMP
-      )
-      WHERE id = $2
-      RETURNING *;`;
+    SET counter_offer = counter_offer || jsonb_build_object(
+        'counter_offer_approve_by_md', $1::boolean,
+        'counter_offer_approve_by_md_at', CURRENT_TIMESTAMP
+    )
+    WHERE id = $2
+    RETURNING *;`;
 
       const { rows } = await pool.query(counterOfferApproveQuery, [
         approveStatus,
         id,
       ]);
+
+      const tenderData = rows[0];
+
+      try {
+        const isApproved = approveStatus === true;
+
+        // Format timestamp for exactly when the action occurred
+        const actionTime = new Date().toLocaleString("en-IN", {
+          dateStyle: "medium",
+          timeStyle: "short",
+        });
+
+        sendMail({
+          to: "rinkusingh805764@gmail.com",
+          subject: isApproved
+            ? `✅ Counter Offer Approved - ${tenderData.tender_ref_no || "N/A"}`
+            : `❌ Counter Offer Rejected - ${tenderData.tender_ref_no || "N/A"}`,
+
+          templateName: "counter-offer-status-mail", // The single template that handles both states
+
+          replacements: {
+            // -----------------------------------------------------
+            // 1. Dynamic Status Variables (Colors, Text, UI)
+            // -----------------------------------------------------
+            header_bg_color: isApproved ? "#27ae60" : "#c0392b", // Green vs Red
+            header_icon: isApproved ? "✅" : "❌",
+            status_heading: isApproved
+              ? "Counter Offer Approved"
+              : "Counter Offer Rejected",
+
+            banner_bg_color: isApproved ? "#e8f8f5" : "#fdecea",
+            banner_border_color: isApproved ? "#27ae60" : "#c0392b",
+            banner_text_color: isApproved ? "#1a5232" : "#78281f",
+
+            status_message_html: isApproved
+              ? "Good news! The Managing Director has <strong>approved</strong> your counter offer request. You can now proceed with the tender submission."
+              : "The Managing Director has <strong>rejected</strong> your counter offer request. Please log in to review the feedback and adjust the margins.",
+
+            status_label: isApproved ? "Approved On" : "Rejected On",
+            action_time: actionTime,
+
+            cta_bg_color: isApproved ? "#2ecc71" : "#e74c3c",
+            cta_button_text: isApproved
+              ? "Proceed to Submission"
+              : "Review Details",
+            // action_url: isApproved
+            //   ? `https://your-frontend-domain.com/tenders/submission/${tenderData.id}`
+            //   : `https://your-frontend-domain.com/tenders/counter-offer/${tenderData.id}`, // Change these routes to match your frontend architecture
+
+            // -----------------------------------------------------
+            // 2. Standard Tender Data Mapping
+            // -----------------------------------------------------
+            tender_id: tenderData.tender_id,
+            tender_ref_no: tenderData.tender_ref_no || "N/A",
+            tender_title: tenderData.tender_title,
+            tender_organization: tenderData.tender_organization || "N/A",
+            state: tenderData.state || "N/A",
+            cable_length_km: tenderData.cable_length_km || 0,
+            tender_value_cr: tenderData.tender_value_cr || 0,
+
+            // Formatted Currency
+            tender_fee_inr: tenderData.tender_fee_inr
+              ? Number(tenderData.tender_fee_inr).toLocaleString("en-IN")
+              : "0",
+            emd_inr: tenderData.emd_inr
+              ? Number(tenderData.emd_inr).toLocaleString("en-IN")
+              : "0",
+
+            // Formatted Dates
+            publish_date: tenderData.publish_date
+              ? new Date(tenderData.publish_date).toLocaleDateString("en-IN")
+              : "N/A",
+            closing_date: tenderData.closing_date
+              ? new Date(tenderData.closing_date).toLocaleDateString("en-IN")
+              : "N/A",
+
+            appName: "Mittalu Pvt Ltd",
+          },
+        });
+      } catch (error) {
+        console.log("error in sending mail: ", error);
+      }
+
       return rows[0];
     } catch (error) {
       throw error;
@@ -878,7 +961,7 @@ class TenderService {
         "a9slip",
         "pbg",
         "insurance",
-        "npv_bond"
+        "npv_bond",
       ];
 
       const jsonColumns = [
@@ -900,7 +983,7 @@ class TenderService {
         "acceptance_letter",
         "pbg",
         "insurance",
-        "npv_bond"
+        "npv_bond",
       ];
 
       const setClauses = [];
@@ -928,7 +1011,7 @@ class TenderService {
             "acceptance_letter",
             "pbg",
             "insurance",
-            "npv_bond"
+            "npv_bond",
           ];
 
           if (documentColumns.includes(key)) {
@@ -963,6 +1046,43 @@ class TenderService {
       values.push(id);
 
       const { rows } = await pool.query(updateQuery, values);
+
+      const isSentForApproval =
+        rows[0].counter_offer?.sent_for_approval === true;
+      if (isSentForApproval) {
+        const tenderData = rows[0];
+
+        try {
+          sendMail({
+            to: "rinkusingh805764@gmail.com",
+            subject: `⏳ Action Required: Tender Approval - ${tenderData.tender_ref_no}`,
+            templateName: "counter-offer-approval-request-mail", // The HTML file created above
+            replacements: {
+              tender_id: tenderData.tender_id,
+              tender_ref_no: tenderData.tender_ref_no,
+              tender_title: tenderData.tender_title,
+              tender_organization: tenderData.tender_organization,
+              cable_length_km: tenderData.cable_length_km,
+              // Format dates cleanly before passing them:
+              publish_date: new Date(
+                tenderData.publish_date,
+              ).toLocaleDateString("en-IN"),
+              closing_date: new Date(
+                tenderData.closing_date,
+              ).toLocaleDateString("en-IN"),
+              tender_value_cr: tenderData.tender_value_cr,
+              tender_fee_inr: tenderData.tender_fee_inr.toLocaleString("en-IN"),
+              emd_inr: tenderData.emd_inr.toLocaleString("en-IN"),
+              state: tenderData.state,
+
+              // action_url: `https://your-frontend-domain.com/tenders/counter-offer/${tenderData.id}`,
+              appName: "Mittalu Pvt Ltd",
+            },
+          });
+        } catch (error) {
+          console.log("Error sending send-for-approval mail: ", error);
+        }
+      }
 
       return rows[0];
     } catch (err) {

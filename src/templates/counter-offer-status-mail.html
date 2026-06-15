@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{status_heading}}</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f4f7f6;
+      margin: 0;
+      padding: 0;
+      color: #333333;
+    }
+    .email-container {
+      max-width: 650px;
+      margin: 40px auto;
+      background-color: #ffffff;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+      border: 1px solid #e0e0e0;
+    }
+    .email-header {
+      color: #ffffff;
+      padding: 25px 30px;
+      text-align: center;
+    }
+    .email-header h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 600;
+    }
+    .email-body {
+      padding: 30px;
+    }
+    .email-body p {
+      line-height: 1.6;
+      font-size: 15px;
+      margin-bottom: 20px;
+    }
+    .status-banner {
+      padding: 15px 20px;
+      margin-bottom: 25px;
+      border-radius: 0 4px 4px 0;
+    }
+    .status-banner p {
+      margin: 0;
+      font-weight: 500;
+    }
+    .tender-details {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 25px;
+      background-color: #fcfcfc;
+    }
+    .tender-details th, .tender-details td {
+      padding: 12px 15px;
+      text-align: left;
+      border-bottom: 1px solid #eeeeee;
+      font-size: 14px;
+    }
+    .tender-details th {
+      width: 35%;
+      color: #666666;
+      font-weight: 600;
+    }
+    .tender-details td {
+      color: #222222;
+      font-weight: 500;
+    }
+    .cta-container {
+      text-align: center;
+      margin: 30px 0;
+    }
+    .cta-button {
+      color: #ffffff !important;
+      text-decoration: none;
+      padding: 12px 25px;
+      border-radius: 5px;
+      font-size: 16px;
+      font-weight: 600;
+      display: inline-block;
+    }
+    .email-footer {
+      background-color: #f8f9fa;
+      text-align: center;
+      padding: 20px;
+      font-size: 13px;
+      color: #888888;
+      border-top: 1px solid #eeeeee;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="email-container">
+    <div class="email-header" style="background-color: {{header_bg_color}};">
+      <h1>{{header_icon}} {{status_heading}}</h1>
+    </div>
+
+    <div class="email-body">
+      <p>Dear Tender Executive,</p>
+      
+      <div class="status-banner" style="background-color: {{banner_bg_color}}; border-left: 4px solid {{banner_border_color}};">
+        <p style="color: {{banner_text_color}};">{{{status_message_html}}}</p> </div>
+
+      <p>Below are the details of the tender for your reference:</p>
+
+      <table class="tender-details">
+        <tr>
+          <th>Tender ID</th>
+          <td>{{tender_id}}</td>
+        </tr>
+        <tr>
+          <th>Reference No.</th>
+          <td>{{tender_ref_no}}</td>
+        </tr>
+        <tr>
+          <th>Title</th>
+          <td>{{tender_title}}</td>
+        </tr>
+        <tr>
+          <th>Organization</th>
+          <td>{{tender_organization}}</td>
+        </tr>
+        <tr>
+          <th>State</th>
+          <td>{{state}}</td>
+        </tr>
+        <tr>
+          <th>Cable Length</th>
+          <td>{{cable_length_km}} km</td>
+        </tr>
+        <tr>
+          <th>Tender Value</th>
+          <td>₹{{tender_value_cr}} Cr</td>
+        </tr>
+        <tr>
+          <th>Tender Fee</th>
+          <td>₹{{tender_fee_inr}}</td>
+        </tr>
+        <tr>
+          <th>EMD Amount</th>
+          <td>₹{{emd_inr}}</td>
+        </tr>
+        <tr>
+          <th>Publish Date</th>
+          <td>{{publish_date}}</td>
+        </tr>
+        <tr>
+          <th>Closing Date</th>
+          <td>{{closing_date}}</td>
+        </tr>
+        <tr>
+          <th>{{status_label}}</th>
+          <td>{{action_time}}</td>
+        </tr>
+      </table>
+
+      <!-- <div class="cta-container">
+        <a href="{{action_url}}" class="cta-button" style="background-color: {{cta_bg_color}};">{{cta_button_text}}</a>
+      </div> -->
+
+      <p>Please log in to the portal to view the full details and proceed with the necessary steps.</p>
+    </div>
+
+    <div class="email-footer">
+      <p>This is an automated message from <strong>{{appName}}</strong>.<br>Please do not reply directly to this email.</p>
+    </div>
+  </div>
+
+</body>
+</html>

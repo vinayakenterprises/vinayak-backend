@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Counter Offer Approval Required</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f4f7f6;
+      margin: 0;
+      padding: 0;
+      color: #333333;
+    }
+    .email-container {
+      max-width: 650px;
+      margin: 40px auto;
+      background-color: #ffffff;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+      border: 1px solid #e0e0e0;
+    }
+    .email-header {
+      background-color: #d35400; /* Distinct orange/rust color for counter offers */
+      color: #ffffff;
+      padding: 25px 30px;
+      text-align: center;
+    }
+    .email-header h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 600;
+    }
+    .email-body {
+      padding: 30px;
+    }
+    .email-body p {
+      line-height: 1.6;
+      font-size: 15px;
+      margin-bottom: 20px;
+    }
+    .tender-details {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 25px;
+      background-color: #fcfcfc;
+    }
+    .tender-details th, .tender-details td {
+      padding: 12px 15px;
+      text-align: left;
+      border-bottom: 1px solid #eeeeee;
+      font-size: 14px;
+    }
+    .tender-details th {
+      width: 35%;
+      color: #666666;
+      font-weight: 600;
+    }
+    .tender-details td {
+      color: #222222;
+      font-weight: 500;
+    }
+    .cta-container {
+      text-align: center;
+      margin: 30px 0;
+    }
+    .cta-button {
+      background-color: #e67e22;
+      color: #ffffff !important;
+      text-decoration: none;
+      padding: 12px 25px;
+      border-radius: 5px;
+      font-size: 16px;
+      font-weight: 600;
+      display: inline-block;
+    }
+    .email-footer {
+      background-color: #f8f9fa;
+      text-align: center;
+      padding: 20px;
+      font-size: 13px;
+      color: #888888;
+      border-top: 1px solid #eeeeee;
+    }
+    .highlight-row {
+      background-color: #fff3e0;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="email-container">
+    <!-- Header -->
+    <div class="email-header">
+      <h1>🔄 Counter Offer Approval Required</h1>
+    </div>
+
+    <!-- Body -->
+    <div class="email-body">
+      <p>Dear MD,</p>
+      <p>The Tender Executive has requested your approval for a <strong>Counter Offer</strong> regarding an ongoing tender. Please review the comprehensive tender details below before making your decision.</p>
+
+      <!-- Tender Information Table -->
+      <table class="tender-details">
+        <tr>
+          <th>Tender ID</th>
+          <td>{{tender_id}}</td>
+        </tr>
+        <tr>
+          <th>Reference No.</th>
+          <td>{{tender_ref_no}}</td>
+        </tr>
+        <tr>
+          <th>Title</th>
+          <td>{{tender_title}}</td>
+        </tr>
+        <tr>
+          <th>Organization</th>
+          <td>{{tender_organization}}</td>
+        </tr>
+        <tr>
+          <th>State</th>
+          <td>{{state}}</td>
+        </tr>
+        <tr>
+          <th>Cable Length</th>
+          <td>{{cable_length_km}} km</td>
+        </tr>
+        <tr class="highlight-row">
+          <th>Tender Value</th>
+          <td>₹{{tender_value_cr}} Cr</td>
+        </tr>
+        <tr>
+          <th>Tender Fee</th>
+          <td>₹{{tender_fee_inr}}</td>
+        </tr>
+        <tr>
+          <th>EMD Amount</th>
+          <td>₹{{emd_inr}}</td>
+        </tr>
+        <tr>
+          <th>Publish Date</th>
+          <td>{{publish_date}}</td>
+        </tr>
+        <tr>
+          <th>Closing Date</th>
+          <td>{{closing_date}}</td>
+        </tr>
+      </table>
+
+      <!-- Call to Action -->
+      <!-- <div class="cta-container">
+        <a href="{{action_url}}" class="cta-button">Review Counter Offer in Portal</a>
+      </div> -->
+
+      <p>Please log in to the portal to review the proposed counter offer margins and provide your approval or feedback.</p>
+    </div>
+
+    <!-- Footer -->
+    <div class="email-footer">
+      <p>This is an automated message from <strong>{{appName}}</strong>.<br>Please do not reply directly to this email.</p>
+    </div>
+  </div>
+
+</body>
+</html>
