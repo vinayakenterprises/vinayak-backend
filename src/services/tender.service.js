@@ -178,10 +178,27 @@ class TenderService {
       const updateQuery = `
         UPDATE tender_information
         SET tender_completed_at = CURRENT_TIMESTAMP
-        WHERE id = $2 and createdBy = $1
+        WHERE id = $2 and createdBy = $1 returning *
       `;
 
       const { rows } = await pool.query(updateQuery, [userId, id]);
+
+
+      try{
+        const mdIdQuery = `SELECT id FROM users WHERE role = 'MD'`;
+        const mdId = await pool.query(mdIdQuery);
+        const mdIdResult = mdId.rows[0].id;
+
+        const notif = await createNotification(
+          mdIdResult,
+          `Tender Title as ${rows[0].tender_title} has been marked as complete.`,
+          "tender_completed_notification",
+        );
+        emitToUser(mdIdResult, "new_notification", notif);
+      }catch(error){
+        console.log("error in sending notification: ", error);
+      }
+
       return rows[0];
     } catch (error) {
       throw error;
