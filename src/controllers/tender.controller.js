@@ -541,12 +541,13 @@ class TenderController {
       const { id } = req.params;
       const role = req.user?.role;
       const userId = req.user?.id;
+      const userName = req.user?.username;
 
       if (!id) {
         throw new BadRequestError('Tender ID is required');
       }
 
-      const tender = await tenderService.sendForApproval(id, role, userId);
+      const tender = await tenderService.sendForApproval(id, role, userId, userName);
 
       return res.status(200).json({
         status: 'success',

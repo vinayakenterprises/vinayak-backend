@@ -3,6 +3,7 @@ import healthRoutes from './health.routes.js';
 import userRoutes from './user.routes.js';
 import authRoutes from './auth.routes.js';
 import tenderRoutes from './tender.routes.js';
+import notificationRoutes from './notification.routes.js';
 
 const router = Router();
 
@@ -11,5 +12,6 @@ router.use('/health', healthRoutes);
 router.use('/users', userRoutes);
 router.use('/auth', authRoutes);
 router.use('/tenders', tenderRoutes);
+router.use('/notifications', notificationRoutes);
 
 export default router;

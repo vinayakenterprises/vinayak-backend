@@ -7,6 +7,7 @@ import routes from './routes/index.js';
 import config from './config/env.js';
 import pool from './config/database.js';
 import logger from './utils/logger.js';
+import { initSocket } from './utils/socket.js';
 
 const app = express();
 
@@ -33,6 +34,8 @@ const PORT = config.port;
 const server = app.listen(PORT, () => {
   logger.info(`Server is running in ${config.nodeEnv} mode on port ${PORT}`);
 });
+
+initSocket(server);
 
 // Graceful Shutdown handling
 const shutdown = (signal) => {

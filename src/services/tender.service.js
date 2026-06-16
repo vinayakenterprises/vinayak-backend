@@ -4,8 +4,10 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../errors/customErrors.js";
+import { emitToUser } from "../utils/socket.js";
 
 import { sendMail } from "./mail.service.js";
+import { createNotification } from "./notification.service.js";
 
 // Column sets per role
 const TENDER_AGENT_COLUMNS = [
@@ -583,7 +585,7 @@ class TenderService {
     return rows[0];
   }
 
-  async sendForApproval(id, role, userId) {
+  async sendForApproval(id, role, userId, userName) {
     try {
       if (role !== "tender_agent") {
         throw new ForbiddenError(
@@ -627,6 +629,11 @@ class TenderService {
             appName: "Mittalu Pvt Ltd",
           },
         });
+
+        // send notification
+        const notif = await createNotification(mdId, `Tender Executive ${userName} sent you a Tender for Approval.`, "tender_approval_request");
+        emitToUser(mdId, 'new_notification', notif);
+
       } catch (error) {
         console.log("Error sending send-for-approval mail: ", error);
       }
