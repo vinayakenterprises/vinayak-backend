@@ -302,6 +302,14 @@ class TenderService {
             appName: "Mittalu Pvt Ltd",
           },
         });
+
+        // send notification
+        const notif = await createNotification(
+          createdById,
+          `Your Tender with Tender Title as ${tenderInformationFromDB?.rows[0]?.tender_title} ${isApproved ? "has been approved." : "has been rejected."}.`,
+          "tender_approval_status",
+        );
+        emitToUser(createdById, "new_notification", notif);
       } catch (error) {
         console.log("error in sending mail: ", error);
       }
@@ -405,8 +413,22 @@ class TenderService {
             appName: "Mittalu Pvt Ltd",
           },
         });
+
+
+
+        // send notification to tender executive
+        const notif = await createNotification(
+          tenderData.createdby,
+          `Your Counter Offer Request with Tender Title as ${tenderData?.tender_title} ${isApproved ? "has been approved." : "has been rejected."}.`,
+          "counter_offer_approval_status",
+        );
+        
+
+        emitToUser(tenderData.createdby, "new_notification", notif);
+
+
       } catch (error) {
-        console.log("error in sending mail: ", error);
+        console.log("error in sending mail or notification: ", error);
       }
 
       return rows[0];
@@ -631,9 +653,12 @@ class TenderService {
         });
 
         // send notification
-        const notif = await createNotification(mdId, `Tender Executive ${userName} sent you a Tender for Approval.`, "tender_approval_request");
-        emitToUser(mdId, 'new_notification', notif);
-
+        const notif = await createNotification(
+          mdId,
+          `Tender Executive ${userName} sent you a Tender for Approval.`,
+          "tender_approval_request",
+        );
+        emitToUser(mdId, "new_notification", notif);
       } catch (error) {
         console.log("Error sending send-for-approval mail: ", error);
       }
@@ -886,8 +911,6 @@ class TenderService {
   async updateTenderDetails(body, userId) {
     const values = [];
 
-    // console.log("body in update tender details: ", body);
-
     try {
       // helper function:
       function addTimestamp(data) {
@@ -916,16 +939,21 @@ class TenderService {
         throw new Error("Tender ID is required for updating.");
       }
 
+      const mdIdResult = await pool.query(
+        `SELECT id FROM users WHERE role = 'MD'`,
+      );
+      const mdId = mdIdResult.rows[0].id;
+
       // Verify ownership
       const checkQuery = `
-      SELECT id
+      SELECT *
       FROM tender_information
       WHERE id = $1 AND createdby = $2
     `;
 
-      const checkResult = await pool.query(checkQuery, [id, String(userId)]);
+      const tenderData = await pool.query(checkQuery, [id, String(userId)]);
 
-      if (checkResult.rowCount === 0) {
+      if (tenderData.rowCount === 0) {
         throw new Error(
           "Tender not found or you do not have permission to update it.",
         );
@@ -991,7 +1019,83 @@ class TenderService {
         "pbg",
         "insurance",
         "npv_bond",
+        "submission_actual", // Added this so it safely parses as JSONB!
       ];
+
+      // 1. send submit to govt portal notification
+      if (
+        fieldsToUpdate.submission_actual?.submission_actual_status === true &&
+        !tenderData.rows[0].submission_actual?.notified_to_md
+      ) {
+        const notif = await createNotification(
+          mdId,
+          `Tender Title - ${tenderData.rows[0].tender_title} related documents has been submitted to Government Portal.`,
+          "submit_to_govt_portal_notification",
+        );
+        emitToUser(mdId, "new_notification", notif);
+        // We don't need to manually set notified_to_md here anymore,
+        // the merge block below will handle it safely!
+      }
+
+      // 2. Merge incoming submission_actual data with database submission_actual data
+      if (fieldsToUpdate.submission_actual !== undefined) {
+        fieldsToUpdate.submission_actual = {
+          ...tenderData.rows[0].submission_actual, // existing DB value
+          ...fieldsToUpdate.submission_actual, // incoming frontend payload
+          notified_to_md:
+            tenderData.rows[0].submission_actual?.notified_to_md || // preserve existing flag
+            fieldsToUpdate.submission_actual?.submission_actual_status === true, // or set if status is true
+        };
+
+        // console.log(
+        //   "✅ MERGED submission_actual going to DB: ",
+        //   fieldsToUpdate.submission_actual,
+        // );
+      }
+
+      // 3. counter offer approval request notification
+      if (
+        fieldsToUpdate.counter_offer?.sent_for_approval === true &&
+        !tenderData.rows[0].counter_offer?.notified_to_md
+      ) {
+        const notif = await createNotification(
+          mdId,
+          `Tender Title - ${tenderData.rows[0].tender_title} needs your approval for counter offer.`,
+          "counter_offer_approval_request_notification",
+        );
+        emitToUser(mdId, "new_notification", notif);
+
+        // console.log("body body body -> ", body);
+        // console.log("tender title: ", tenderData.rows[0].tender_title);
+        // console.log(
+        //   "fieldsToUpdate.counter_offer?.sent_for_approval: ",
+        //   fieldsToUpdate.counter_offer?.sent_for_approval,
+        // );
+        // console.log(
+        //   "tenderData.rows[0].counter_offer?.notified_to_md: ",
+        //   tenderData.rows[0].counter_offer,
+        // );
+        // console.log(
+        //   "tenderData.rows[0].counter_offer?.notified_to_md4535: ",
+        //   tenderData.rows[0].counter_offer?.notified_to_md,
+        // );
+      }
+
+      // 4. Merge incoming counter_offer data with database counter_offer data
+      if (fieldsToUpdate.counter_offer !== undefined) {
+        fieldsToUpdate.counter_offer = {
+          ...tenderData.rows[0].counter_offer, // existing DB value
+          ...fieldsToUpdate.counter_offer, // incoming frontend payload
+          notified_to_md:
+            tenderData.rows[0].counter_offer?.notified_to_md || // preserve existing flag
+            fieldsToUpdate.counter_offer?.sent_for_approval === true, // or set if sending for approval
+        };
+
+        // console.log(
+        //   "✅ MERGED counter_offer going to DB: ",
+        //   fieldsToUpdate.counter_offer,
+        // );
+      }
 
       const setClauses = [];
       let paramIndex = 1;
@@ -1056,6 +1160,7 @@ class TenderService {
 
       const isSentForApproval =
         rows[0].counter_offer?.sent_for_approval === true;
+
       if (isSentForApproval) {
         const tenderData = rows[0];
 
@@ -1063,14 +1168,13 @@ class TenderService {
           sendMail({
             to: "rinkusingh805764@gmail.com",
             subject: `⏳ Action Required: Tender Approval - ${tenderData.tender_ref_no}`,
-            templateName: "counter-offer-approval-request-mail", // The HTML file created above
+            templateName: "counter-offer-approval-request-mail",
             replacements: {
               tender_id: tenderData.tender_id,
               tender_ref_no: tenderData.tender_ref_no,
               tender_title: tenderData.tender_title,
               tender_organization: tenderData.tender_organization,
               cable_length_km: tenderData.cable_length_km,
-              // Format dates cleanly before passing them:
               publish_date: new Date(
                 tenderData.publish_date,
               ).toLocaleDateString("en-IN"),
@@ -1081,8 +1185,6 @@ class TenderService {
               tender_fee_inr: tenderData.tender_fee_inr.toLocaleString("en-IN"),
               emd_inr: tenderData.emd_inr.toLocaleString("en-IN"),
               state: tenderData.state,
-
-              // action_url: `https://your-frontend-domain.com/tenders/counter-offer/${tenderData.id}`,
               appName: "Mittalu Pvt Ltd",
             },
           });
