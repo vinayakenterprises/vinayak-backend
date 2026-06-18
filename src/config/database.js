@@ -4,6 +4,11 @@ import logger from "../utils/logger.js";
 
 const { Pool } = pg;
 
+console.log("DB_HOST:", config.db.host);
+console.log("DB_PORT:", config.db.port);
+console.log("DB_NAME:", config.db.database);
+console.log("NODE_ENV:", process.env.NODE_ENV);
+
 const pool = new Pool({
   user: config.db.user,
   host: config.db.host,
@@ -23,7 +28,6 @@ const pool = new Pool({
   }),
 });
 
-console.log("lskjdflk -> ", process.env.NODE_ENV);
 
 pool.on("error", (err) => {
   logger.error("Unexpected error on idle database client", err);
