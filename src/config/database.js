@@ -21,13 +21,10 @@ const pool = new Pool({
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
 
-  ...(process.env.NODE_ENV === "production" && {
-    ssl: {
-      rejectUnauthorized: false,
-    },
-  }),
+  ssl: {
+    rejectUnauthorized: false,
+  },
 });
-
 
 pool.on("error", (err) => {
   logger.error("Unexpected error on idle database client", err);
