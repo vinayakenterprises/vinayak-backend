@@ -18,7 +18,6 @@ router.post('/test', authMiddleware, async (req, res) => {
     
     // Also push real-time
     const { emitToUser } = await import('../utils/socket.js');
-    console.log("notif: ", notif);
     emitToUser(req.user.id, 'new_notification', notif);
 
     res.json({ success: true, data: notif });

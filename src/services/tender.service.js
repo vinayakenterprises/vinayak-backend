@@ -755,7 +755,6 @@ class TenderService {
       ORDER BY id DESC
     `;
 
-    console.log(getApprovedTendersQuery);
 
     const { rows } = await pool.query(getApprovedTendersQuery, []);
     return rows;
