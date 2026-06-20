@@ -124,8 +124,9 @@ class TenderService {
 
   async getShortfallTenders(userId) {
     try {
-      const getShortfallTendersQuery = `select * from tender_information where shortfall = true and createdBy = $1 order by id desc`;
+      const getShortfallTendersQuery = `select * from tender_information where shortfall = true and createdBy = $1 and tender_completed_at is not null order by id desc`;
       const { rows } = await pool.query(getShortfallTendersQuery, [userId]);
+      
       return rows;
     } catch (error) {
       throw error;
@@ -134,7 +135,7 @@ class TenderService {
 
   async getCompletedTendersForTenderAgent(userId) {
     try {
-      const getCompletedTendersForTenderAgentQuery = `select * from tender_information where tender_completed_at is not null and createdBy = $1 order by id desc`;
+      const getCompletedTendersForTenderAgentQuery = `select * from tender_information where tender_completed_at is null and createdBy = $1 order by id desc`;
       const { rows } = await pool.query(
         getCompletedTendersForTenderAgentQuery,
         [userId],
