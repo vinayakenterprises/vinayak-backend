@@ -2,7 +2,12 @@ import pg from "pg";
 import config from "./env.js";
 import logger from "../utils/logger.js";
 
-const { Pool } = pg;
+const { Pool, types } = pg;
+
+
+
+// OID 1114 = timestamp without time zone
+types.setTypeParser(1114, (str) => str);
 
 
 const pool = new Pool({
