@@ -135,7 +135,7 @@ class TenderService {
 
   async getCompletedTendersForTenderAgent(userId) {
     try {
-      const getCompletedTendersForTenderAgentQuery = `select * from tender_information where tender_completed_at is null and createdBy = $1 order by id desc`;
+      const getCompletedTendersForTenderAgentQuery = `select * from tender_information where tender_completed_at is not null and createdBy = $1 order by id desc`;
       const { rows } = await pool.query(
         getCompletedTendersForTenderAgentQuery,
         [userId],
@@ -1064,10 +1064,6 @@ class TenderService {
             fieldsToUpdate.submission_actual?.submission_actual_status === true, // or set if status is true
         };
 
-        // console.log(
-        //   "✅ MERGED submission_actual going to DB: ",
-        //   fieldsToUpdate.submission_actual,
-        // );
       }
 
       // 3. counter offer approval request notification
@@ -1082,20 +1078,6 @@ class TenderService {
         );
         emitToUser(mdId, "new_notification", notif);
 
-        // console.log("body body body -> ", body);
-        // console.log("tender title: ", tenderData.rows[0].tender_title);
-        // console.log(
-        //   "fieldsToUpdate.counter_offer?.sent_for_approval: ",
-        //   fieldsToUpdate.counter_offer?.sent_for_approval,
-        // );
-        // console.log(
-        //   "tenderData.rows[0].counter_offer?.notified_to_md: ",
-        //   tenderData.rows[0].counter_offer,
-        // );
-        // console.log(
-        //   "tenderData.rows[0].counter_offer?.notified_to_md4535: ",
-        //   tenderData.rows[0].counter_offer?.notified_to_md,
-        // );
       }
 
       // 4. Merge incoming counter_offer data with database counter_offer data
@@ -1108,10 +1090,6 @@ class TenderService {
             fieldsToUpdate.counter_offer?.sent_for_approval === true, // or set if sending for approval
         };
 
-        // console.log(
-        //   "✅ MERGED counter_offer going to DB: ",
-        //   fieldsToUpdate.counter_offer,
-        // );
       }
 
       const setClauses = [];

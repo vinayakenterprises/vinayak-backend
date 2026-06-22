@@ -8,6 +8,7 @@ import config from './config/env.js';
 import pool from './config/database.js';
 import logger from './utils/logger.js';
 import { initSocket } from './utils/socket.js';
+import { initCronJobs } from './cron/cron-service.js';
 
 const app = express();
 
@@ -73,3 +74,8 @@ process.on('uncaughtException', (error) => {
   logger.error('Uncaught Exception detected:', { message: error.message, stack: error.stack });
   shutdown('uncaughtException');
 });
+
+
+
+// cron jobs
+initCronJobs();
