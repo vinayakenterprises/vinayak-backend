@@ -206,6 +206,26 @@ class TenderService {
     }
   }
 
+
+
+
+  async getTendersForMD(userId) {
+    try {
+      const getTendersForMDQuery = `
+        SELECT * FROM tender_information
+        ORDER BY id DESC
+      `;
+
+      const { rows } = await pool.query(getTendersForMDQuery, [
+        // userId,
+      ]);
+      return rows;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+
   async deleteTender(id) {
     try {
       const deleteQuery = `
@@ -816,7 +836,6 @@ class TenderService {
       const totalTendersCountQuery = `select count(*) from tender_information`;
       const totalActiveTendersCountQuery = `select count(*) from tender_information where submission_actual is null`;
       const totalApprovedTendersCountQuery = `select count(*) from tender_information where approved = true`;
-      const pendingFromAccountsTeamCountQuery = `select count(*) from tender_information where approved = true and is_accounts_team_work_done = false`;
       const completedTendersCountQuery = `select count(*) from tender_information where submission_actual is not null`;
       const rejectedTendersCountQuery = `select count(*) from tender_information where approved = false`;
 
@@ -827,9 +846,7 @@ class TenderService {
       const totalApprovedTendersCountResult = await pool.query(
         totalApprovedTendersCountQuery,
       );
-      const pendingFromAccountsTeamCountResult = await pool.query(
-        pendingFromAccountsTeamCountQuery,
-      );
+      
       const completedTendersCountResult = await pool.query(
         completedTendersCountQuery,
       );
@@ -847,10 +864,7 @@ class TenderService {
           totalApprovedTendersCountResult.rows[0].count,
           0,
         ),
-        pendingFromAccountsTeam: parseInt(
-          pendingFromAccountsTeamCountResult.rows[0].count,
-          0,
-        ),
+        
         completedTenders: parseInt(
           completedTendersCountResult.rows[0].count,
           0,
@@ -1014,6 +1028,7 @@ class TenderService {
         "pbg",
         "insurance",
         "npv_bond",
+        "immediate_processing_document_completed_at"
       ];
 
       const jsonColumns = [
