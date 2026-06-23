@@ -206,6 +206,26 @@ class TenderService {
     }
   }
 
+
+
+
+  async getTendersForMD(userId) {
+    try {
+      const getTendersForMDQuery = `
+        SELECT * FROM tender_information
+        ORDER BY id DESC
+      `;
+
+      const { rows } = await pool.query(getTendersForMDQuery, [
+        // userId,
+      ]);
+      return rows;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+
   async deleteTender(id) {
     try {
       const deleteQuery = `
@@ -1014,6 +1034,7 @@ class TenderService {
         "pbg",
         "insurance",
         "npv_bond",
+        "immediate_processing_document_completed_at"
       ];
 
       const jsonColumns = [

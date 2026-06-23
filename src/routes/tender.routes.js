@@ -29,6 +29,7 @@ router.post('/update-tender-details', authMiddleware, tenderController.updateTen
 
 router.get('/get-all', authMiddleware, tenderController.getAll);
 
+// agend dashboard
 router.get('/get-active-tenders', authMiddleware, tenderController.getActiveTenders);
 router.get('/get-pending-md-approval-tenders', authMiddleware, tenderController.getPendingMDApprovalTenders);
 router.get('/get-rejected-tenders-for-tender-agent', authMiddleware, tenderController.getRejectedTendersForTenderAgent);
@@ -37,6 +38,9 @@ router.get('/get-completed-tenders-for-tender-agent', authMiddleware, tenderCont
 router.get('/get-approved-tenders-for-tender-agent', authMiddleware, tenderController.getApprovedTendersForTenderAgent);
 router.get('/get-counter-offer-rejected-tender-agent', authMiddleware, tenderController.getCounterOfferRejectedTenderAgent);
 router.put('/mark-as-complete-tender-after-approved-by-md/:id', authMiddleware, tenderController.markAsCompleteTenderAfterApprovedByMD);
+
+//md dashboard
+router.get('/get-tenders-for-md', authMiddleware, tenderController.getTendersForMD);
 
 
 router.delete('/delete-tender/:id', authMiddleware, tenderController.deleteTender);

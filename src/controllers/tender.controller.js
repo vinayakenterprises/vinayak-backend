@@ -167,6 +167,28 @@ class TenderController {
   }
 
 
+  getTendersForMD = async (req, res, next) => {
+    try{
+      const userId = req.user?.id;
+      const role = req.user?.role;
+
+      if(role !== 'MD'){
+        throw new BadRequestError('Only MD can view tenders assigned to them');
+      }
+
+      const tenders = await tenderService.getTendersForMD(userId);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Tenders retrieved successfully',
+        data: tenders,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+
   deleteTender = async (req, res, next) => {
     try{
       const { id } = req.params;
