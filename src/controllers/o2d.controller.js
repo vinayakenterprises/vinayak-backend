@@ -32,6 +32,108 @@ class O2dController {
     }
   };
 
+  createNewCustomerProfile = async (req, res, next) => {
+    try {
+      const newCustomerProfile =
+        await o2dService.createNewCustomerProfile(req.body);
+
+      return res.status(201).json({
+        status: "success",
+        message: "New customer profile created successfully",
+        data: newCustomerProfile,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  retrieveAllCustomersList = async (req, res, next) => {
+    try {
+      const customersList =
+        await o2dService.retrieveAllCustomersList();
+
+      return res.status(200).json({
+        status: "success",
+        message: "All customers retrieved successfully",
+        data: customersList,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  retrieveCustomerDetailsById = async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const customerDetails =
+        await o2dService.retrieveCustomerDetailsById(id);
+
+      if (!customerDetails) {
+        return res.status(404).json({
+          status: "error",
+          message: "Customer record not found",
+        });
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: "Customer details retrieved successfully",
+        data: customerDetails,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateExistingCustomerDetails = async (req, res, next) => {
+    try {
+      const { id } = req.params;
+
+      const updatedCustomerDetails =
+        await o2dService.updateExistingCustomerDetails(
+          id,
+          req.body,
+        );
+
+      if (!updatedCustomerDetails) {
+        return res.status(404).json({
+          status: "error",
+          message: "Customer record not found or could not be updated",
+        });
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: "Customer details updated successfully",
+        data: updatedCustomerDetails,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  removeCustomerRecordById = async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const deletedCustomerRecord =
+        await o2dService.removeCustomerRecordById(id);
+
+      if (!deletedCustomerRecord) {
+        return res.status(404).json({
+          status: "error",
+          message: "Customer record not found or already deleted",
+        });
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: "Customer record deleted successfully",
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   getAllSaleOrder = async (req, res, next) => {
     try {
       const orders = await o2dService.getAllSaleOrder();

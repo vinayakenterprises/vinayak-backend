@@ -17,8 +17,6 @@ class O2dService {
       assigned_to,
     } = data;
 
-    console.log("data", data);
-
     const query = `
       INSERT INTO public.sales_orders (
         client_name, rate, ex_works_rate, freight, quantity_mt, rod_size,
@@ -72,6 +70,116 @@ class O2dService {
       console.error("Error in getting client name list: ", error);
       throw error;
     }
+  }
+
+  async createNewCustomerProfile(customerData) {
+    const {
+      customer_type,
+      company_name,
+      customer_id, // Note: Handled as a string based on your schema
+      address,
+      state,
+      region,
+      contact_person,
+      contact_number,
+      status,
+      child_companies, // Expected to be an array of strings
+    } = customerData;
+
+    const query = `
+      INSERT INTO public.customers (
+        customer_type, company_name, customer_id, address, state, 
+        region, contact_person, contact_number, status, child_companies
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+      ) RETURNING *;
+    `;
+
+    const values = [
+      customer_type,
+      company_name,
+      customer_id,
+      address,
+      state,
+      region,
+      contact_person,
+      contact_number,
+      status,
+      child_companies,
+    ];
+
+    const { rows } = await pool.query(query, values);
+    return rows[0];
+  }
+
+  async retrieveAllCustomersList() {
+    const query = "SELECT * FROM public.customers ORDER BY id DESC";
+    const { rows } = await pool.query(query);
+    return rows;
+  }
+
+  async retrieveCustomerDetailsById(id) {
+    const query = "SELECT * FROM public.customers WHERE id = $1";
+    const { rows } = await pool.query(query, [id]);
+    return rows[0] || null;
+  }
+
+  async updateExistingCustomerDetails(id, customerData) {
+    const {
+      customer_type,
+      company_name,
+      customer_id,
+      address,
+      state,
+      region,
+      contact_person,
+      contact_number,
+      status,
+      child_companies,
+    } = customerData;
+
+    // COALESCE is used here so that if a field isn't passed in the update payload,
+    // it retains its previous database value.
+    const query = `
+      UPDATE public.customers 
+      SET 
+        customer_type = COALESCE($1, customer_type),
+        company_name = COALESCE($2, company_name),
+        customer_id = COALESCE($3, customer_id),
+        address = COALESCE($4, address),
+        state = COALESCE($5, state),
+        region = COALESCE($6, region),
+        contact_person = COALESCE($7, contact_person),
+        contact_number = COALESCE($8, contact_number),
+        status = COALESCE($9, status),
+        child_companies = COALESCE($10, child_companies),
+        updated_at = now()
+      WHERE id = $11
+      RETURNING *;
+    `;
+
+    const values = [
+      customer_type,
+      company_name,
+      customer_id,
+      address,
+      state,
+      region,
+      contact_person,
+      contact_number,
+      status,
+      child_companies,
+      id,
+    ];
+
+    const { rows } = await pool.query(query, values);
+    return rows[0] || null;
+  }
+
+  async removeCustomerRecordById(id) {
+    const query = "DELETE FROM public.customers WHERE id = $1 RETURNING *";
+    const { rows } = await pool.query(query, [id]);
+    return rows[0] || null;
   }
 
   async getAllSaleOrder() {
