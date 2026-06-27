@@ -293,19 +293,29 @@ class O2dService {
         );
       }
 
+      const getSaleOrdersExecutiveId = await pool.query(
+        `select id from users where role = 'Sale Order Executive' and department = 'Accounts'`,
+      );
+      const salesOrdersExecutiveId = getSaleOrdersExecutiveId.rows[0].id;
+
+      if (!salesOrdersExecutiveId) {
+        throw new Error("Sales Order Executive not found");
+      }
+
       // 3. Merge the sanitized JSON object with the existing one
       const query = `
         UPDATE public.sales_orders
         SET 
           sale_order_generation = COALESCE(sale_order_generation, '{}'::jsonb) || $1::jsonb,
           updated_at = now(),
-          updated_by = $2
+          updated_by = $2,
+          assigned_to = $4
         WHERE id = $3
         RETURNING *;
       `;
 
       // Stringify the cleanly built object
-      const values = [JSON.stringify(sanitizedSlipData), userId, order_id];
+      const values = [JSON.stringify(sanitizedSlipData), userId, order_id, salesOrdersExecutiveId];
 
       const { rows } = await pool.query(query, values);
       return rows[0] || null;
@@ -315,8 +325,22 @@ class O2dService {
     }
   }
 
+  async getSOGenerationRequestData(userId) {
+    try {
+      
 
-
+      const query = `
+        SELECT * FROM public.sales_orders
+        WHERE assigned_to = $1 AND sale_order_generation->>'sent_for_so' = 'true'
+        ORDER BY id DESC
+        `;
+      const { rows } = await pool.query(query, [userId]);
+      return rows;
+    } catch (error) {
+      console.log("error in getting so generation request data: ", error);
+      throw error;
+    }
+  }
 }
 
 export default new O2dService();

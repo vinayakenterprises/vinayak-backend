@@ -26,4 +26,8 @@ router.delete('/deleteSaleOrder/:id', authMiddleware, o2dController.deleteSaleOr
 router.post('/sale-order-slip-generation', authMiddleware, o2dController.generateSaleOrderSlip);
 
 
+// so generator accounts team related
+router.get('/get-so-generation-request-data', authMiddleware, o2dController.getSOGenerationRequestData);
+
+
 export default router;

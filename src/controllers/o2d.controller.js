@@ -34,8 +34,9 @@ class O2dController {
 
   createNewCustomerProfile = async (req, res, next) => {
     try {
-      const newCustomerProfile =
-        await o2dService.createNewCustomerProfile(req.body);
+      const newCustomerProfile = await o2dService.createNewCustomerProfile(
+        req.body,
+      );
 
       return res.status(201).json({
         status: "success",
@@ -49,8 +50,7 @@ class O2dController {
 
   retrieveAllCustomersList = async (req, res, next) => {
     try {
-      const customersList =
-        await o2dService.retrieveAllCustomersList();
+      const customersList = await o2dService.retrieveAllCustomersList();
 
       return res.status(200).json({
         status: "success",
@@ -65,8 +65,7 @@ class O2dController {
   retrieveCustomerDetailsById = async (req, res, next) => {
     try {
       const { id } = req.params;
-      const customerDetails =
-        await o2dService.retrieveCustomerDetailsById(id);
+      const customerDetails = await o2dService.retrieveCustomerDetailsById(id);
 
       if (!customerDetails) {
         return res.status(404).json({
@@ -90,10 +89,7 @@ class O2dController {
       const { id } = req.params;
 
       const updatedCustomerDetails =
-        await o2dService.updateExistingCustomerDetails(
-          id,
-          req.body,
-        );
+        await o2dService.updateExistingCustomerDetails(id, req.body);
 
       if (!updatedCustomerDetails) {
         return res.status(404).json({
@@ -219,7 +215,6 @@ class O2dController {
     }
   };
 
-
   generateSaleOrderSlip = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
@@ -235,6 +230,27 @@ class O2dController {
       next(error);
     }
   };
+
+  getSOGenerationRequestData = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      console.log("req.user.id: ", req.user?.id);
+
+      const order = await o2dService.getSOGenerationRequestData(userId);
+
+      return res.status(200).json({
+        status: "success",
+        message:
+          "Sales order slip generation request data retrieved successfully",
+        data: order,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+
 
 }
 
