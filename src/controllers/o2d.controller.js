@@ -235,7 +235,6 @@ class O2dController {
     try {
       const userId = req.user?.id || null;
 
-      console.log("req.user.id: ", req.user?.id);
 
       const order = await o2dService.getSOGenerationRequestData(userId);
 
@@ -243,6 +242,40 @@ class O2dController {
         status: "success",
         message:
           "Sales order slip generation request data retrieved successfully",
+        data: order,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+
+  completeSOGenerationRequest = async (req, res, next) => {
+    try {
+      const { id, document_url } = req.body;
+      const role = req.user?.role;
+      const userId = req.user?.id;
+
+
+      const order = await o2dService.completeSOGenerationRequest(id, userId, document_url);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Sales order slip generation request completed successfully",
+        data: order,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getCompletedSOGenerationRequestData = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+      const order = await o2dService.getCompletedSOGenerationRequestData(userId);
+      return res.status(200).json({
+        status: "success",
+        message: "Sales order slip generation request completed successfully",
         data: order,
       });
     } catch (error) {

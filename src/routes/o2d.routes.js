@@ -28,6 +28,8 @@ router.post('/sale-order-slip-generation', authMiddleware, o2dController.generat
 
 // so generator accounts team related
 router.get('/get-so-generation-request-data', authMiddleware, o2dController.getSOGenerationRequestData);
+router.post('/complete-so-generation-request', authMiddleware, o2dController.completeSOGenerationRequest);
+router.get('/get-completed-so-generation-request-data', authMiddleware, o2dController.getCompletedSOGenerationRequestData);
 
 
 export default router;

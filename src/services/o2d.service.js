@@ -331,7 +331,7 @@ class O2dService {
 
       const query = `
         SELECT * FROM public.sales_orders
-        WHERE assigned_to = $1 AND sale_order_generation->>'sent_for_so' = 'true'
+        WHERE assigned_to = $1 AND sale_order_generation->>'sent_for_so' = 'true' and sale_order_generation->>'so_order_completed_at' is null
         ORDER BY id DESC
         `;
       const { rows } = await pool.query(query, [userId]);
@@ -341,6 +341,49 @@ class O2dService {
       throw error;
     }
   }
+
+
+  async completeSOGenerationRequest(id, userId, document_url) {
+    try {
+      const query = `
+        UPDATE public.sales_orders
+        SET sale_order_generation = COALESCE(sale_order_generation, '{}'::jsonb) || jsonb_build_object(
+            'so_order_completed_at', now(),
+            'document_url', $3::text
+        ),
+        updated_at = now(),
+        updated_by = $2
+        WHERE id = $1
+        RETURNING *;
+      `;
+
+      const { rows } = await pool.query(query, [id, userId, document_url]);
+      return rows[0];
+    } catch (error) {
+      console.log("error in completing so generation request: ", error);
+      throw error;
+    }
+  }
+
+
+  async getCompletedSOGenerationRequestData(userId) {
+    try {
+      
+
+      const query = `
+        SELECT * FROM public.sales_orders
+        WHERE sale_order_generation->>'sent_for_so' = 'true' and sale_order_generation->>'so_order_completed_at' is not null
+        ORDER BY id DESC
+        `;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      console.log("error in getting so generation request data: ", error);
+      throw error;
+    }
+  }
+
+
 }
 
 export default new O2dService();
