@@ -218,6 +218,24 @@ class O2dController {
       next(error);
     }
   };
+
+
+  generateSaleOrderSlip = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      const order = await o2dService.generateSaleOrderSlip(req.body, userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Sales order slip generated successfully",
+        data: order,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
 }
 
 export default new O2dController();

@@ -21,4 +21,9 @@ router.get('/get-sale-order-by-id/:id', authMiddleware, o2dController.getSaleOrd
 router.put('/update-sale-order/:id', authMiddleware, o2dController.updateSaleOrder);
 router.delete('/deleteSaleOrder/:id', authMiddleware, o2dController.deleteSaleOrder);
 
+
+// sale order related 
+router.post('/sale-order-slip-generation', authMiddleware, o2dController.generateSaleOrderSlip);
+
+
 export default router;

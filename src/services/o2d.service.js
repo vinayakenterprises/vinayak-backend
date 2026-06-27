@@ -257,6 +257,66 @@ class O2dService {
     const { rows } = await pool.query(query, [id]);
     return rows[0] || null;
   }
+
+  async generateSaleOrderSlip(body, userId) {
+    try {
+      // 1. Destructure the order_id and ONLY the allowed fields from the body
+      const { order_id, sent_for_so, sent_for_so_at, so_order_completed_at } =
+        body;
+
+      if (!order_id) {
+        throw new Error("Order ID is required");
+      }
+
+      // 2. Build a sanitized object to hold only the provided allowed fields
+      const sanitizedSlipData = {};
+
+      // Check for undefined so we don't accidentally ignore a valid 'false' boolean
+      if (sent_for_so !== undefined) {
+        sanitizedSlipData.sent_for_so = Boolean(sent_for_so);
+      }
+
+      if (sent_for_so_at) {
+        // You can add validation here to ensure it's a valid UTC timestamp if needed,
+        // or just trust the frontend string. Example: new Date(sent_for_so_at).toISOString()
+        sanitizedSlipData.sent_for_so_at = sent_for_so_at;
+      }
+
+      if (so_order_completed_at) {
+        sanitizedSlipData.so_order_completed_at = so_order_completed_at;
+      }
+
+      // If no valid fields were provided, you might want to stop the update to save DB calls
+      if (Object.keys(sanitizedSlipData).length === 0) {
+        throw new Error(
+          "No valid sale order generation fields provided to update",
+        );
+      }
+
+      // 3. Merge the sanitized JSON object with the existing one
+      const query = `
+        UPDATE public.sales_orders
+        SET 
+          sale_order_generation = COALESCE(sale_order_generation, '{}'::jsonb) || $1::jsonb,
+          updated_at = now(),
+          updated_by = $2
+        WHERE id = $3
+        RETURNING *;
+      `;
+
+      // Stringify the cleanly built object
+      const values = [JSON.stringify(sanitizedSlipData), userId, order_id];
+
+      const { rows } = await pool.query(query, values);
+      return rows[0] || null;
+    } catch (error) {
+      console.error("Error in generating sale order slip: ", error);
+      throw error;
+    }
+  }
+
+
+
 }
 
 export default new O2dService();
