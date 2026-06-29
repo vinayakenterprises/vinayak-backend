@@ -425,7 +425,7 @@ class O2dService {
     }
   }
 
-  async updateDispatchInformation(id, dispatch_type, dispatch_status, userId, dispatch_at) {
+  async updateDispatchInformation(id, dispatch_type, dispatch_status, userId, dispatch_at, delay_reason) {
     try {
       // 1. Use jsonb_build_object to construct your new dispatch_info column
       const query = `
@@ -433,7 +433,8 @@ class O2dService {
       SET dispatch_info = COALESCE(dispatch_info, '{}'::jsonb) || jsonb_build_object(
           'dispatch_status', $2::boolean,
           'dispatch_at', $5::timestamp,
-          'dispatch_type', $3::text
+          'dispatch_type', $3::text,
+          'delay_reason', $6::text
       ),
       updated_at = now(),
       updated_by = $4
@@ -447,7 +448,8 @@ class O2dService {
         dispatch_status,
         dispatch_type,
         userId,
-        dispatch_at
+        dispatch_at,
+        delay_reason
       ]);
       return rows[0];
     } catch (error) {
