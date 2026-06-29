@@ -268,16 +268,14 @@ class O2dService {
         throw new Error("Order ID is required");
       }
 
-
       const customerNameOfSo = await pool.query(
-        `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name where so.id = $1`,
+        `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name OR so.client_name::text = ANY(c.child_companies) where so.id = $1`,
         [order_id],
       );
 
       if (customerNameOfSo.rows[0].crm === null) {
         throw new Error("Please Assign CRM First");
       }
-
 
       // 2. Build a sanitized object to hold only the provided allowed fields
       const sanitizedSlipData = {};
@@ -326,7 +324,12 @@ class O2dService {
       `;
 
       // Stringify the cleanly built object
-      const values = [JSON.stringify(sanitizedSlipData), userId, order_id, salesOrdersExecutiveId];
+      const values = [
+        JSON.stringify(sanitizedSlipData),
+        userId,
+        order_id,
+        salesOrdersExecutiveId,
+      ];
 
       const { rows } = await pool.query(query, values);
       return rows[0] || null;
@@ -338,8 +341,6 @@ class O2dService {
 
   async getSOGenerationRequestData(userId) {
     try {
-      
-
       const query = `
         SELECT * FROM public.sales_orders
         WHERE assigned_to = $1 AND sale_order_generation->>'sent_for_so' = 'true' and sale_order_generation->>'so_order_completed_at' is null
@@ -353,22 +354,39 @@ class O2dService {
     }
   }
 
-
   async completeSOGenerationRequest(id, userId, document_url) {
     try {
+      const crmQuery = `
+      SELECT c.crm 
+      FROM sales_orders so 
+      INNER JOIN customers c ON so.client_name = c.company_name OR so.client_name::text = ANY(c.child_companies)
+      WHERE so.id = $1
+    `;
+      const crmResult = await pool.query(crmQuery, [id]);
+
+      if(crmResult.rows.length === 0) {
+        throw new Error("Please Assign CRM First");
+      }
+
+      // Extract the crmId (defaulting to null if the record isn't found)
+      const crmId = crmResult.rows[0].crm;
+
+
+
       const query = `
         UPDATE public.sales_orders
         SET sale_order_generation = COALESCE(sale_order_generation, '{}'::jsonb) || jsonb_build_object(
             'so_order_completed_at', now(),
             'document_url', $3::text
         ),
+        assigned_to = $4,
         updated_at = now(),
         updated_by = $2
         WHERE id = $1
         RETURNING *;
       `;
 
-      const { rows } = await pool.query(query, [id, userId, document_url]);
+      const { rows } = await pool.query(query, [id, userId, document_url, crmId]);
       return rows[0];
     } catch (error) {
       console.log("error in completing so generation request: ", error);
@@ -376,11 +394,8 @@ class O2dService {
     }
   }
 
-
   async getCompletedSOGenerationRequestData(userId) {
     try {
-      
-
       const query = `
         SELECT * FROM public.sales_orders
         WHERE sale_order_generation->>'sent_for_so' = 'true' and sale_order_generation->>'so_order_completed_at' is not null
@@ -393,6 +408,20 @@ class O2dService {
       throw error;
     }
   }
+
+  async getAssignedSOByCRM(userId) {
+    try {
+      const query = `
+        SELECT * FROM public.sales_orders
+        WHERE assigned_to = $1 AND sale_order_generation->>'sent_for_so' = 'true' and sale_order_generation->>'so_order_completed_at' is not null ORDER BY id DESC`;
+      const { rows } = await pool.query(query, [userId]);
+      return rows;
+    } catch (error) {
+      console.log("error in getting so generation request data: ", error);
+      throw error;
+    }
+  }
+
 
 
 }

@@ -283,6 +283,20 @@ class O2dController {
     }
   };
 
+  getAssignedSOByCRM = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+      const order = await o2dService.getAssignedSOByCRM(userId);
+      return res.status(200).json({
+        status: "success",
+        message: "Sales order slip generation request completed successfully",
+        data: order,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
 
 
 }

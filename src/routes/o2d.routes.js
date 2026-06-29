@@ -32,4 +32,8 @@ router.post('/complete-so-generation-request', authMiddleware, o2dController.com
 router.get('/get-completed-so-generation-request-data', authMiddleware, o2dController.getCompletedSOGenerationRequestData);
 
 
+// crm phase
+router.get('/get-assigned-so-by-crm', authMiddleware, o2dController.getAssignedSOByCRM);
+
+
 export default router;
