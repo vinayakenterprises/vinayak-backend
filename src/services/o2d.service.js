@@ -268,6 +268,17 @@ class O2dService {
         throw new Error("Order ID is required");
       }
 
+
+      const customerNameOfSo = await pool.query(
+        `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name where so.id = $1`,
+        [order_id],
+      );
+
+      if (customerNameOfSo.rows[0].crm === null) {
+        throw new Error("Please Assign CRM First");
+      }
+
+
       // 2. Build a sanitized object to hold only the provided allowed fields
       const sanitizedSlipData = {};
 
