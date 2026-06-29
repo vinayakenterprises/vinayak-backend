@@ -34,6 +34,7 @@ router.get('/get-completed-so-generation-request-data', authMiddleware, o2dContr
 
 // crm phase
 router.get('/get-assigned-so-by-crm', authMiddleware, o2dController.getAssignedSOByCRM);
+router.post('/update-dispatch-information', authMiddleware, o2dController.updateDispatchInformation);
 
 
 export default router;

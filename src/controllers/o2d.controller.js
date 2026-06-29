@@ -235,7 +235,6 @@ class O2dController {
     try {
       const userId = req.user?.id || null;
 
-
       const order = await o2dService.getSOGenerationRequestData(userId);
 
       return res.status(200).json({
@@ -249,15 +248,17 @@ class O2dController {
     }
   };
 
-
   completeSOGenerationRequest = async (req, res, next) => {
     try {
       const { id, document_url } = req.body;
       const role = req.user?.role;
       const userId = req.user?.id;
 
-
-      const order = await o2dService.completeSOGenerationRequest(id, userId, document_url);
+      const order = await o2dService.completeSOGenerationRequest(
+        id,
+        userId,
+        document_url,
+      );
 
       return res.status(200).json({
         status: "success",
@@ -272,7 +273,8 @@ class O2dController {
   getCompletedSOGenerationRequestData = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
-      const order = await o2dService.getCompletedSOGenerationRequestData(userId);
+      const order =
+        await o2dService.getCompletedSOGenerationRequestData(userId);
       return res.status(200).json({
         status: "success",
         message: "Sales order slip generation request completed successfully",
@@ -297,8 +299,30 @@ class O2dController {
     }
   };
 
+  updateDispatchInformation = async (req, res, next) => {
+    try {
+      // 1. Extract both status and type from the request body
+      const { id, dispatch_status, dispatch_type, dispatch_at } = req.body;
+      const userId = req.user?.id || null;
 
+      // 2. Pass the new parameters to the service
+      const updatedOrder = await o2dService.updateDispatchInformation(
+        id,
+        dispatch_type,
+        dispatch_status,
+        userId,
+        dispatch_at
+      );
 
+      return res.status(200).json({
+        status: "success",
+        message: "Dispatch information updated successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 }
 
 export default new O2dController();

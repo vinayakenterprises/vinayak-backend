@@ -364,14 +364,12 @@ class O2dService {
     `;
       const crmResult = await pool.query(crmQuery, [id]);
 
-      if(crmResult.rows.length === 0) {
+      if (crmResult.rows.length === 0) {
         throw new Error("Please Assign CRM First");
       }
 
       // Extract the crmId (defaulting to null if the record isn't found)
       const crmId = crmResult.rows[0].crm;
-
-
 
       const query = `
         UPDATE public.sales_orders
@@ -386,7 +384,12 @@ class O2dService {
         RETURNING *;
       `;
 
-      const { rows } = await pool.query(query, [id, userId, document_url, crmId]);
+      const { rows } = await pool.query(query, [
+        id,
+        userId,
+        document_url,
+        crmId,
+      ]);
       return rows[0];
     } catch (error) {
       console.log("error in completing so generation request: ", error);
@@ -422,6 +425,36 @@ class O2dService {
     }
   }
 
+  async updateDispatchInformation(id, dispatch_type, dispatch_status, userId, dispatch_at) {
+    try {
+      // 1. Use jsonb_build_object to construct your new dispatch_info column
+      const query = `
+      UPDATE public.sales_orders
+      SET dispatch_info = COALESCE(dispatch_info, '{}'::jsonb) || jsonb_build_object(
+          'dispatch_status', $2::boolean,
+          'dispatch_at', $5::timestamp,
+          'dispatch_type', $3::text
+      ),
+      updated_at = now(),
+      updated_by = $4
+      WHERE id = $1
+      RETURNING *;
+    `;
+
+      // 2. Update the parameter array to match the new query structure
+      const { rows } = await pool.query(query, [
+        id,
+        dispatch_status,
+        dispatch_type,
+        userId,
+        dispatch_at
+      ]);
+      return rows[0];
+    } catch (error) {
+      console.error("Error in updating dispatch info: ", error);
+      throw error;
+    }
+  }
 
 
 }
