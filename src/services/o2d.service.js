@@ -573,8 +573,13 @@ class O2dService {
   async getAssignedSOByCRM(userId) {
     try {
       const query = `
-        SELECT * FROM public.sales_orders
-        WHERE assigned_to = $1 AND sale_order_generation->>'sent_for_so' = 'true' and sale_order_generation->>'so_order_completed_at' is not null ORDER BY id DESC`;
+        SELECT so.* FROM public.sales_orders so
+        INNER JOIN public.customers c ON so.client_name = c.company_name
+        WHERE c.crm = $1 
+          AND so.sale_order_generation->>'sent_for_so' = 'true' 
+          AND so.sale_order_generation->>'so_order_completed_at' IS NOT NULL 
+        ORDER BY so.id DESC;
+      `;
       const { rows } = await pool.query(query, [userId]);
       return rows;
     } catch (error) {
