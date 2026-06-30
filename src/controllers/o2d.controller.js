@@ -215,6 +215,25 @@ class O2dController {
     }
   };
 
+
+  checkCreditLimit = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      const order = await o2dService.checkCreditLimit(req.body, userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Credit limit checked successfully",
+        data: order,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+
+
   generateSaleOrderSlip = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;

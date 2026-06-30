@@ -258,6 +258,58 @@ class O2dService {
     return rows[0] || null;
   }
 
+
+
+  async checkCreditLimit(body, userId) {
+    try{
+      const { client_name, quantity_mt } = body;
+
+      if(!client_name || !quantity_mt){
+        throw new Error("Order or Client or Quantity is required");
+      }
+
+
+      const clientCreditLimit = await pool.query(`select credit_limit from customers where company_name = $1`, [client_name]);
+
+      if(clientCreditLimit.rows.length === 0){
+        throw new Error("Client Not Found!");
+      }
+
+      const response = {};
+
+      if(clientCreditLimit.rows[0].credit_limit === 0){
+        response.credit_limit = 0;
+        response.message = "Advance Payment Required";
+      }else{
+        const creditLimit = clientCreditLimit.rows[0].credit_limit;
+
+
+        const totalPendingOrder = await pool.query(`select sum(quantity_mt) as total_pending_quantity from sales_orders where client_name = $1 and payment_status is null`, [client_name]);
+        const totalPendingOrderQuantity = totalPendingOrder.rows[0]?.total_pending_quantity || 0;
+
+
+        if(totalPendingOrderQuantity + quantity_mt >= creditLimit){
+          response.credit_limit = creditLimit;
+          response.message = "Credit Limit Exceeded";
+          response.remaining_credit = creditLimit - (totalPendingOrderQuantity + quantity_mt);
+        }else{
+          response.credit_limit = creditLimit;
+          response.message = "Within the Credit Limit";
+          response.remaining_credit = creditLimit - (totalPendingOrderQuantity + quantity_mt);
+        }
+
+      }
+
+      return response;
+
+    }catch(error){
+      console.log("error in checking credit limit: ", error);
+      throw error;
+    }
+  }
+
+
+
   async generateSaleOrderSlip(body, userId) {
     try {
       // 1. Destructure the order_id and ONLY the allowed fields from the body

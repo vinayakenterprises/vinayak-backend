@@ -20,6 +20,7 @@ router.get('/get-all-sale-order', authMiddleware, o2dController.getAllSaleOrder)
 router.get('/get-sale-order-by-id/:id', authMiddleware, o2dController.getSaleOrderById);
 router.put('/update-sale-order/:id', authMiddleware, o2dController.updateSaleOrder);
 router.delete('/deleteSaleOrder/:id', authMiddleware, o2dController.deleteSaleOrder);
+router.post('/check-credit-limit', authMiddleware, o2dController.checkCreditLimit);
 
 
 // sale order related 
