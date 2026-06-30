@@ -132,7 +132,15 @@ class O2dController {
 
   getAllSaleOrder = async (req, res, next) => {
     try {
-      const orders = await o2dService.getAllSaleOrder();
+      const userId = req.user?.id || null;
+
+      if (!userId) {
+        return res
+          .status(401)
+          .json({ status: "error", message: "Unauthorized" });
+      }
+
+      const orders = await o2dService.getAllSaleOrder(userId);
 
       return res.status(200).json({
         status: "success",
@@ -215,7 +223,6 @@ class O2dController {
     }
   };
 
-
   checkCreditLimit = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
@@ -231,6 +238,7 @@ class O2dController {
       next(error);
     }
   };
+
 
 
 
@@ -321,7 +329,8 @@ class O2dController {
   updateDispatchInformation = async (req, res, next) => {
     try {
       // 1. Extract both status and type from the request body
-      const { id, dispatch_status, dispatch_type, dispatch_at, delay_reason } = req.body;
+      const { id, dispatch_status, dispatch_type, dispatch_at, delay_reason } =
+        req.body;
       const userId = req.user?.id || null;
 
       // 2. Pass the new parameters to the service
@@ -331,7 +340,7 @@ class O2dController {
         dispatch_status,
         userId,
         dispatch_at,
-        delay_reason
+        delay_reason,
       );
 
       return res.status(200).json({
@@ -349,7 +358,10 @@ class O2dController {
       const { id } = req.body;
       const userId = req.user?.id || null;
 
-      const updatedOrder = await o2dService.assignToVehicleExecutive(id, userId);
+      const updatedOrder = await o2dService.assignToVehicleExecutive(
+        id,
+        userId,
+      );
       return res.status(200).json({
         status: "success",
         message: "Vehicle Executive assigned successfully",
@@ -359,7 +371,6 @@ class O2dController {
       next(error);
     }
   };
-
 
   getVehicleExecutiveAssignedData = async (req, res, next) => {
     try {
@@ -374,8 +385,6 @@ class O2dController {
       next(error);
     }
   };
-
-
 }
 
 export default new O2dController();

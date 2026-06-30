@@ -15,15 +15,16 @@ class O2dService {
       dispatch_type,
       sales_person_name,
       assigned_to,
+      credit_limit_info,
     } = data;
 
     const query = `
       INSERT INTO public.sales_orders (
         client_name, rate, ex_works_rate, freight, quantity_mt, rod_size,
         delivery_date, bill_to, ship_to, dispatch_type, sales_person_name,
-        assigned_to, created_by, updated_by
+        assigned_to, created_by, updated_by, credit_limit_info
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
       ) RETURNING *;
     `;
 
@@ -42,6 +43,7 @@ class O2dService {
       userId,
       userId,
       userId,
+      credit_limit_info,
     ];
 
     const { rows } = await pool.query(query, values);
@@ -182,10 +184,47 @@ class O2dService {
     return rows[0] || null;
   }
 
-  async getAllSaleOrder() {
-    const query = "SELECT * FROM public.sales_orders ORDER BY id DESC";
-    const { rows } = await pool.query(query);
-    return rows;
+  async getAllSaleOrder(userId) {
+    // We use a CTE (WITH PendingOrders) to calculate the pending sums once,
+    // and then JOIN it to the main sales_orders query.
+    const query = `
+      WITH PendingOrders AS (
+          SELECT client_name, COALESCE(SUM(quantity_mt), 0) as total_pending_quantity
+          FROM public.sales_orders
+          WHERE payment_status IS NULL
+          GROUP BY client_name
+      )
+      SELECT 
+          so.*,
+          COALESCE(c.credit_limit, 0) as credit_limit,
+          COALESCE(po.total_pending_quantity, 0) as total_pending_quantity,
+          (COALESCE(c.credit_limit, 0) - COALESCE(po.total_pending_quantity, 0)) as remaining_credit,
+          CASE 
+              WHEN COALESCE(c.credit_limit, 0) = 0 THEN 'Advance Payment Required'
+              WHEN COALESCE(po.total_pending_quantity, 0) >= COALESCE(c.credit_limit, 0) THEN 'Credit Limit Exceeded'
+              ELSE 'Within the Credit Limit'
+          END as credit_message
+      FROM public.sales_orders so
+      LEFT JOIN public.customers c ON so.client_name = c.company_name
+      LEFT JOIN PendingOrders po ON so.client_name = po.client_name
+      WHERE so.created_by = $1
+      ORDER BY so.id DESC;
+    `;
+
+    try {
+      const { rows } = await pool.query(query, [userId]);
+
+      // Ensure numeric fields are returned as Numbers, not Strings, to the frontend
+      return rows.map((row) => ({
+        ...row,
+        credit_limit: Number(row.credit_limit),
+        total_pending_quantity: Number(row.total_pending_quantity),
+        remaining_credit: Number(row.remaining_credit),
+      }));
+    } catch (error) {
+      console.error("Error in getAllSaleOrder: ", error);
+      throw error;
+    }
   }
 
   async getSaleOrderById(id) {
@@ -258,56 +297,57 @@ class O2dService {
     return rows[0] || null;
   }
 
-
-
   async checkCreditLimit(body, userId) {
-    try{
+    try {
       const { client_name, quantity_mt } = body;
 
-      if(!client_name || !quantity_mt){
+      if (!client_name || !quantity_mt) {
         throw new Error("Order or Client or Quantity is required");
       }
 
+      const clientCreditLimit = await pool.query(
+        `select credit_limit from customers where company_name = $1 or $1::text = any(child_companies)`,
+        [client_name],
+      );
 
-      const clientCreditLimit = await pool.query(`select credit_limit from customers where company_name = $1`, [client_name]);
-
-      if(clientCreditLimit.rows.length === 0){
+      if (clientCreditLimit.rows.length === 0) {
         throw new Error("Client Not Found!");
       }
 
       const response = {};
 
-      if(clientCreditLimit.rows[0].credit_limit === 0){
+      if (clientCreditLimit.rows[0].credit_limit === 0) {
         response.credit_limit = 0;
         response.message = "Advance Payment Required";
-      }else{
+      } else {
         const creditLimit = clientCreditLimit.rows[0].credit_limit;
 
+        const totalPendingOrder = await pool.query(
+          `select sum(quantity_mt) as total_pending_quantity from sales_orders where client_name = $1 and payment_status is null`,
+          [client_name],
+        );
+        const totalPendingOrderQuantity =
+          totalPendingOrder.rows[0]?.total_pending_quantity || 0;
 
-        const totalPendingOrder = await pool.query(`select sum(quantity_mt) as total_pending_quantity from sales_orders where client_name = $1 and payment_status is null`, [client_name]);
-        const totalPendingOrderQuantity = totalPendingOrder.rows[0]?.total_pending_quantity || 0;
-
-
-        if(totalPendingOrderQuantity + quantity_mt >= creditLimit){
+        if (totalPendingOrderQuantity + quantity_mt >= creditLimit) {
           response.credit_limit = creditLimit;
           response.message = "Credit Limit Exceeded";
-          response.remaining_credit = creditLimit - (totalPendingOrderQuantity + quantity_mt);
-        }else{
+          response.remaining_credit =
+            creditLimit - (totalPendingOrderQuantity + quantity_mt);
+        } else {
           response.credit_limit = creditLimit;
           response.message = "Within the Credit Limit";
-          response.remaining_credit = creditLimit - (totalPendingOrderQuantity + quantity_mt);
+          response.remaining_credit =
+            creditLimit - (totalPendingOrderQuantity + quantity_mt);
         }
-
       }
 
       return response;
-
-    }catch(error){
+    } catch (error) {
       console.log("error in checking credit limit: ", error);
       throw error;
     }
   }
-
 
 
   async generateSaleOrderSlip(body, userId) {
@@ -548,8 +588,6 @@ class O2dService {
     }
   }
 
-
-
   async getVehicleExecutiveAssignedData(userId) {
     try {
       const query = `
@@ -564,9 +602,6 @@ class O2dService {
       throw error;
     }
   }
-
-
-
 }
 
 export default new O2dService();
