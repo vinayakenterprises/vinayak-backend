@@ -425,7 +425,14 @@ class O2dService {
     }
   }
 
-  async updateDispatchInformation(id, dispatch_type, dispatch_status, userId, dispatch_at, delay_reason) {
+  async updateDispatchInformation(
+    id,
+    dispatch_type,
+    dispatch_status,
+    userId,
+    dispatch_at,
+    delay_reason,
+  ) {
     try {
       // 1. Use jsonb_build_object to construct your new dispatch_info column
       const query = `
@@ -449,7 +456,7 @@ class O2dService {
         dispatch_type,
         userId,
         dispatch_at,
-        delay_reason
+        delay_reason,
       ]);
       return rows[0];
     } catch (error) {
@@ -457,6 +464,55 @@ class O2dService {
       throw error;
     }
   }
+
+  async assignToVehicleExecutive(id, userId) {
+    try {
+      // Get vehicle executive id
+      const getVehicleExecutiveId = await pool.query(
+        `SELECT id FROM users WHERE role = 'Vehicle Executive' AND department = 'Transport' LIMIT 1`,
+      );
+
+      // FIX 1: Safely check if the array is empty to prevent a Node.js crash
+      if (getVehicleExecutiveId.rows.length === 0) {
+        throw new Error("Vehicle Executive not found");
+      }
+
+      const vehicleExecutiveId = getVehicleExecutiveId.rows[0].id;
+
+      // FIX 2: Correct spelling of COALESCE and assign it to the 'vehicle_arrangement' column
+      const query = `
+      UPDATE public.sales_orders
+      SET assigned_to = $2, 
+          vehicle_arrangement = COALESCE(vehicle_arrangement, '{}'::jsonb) || jsonb_build_object('assigned_to_vehicle_executive', true::boolean)
+      WHERE id = $1
+      RETURNING *;
+    `;
+
+      const { rows } = await pool.query(query, [id, vehicleExecutiveId]);
+      return rows[0];
+    } catch (error) {
+      console.error("Error in assigning to vehicle executive: ", error);
+      throw error;
+    }
+  }
+
+
+
+  async getVehicleExecutiveAssignedData(userId) {
+    try {
+      const query = `
+        SELECT * FROM public.sales_orders
+        WHERE assigned_to = $1 AND vehicle_arrangement->>'assigned_to_vehicle_executive' = 'true'
+        ORDER BY id DESC
+        `;
+      const { rows } = await pool.query(query, [userId]);
+      return rows;
+    } catch (error) {
+      console.log("error in getting so generation request data: ", error);
+      throw error;
+    }
+  }
+
 
 
 }

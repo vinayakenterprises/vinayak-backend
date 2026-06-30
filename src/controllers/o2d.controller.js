@@ -324,6 +324,39 @@ class O2dController {
       next(error);
     }
   };
+
+  assignToVehicleExecutive = async (req, res, next) => {
+    try {
+      const { id } = req.body;
+      const userId = req.user?.id || null;
+
+      const updatedOrder = await o2dService.assignToVehicleExecutive(id, userId);
+      return res.status(200).json({
+        status: "success",
+        message: "Vehicle Executive assigned successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+
+  getVehicleExecutiveAssignedData = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+      const order = await o2dService.getVehicleExecutiveAssignedData(userId);
+      return res.status(200).json({
+        status: "success",
+        message: "Vehicle Executive assigned data retrieved successfully",
+        data: order,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+
 }
 
 export default new O2dController();

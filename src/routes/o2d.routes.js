@@ -37,4 +37,9 @@ router.get('/get-assigned-so-by-crm', authMiddleware, o2dController.getAssignedS
 router.post('/update-dispatch-information', authMiddleware, o2dController.updateDispatchInformation);
 
 
+// vehicle arrange phase
+router.post('/assign-to-vehicle-executive', authMiddleware, o2dController.assignToVehicleExecutive);
+router.get('/get-vehicle-executive-assigned-data', authMiddleware, o2dController.getVehicleExecutiveAssignedData);
+
+
 export default router;
