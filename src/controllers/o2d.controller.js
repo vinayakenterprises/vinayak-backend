@@ -240,6 +240,38 @@ class O2dController {
   };
 
 
+  getCreditLimitReachedData = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      const order = await o2dService.getCreditLimitReachedData(req.body, userId);
+      return res.status(200).json({
+        status: "success",
+        message: "Credit limit reached data retrieved successfully",
+        data: order,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+
+
+  approveCreditLimitExceededSale = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      const order = await o2dService.approveCreditLimitExceededSale(req.body, userId);
+      return res.status(200).json({
+        status: "success",
+        message: "Credit limit exceeded sale approved successfully",
+        data: order,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
 
 
   generateSaleOrderSlip = async (req, res, next) => {

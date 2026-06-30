@@ -349,6 +349,72 @@ class O2dService {
     }
   }
 
+  async getCreditLimitReachedData(body, userId) {
+    // We calculate pending sums using a CTE and join it to the filtered sales_orders
+    const query = `
+      WITH PendingOrders AS (
+          SELECT client_name, COALESCE(SUM(quantity_mt), 0) as total_pending_quantity
+          FROM public.sales_orders
+          WHERE payment_status IS NULL
+          GROUP BY client_name
+      )
+      SELECT 
+          so.*,
+          COALESCE(c.credit_limit, 0) as credit_limit,
+          COALESCE(po.total_pending_quantity, 0) as total_pending_quantity,
+          (COALESCE(c.credit_limit, 0) - COALESCE(po.total_pending_quantity, 0)) as remaining_credit,
+          CASE 
+              WHEN COALESCE(c.credit_limit, 0) = 0 THEN 'Advance Payment Required'
+              WHEN COALESCE(po.total_pending_quantity, 0) >= COALESCE(c.credit_limit, 0) THEN 'Credit Limit Exceeded'
+              ELSE 'Within the Credit Limit'
+          END as credit_message
+      FROM public.sales_orders so
+      LEFT JOIN public.customers c ON so.client_name = c.company_name
+      LEFT JOIN PendingOrders po ON so.client_name = po.client_name
+      WHERE so.credit_limit_info->>'credit_limit_approval_request' = 'true'
+      ORDER BY so.id DESC;
+    `;
+
+    try {
+      // Execute the query. (See note below if you need to filter by userId)
+      const { rows } = await pool.query(query);
+
+      // Ensure numeric fields are correctly typed for the frontend
+      return rows.map((row) => ({
+        ...row,
+        credit_limit: Number(row.credit_limit),
+        total_pending_quantity: Number(row.total_pending_quantity),
+        remaining_credit: Number(row.remaining_credit),
+      }));
+    } catch (error) {
+      console.error("error in getting credit limit reached data: ", error);
+      throw error;
+    }
+  }
+
+  async approveCreditLimitExceededSale(body, userId) {
+    try {
+      const { order_id } = body;
+
+      if (!order_id) {
+        throw new Error("Order ID is required");
+      }
+
+      const approveQuery = `
+        UPDATE sales_orders
+        SET credit_limit_info = COALESCE(credit_limit_info, '{}'::jsonb)
+            || jsonb_build_object('credit_limit_request_approved_at', now())
+        WHERE id = $1
+        RETURNING *;
+      `;
+
+      const { rows } = await pool.query(approveQuery, [order_id]);
+      return rows[0] || null;
+    } catch (error) {
+      console.log("error in approving credit limit exceeded sale: ", error);
+      throw error;
+    }
+  }
 
   async generateSaleOrderSlip(body, userId) {
     try {

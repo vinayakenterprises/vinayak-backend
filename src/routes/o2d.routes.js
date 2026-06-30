@@ -22,6 +22,10 @@ router.put('/update-sale-order/:id', authMiddleware, o2dController.updateSaleOrd
 router.delete('/deleteSaleOrder/:id', authMiddleware, o2dController.deleteSaleOrder);
 router.post('/check-credit-limit', authMiddleware, o2dController.checkCreditLimit);
 
+// credit limit approval phase
+router.get('/get-credit-limit-reached-data', authMiddleware, o2dController.getCreditLimitReachedData);
+router.post('/approve-credit-limit-exceeded-sale', authMiddleware, o2dController.approveCreditLimitExceededSale);
+
 
 // sale order related 
 router.post('/sale-order-slip-generation', authMiddleware, o2dController.generateSaleOrderSlip);
