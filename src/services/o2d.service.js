@@ -675,16 +675,33 @@ class O2dService {
   }
 
 
+  async getVehicleExecutiveWorkHistory(userId) {
+    try {
+      const query = `
+        SELECT * FROM public.sales_orders
+        WHERE vehicle_arrangement->>'actual_deliver_date' is not null
+        ORDER BY id DESC
+        `;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      console.log("error in getting so generation request data: ", error);
+      throw error;
+    }
+  }
+
+
   async markAsDeliveredByTransportExecutive(id, userId) {
     try {
       const query = `
       UPDATE public.sales_orders
-      SET actual_deliver_date = current_date,
+      SET vehicle_arrangement = COALESCE(vehicle_arrangement, '{}'::jsonb) || jsonb_build_object('actual_deliver_date', current_date),
       updated_at = now(),
       updated_by = $2
       WHERE id = $1
       RETURNING *;
-    `;
+      `;
+
       const { rows } = await pool.query(query, [id, userId]);
       return rows[0];
     } catch (error) {

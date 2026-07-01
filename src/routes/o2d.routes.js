@@ -45,6 +45,7 @@ router.post('/update-dispatch-information', authMiddleware, o2dController.update
 // vehicle arrange phase
 router.post('/assign-to-vehicle-executive', authMiddleware, o2dController.assignToVehicleExecutive);
 router.get('/get-vehicle-executive-assigned-data', authMiddleware, o2dController.getVehicleExecutiveAssignedData);
+router.get('/vehicle-executive-work-history', authMiddleware, o2dController.getVehicleExecutiveWorkHistory);
 router.post('/mark-as-delivered-by-transport-executive', authMiddleware, o2dController.markAsDeliveredByTransportExecutive);
 
 

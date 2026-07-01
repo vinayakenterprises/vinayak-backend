@@ -418,6 +418,22 @@ class O2dController {
     }
   };
 
+
+  getVehicleExecutiveWorkHistory = async (req, res, next) => {
+    try{
+      const userId = req.user?.id || null;
+      const order = await o2dService.getVehicleExecutiveWorkHistory(userId);
+      return res.status(200).json({
+        status: "success",
+        message: "Vehicle Executive work history retrieved successfully",
+        data: order,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+
   markAsDeliveredByTransportExecutive = async (req, res, next) => {
     try {
       const { id } = req.body;
