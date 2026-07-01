@@ -628,6 +628,66 @@ class O2dService {
     }
   }
 
+  async updateInvoiceAndDispatchInfo(orderId, dispatchData, userId) {
+    try {
+      const { actual_dispatch_date, invoices } = dispatchData;
+
+      // 1. Fetch current invoice_and_dispatch from the database
+      const fetchQuery = `SELECT invoice_and_dispatch FROM public.sales_orders WHERE id = $1`;
+      const { rows } = await pool.query(fetchQuery, [orderId]);
+
+      if (rows.length === 0) {
+        throw new Error("Sales order not found");
+      }
+
+      // 2. Parse existing data or initialize an empty structure
+      let currentDispatchInfo = rows[0].invoice_and_dispatch || {};
+
+      // Ensure the invoices array exists so we can safely push to it
+      if (!currentDispatchInfo.invoices) {
+        currentDispatchInfo.invoices = [];
+      }
+
+      // 3. Incrementally update fields based on what was passed in the request
+
+      // If a new date is provided, update it
+      if (actual_dispatch_date) {
+        currentDispatchInfo.actual_dispatch_date = actual_dispatch_date;
+      }
+
+      // If new invoices are provided, append them to the existing array
+      if (invoices && Array.isArray(invoices) && invoices.length > 0) {
+        currentDispatchInfo.invoices = [
+          ...currentDispatchInfo.invoices,
+          ...invoices,
+        ];
+      }
+
+      // 4. Save the merged data back to the database
+      const updateQuery = `
+      UPDATE public.sales_orders
+      SET 
+        invoice_and_dispatch = $1::jsonb,
+        updated_at = now(),
+        updated_by = $2
+      WHERE id = $3
+      RETURNING *;
+    `;
+
+      // We stringify the JSON object before sending it to the parameterized query
+      const updateResult = await pool.query(updateQuery, [
+        JSON.stringify(currentDispatchInfo),
+        userId,
+        orderId,
+      ]);
+
+      return updateResult.rows[0];
+    } catch (error) {
+      console.error("Error in updateDispatchInfo: ", error);
+      throw error;
+    }
+  }
+
   async assignToVehicleExecutive(id, userId) {
     try {
       // Get vehicle executive id
@@ -674,7 +734,6 @@ class O2dService {
     }
   }
 
-
   async getVehicleExecutiveWorkHistory(userId) {
     try {
       const query = `
@@ -690,27 +749,35 @@ class O2dService {
     }
   }
 
-
   async markAsDeliveredByTransportExecutive(id, userId) {
     try {
       const query = `
-      UPDATE public.sales_orders
-      SET vehicle_arrangement = COALESCE(vehicle_arrangement, '{}'::jsonb) || jsonb_build_object('actual_deliver_date', current_date),
-      updated_at = now(),
-      updated_by = $2
-      WHERE id = $1
-      RETURNING *;
+        UPDATE public.sales_orders
+        SET 
+          vehicle_arrangement = COALESCE(vehicle_arrangement, '{}'::jsonb) || jsonb_build_object('actual_deliver_date', CURRENT_DATE),
+          updated_at = now(),
+          updated_by = $2,
+          assigned_to = (
+            SELECT crm 
+            FROM public.customers 
+            WHERE company_name = public.sales_orders.client_name 
+              OR public.sales_orders.client_name::text = ANY(child_companies)
+            LIMIT 1
+          )
+        WHERE id = $1
+        RETURNING *;
       `;
 
       const { rows } = await pool.query(query, [id, userId]);
       return rows[0];
     } catch (error) {
-      console.error("Error in marking as delivered by transport executive: ", error);
+      console.error(
+        "Error in marking as delivered by transport executive: ",
+        error,
+      );
       throw error;
     }
   }
-
-
 }
 
 export default new O2dService();

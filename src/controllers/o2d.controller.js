@@ -239,12 +239,14 @@ class O2dController {
     }
   };
 
-
   getCreditLimitReachedData = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
 
-      const order = await o2dService.getCreditLimitReachedData(req.body, userId);
+      const order = await o2dService.getCreditLimitReachedData(
+        req.body,
+        userId,
+      );
       return res.status(200).json({
         status: "success",
         message: "Credit limit reached data retrieved successfully",
@@ -255,13 +257,14 @@ class O2dController {
     }
   };
 
-
-
   approveCreditLimitExceededSale = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
 
-      const order = await o2dService.approveCreditLimitExceededSale(req.body, userId);
+      const order = await o2dService.approveCreditLimitExceededSale(
+        req.body,
+        userId,
+      );
       return res.status(200).json({
         status: "success",
         message: "Credit limit exceeded sale approved successfully",
@@ -271,8 +274,6 @@ class O2dController {
       next(error);
     }
   };
-
-
 
   generateSaleOrderSlip = async (req, res, next) => {
     try {
@@ -385,6 +386,34 @@ class O2dController {
     }
   };
 
+  updateInvoiceAndDispatchInfo = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+      const { order_id, actual_dispatch_date, invoices } = req.body;
+
+      if (!order_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "order_id is required",
+        });
+      }
+
+      const updatedOrder = await o2dService.updateInvoiceAndDispatchInfo(
+        order_id,
+        { actual_dispatch_date, invoices },
+        userId,
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Dispatch information updated successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   assignToVehicleExecutive = async (req, res, next) => {
     try {
       const { id } = req.body;
@@ -418,9 +447,8 @@ class O2dController {
     }
   };
 
-
   getVehicleExecutiveWorkHistory = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id || null;
       const order = await o2dService.getVehicleExecutiveWorkHistory(userId);
       return res.status(200).json({
@@ -428,18 +456,20 @@ class O2dController {
         message: "Vehicle Executive work history retrieved successfully",
         data: order,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   markAsDeliveredByTransportExecutive = async (req, res, next) => {
     try {
       const { id } = req.body;
       const userId = req.user?.id || null;
 
-      const updatedOrder = await o2dService.markAsDeliveredByTransportExecutive(id, userId);
+      const updatedOrder = await o2dService.markAsDeliveredByTransportExecutive(
+        id,
+        userId,
+      );
       return res.status(200).json({
         status: "success",
         message: "Delivered by transport executive marked successfully",
@@ -449,8 +479,6 @@ class O2dController {
       next(error);
     }
   };
-
-
 }
 
 export default new O2dController();
