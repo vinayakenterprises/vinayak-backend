@@ -417,6 +417,24 @@ class O2dController {
       next(error);
     }
   };
+
+  markAsDeliveredByTransportExecutive = async (req, res, next) => {
+    try {
+      const { id } = req.body;
+      const userId = req.user?.id || null;
+
+      const updatedOrder = await o2dService.markAsDeliveredByTransportExecutive(id, userId);
+      return res.status(200).json({
+        status: "success",
+        message: "Delivered by transport executive marked successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+
 }
 
 export default new O2dController();

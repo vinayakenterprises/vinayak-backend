@@ -673,6 +673,27 @@ class O2dService {
       throw error;
     }
   }
+
+
+  async markAsDeliveredByTransportExecutive(id, userId) {
+    try {
+      const query = `
+      UPDATE public.sales_orders
+      SET actual_deliver_date = current_date,
+      updated_at = now(),
+      updated_by = $2
+      WHERE id = $1
+      RETURNING *;
+    `;
+      const { rows } = await pool.query(query, [id, userId]);
+      return rows[0];
+    } catch (error) {
+      console.error("Error in marking as delivered by transport executive: ", error);
+      throw error;
+    }
+  }
+
+
 }
 
 export default new O2dService();
