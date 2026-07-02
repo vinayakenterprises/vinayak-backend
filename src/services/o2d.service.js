@@ -18,6 +18,18 @@ class O2dService {
       credit_limit_info,
     } = data;
 
+
+
+    const getCrm = await pool.query(
+      `select crm from customers where company_name = $1 or $1::text = any(child_companies)`,
+      [client_name],
+    );
+
+    if (getCrm.rows[0].crm === null) {
+      throw new Error("Please Assign CRM First");
+    }
+
+
     const query = `
       INSERT INTO public.sales_orders (
         client_name, rate, ex_works_rate, freight, quantity_mt, rod_size,
