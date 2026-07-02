@@ -18,8 +18,6 @@ class O2dService {
       credit_limit_info,
     } = data;
 
-
-
     const getCrm = await pool.query(
       `select crm from customers where company_name = $1 or $1::text = any(child_companies)`,
       [client_name],
@@ -28,7 +26,6 @@ class O2dService {
     if (getCrm.rows[0].crm === null) {
       throw new Error("Please Assign CRM First");
     }
-
 
     const query = `
       INSERT INTO public.sales_orders (
@@ -785,6 +782,58 @@ class O2dService {
     } catch (error) {
       console.error(
         "Error in marking as delivered by transport executive: ",
+        error,
+      );
+      throw error;
+    }
+  }
+
+
+
+  async assignOrderToInvoiceExecutive(id, userId) {
+    try {
+
+      // get invoice executive id
+      const getInvoiceExecutiveId = await pool.query(
+        `SELECT id FROM users WHERE role = 'Invoice Executive' AND department = 'Accounts' LIMIT 1`,
+      );
+
+      // FIX 1: Safely check if the array is empty to prevent a Node.js crash
+      if (getInvoiceExecutiveId.rows.length === 0) {
+        throw new Error("Invoice Executive not found");
+      }
+
+      const invoiceExecutiveId = getInvoiceExecutiveId.rows[0].id;
+
+      const query = `
+        UPDATE public.sales_orders
+        SET invoice_and_dispatch = COALESCE(invoice_and_dispatch, '{}'::jsonb) || jsonb_build_object('assign_to', $2::text)
+        WHERE id = $1
+        RETURNING *;
+      `;
+
+      const { rows } = await pool.query(query, [id, invoiceExecutiveId]);
+      return rows[0];
+    } catch (error) {
+      console.error("Error in assigning order to invoice executive: ", error);
+      throw error;
+    }
+  }
+
+
+  async getInvoiceGenerationRequestData(userId) {
+    try {
+      const query = `
+      SELECT * FROM public.sales_orders
+      WHERE invoice_and_dispatch->>'assign_to' = $1 
+        AND invoice_and_dispatch->>'invoice_completed_at' IS NULL
+      ORDER BY id DESC
+    `;
+      const { rows } = await pool.query(query, [userId]);
+      return rows;
+    } catch (error) {
+      console.error(
+        "Error in getting invoice generation request data: ",
         error,
       );
       throw error;

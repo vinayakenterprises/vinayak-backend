@@ -479,6 +479,39 @@ class O2dController {
       next(error);
     }
   };
+
+
+  assignOrderToInvoiceExecutive = async (req, res, next) => {
+    try{
+      const { id } = req.body;
+      const userId = req.user?.id || null;
+
+      const updatedOrder = await o2dService.assignOrderToInvoiceExecutive(id, userId);
+      return res.status(200).json({
+        status: "success",
+        message: "Order assigned to invoice executive successfully",
+        data: updatedOrder,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+  getInvoiceGenerationRequestData = async (req, res, next) => {
+    try{
+      const userId = req.user?.id || null;
+      const order = await o2dService.getInvoiceGenerationRequestData(userId);
+      return res.status(200).json({
+        status: "success",
+        message: "Invoice generation request data retrieved successfully",
+        data: order,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
 }
 
 export default new O2dController();
