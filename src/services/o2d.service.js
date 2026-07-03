@@ -639,7 +639,7 @@ class O2dService {
 
   async updateInvoiceAndDispatchInfo(orderId, dispatchData, userId) {
     try {
-      const { actual_dispatch_date, invoices } = dispatchData;
+      const { actual_dispatch_date, invoices, invoice_completed_at } = dispatchData;
 
       // 1. Fetch current invoice_and_dispatch from the database
       const fetchQuery = `SELECT invoice_and_dispatch FROM public.sales_orders WHERE id = $1`;
@@ -662,6 +662,10 @@ class O2dService {
       // If a new date is provided, update it
       if (actual_dispatch_date) {
         currentDispatchInfo.actual_dispatch_date = actual_dispatch_date;
+      }
+
+      if (invoice_completed_at) {
+        currentDispatchInfo.invoice_completed_at = invoice_completed_at;
       }
 
       // If new invoices are provided, append them to the existing array
@@ -696,6 +700,24 @@ class O2dService {
       throw error;
     }
   }
+
+
+
+  async getInvoiceExecutiveCompletedData(userId) {
+    try {
+      const query = `
+        SELECT * FROM public.sales_orders
+        WHERE invoice_and_dispatch->>'invoice_completed_at' is not null
+        ORDER BY id DESC
+        `;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      console.log("error in getting so generation request data: ", error);
+      throw error;
+    }
+  }
+
 
   async assignToVehicleExecutive(id, userId) {
     try {

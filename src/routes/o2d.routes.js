@@ -40,7 +40,6 @@ router.get('/get-completed-so-generation-request-data', authMiddleware, o2dContr
 // crm phase
 router.get('/get-assigned-so-by-crm', authMiddleware, o2dController.getAssignedSOByCRM);
 router.post('/update-dispatch-information', authMiddleware, o2dController.updateDispatchInformation);
-router.post('/update-invoice-and-dispatch-info', authMiddleware, o2dController.updateInvoiceAndDispatchInfo);
 router.post('/assign-order-to-invoice-executive', authMiddleware, o2dController.assignOrderToInvoiceExecutive);
 
 
@@ -52,6 +51,8 @@ router.post('/mark-as-delivered-by-transport-executive', authMiddleware, o2dCont
 
 // invoice generation phase
 router.get('/get-invoice-generation-request-data', authMiddleware, o2dController.getInvoiceGenerationRequestData);
+router.post('/update-invoice-and-dispatch-info', authMiddleware, o2dController.updateInvoiceAndDispatchInfo);
+router.get('/get-invoice-executive-completed-data', authMiddleware, o2dController.getInvoiceExecutiveCompletedData);
 
 
 export default router;

@@ -389,7 +389,7 @@ class O2dController {
   updateInvoiceAndDispatchInfo = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
-      const { order_id, actual_dispatch_date, invoices } = req.body;
+      const { order_id, actual_dispatch_date, invoices, invoice_completed_at } = req.body;
 
       if (!order_id) {
         return res.status(400).json({
@@ -400,7 +400,7 @@ class O2dController {
 
       const updatedOrder = await o2dService.updateInvoiceAndDispatchInfo(
         order_id,
-        { actual_dispatch_date, invoices },
+        { actual_dispatch_date, invoices, invoice_completed_at },
         userId,
       );
 
@@ -413,6 +413,22 @@ class O2dController {
       next(error);
     }
   };
+
+
+  getInvoiceExecutiveCompletedData = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+      const order = await o2dService.getInvoiceExecutiveCompletedData(userId);
+      return res.status(200).json({
+        status: "success",
+        message: "Invoice executive completed data retrieved successfully",
+        data: order,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
 
   assignToVehicleExecutive = async (req, res, next) => {
     try {
