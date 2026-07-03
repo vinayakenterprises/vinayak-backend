@@ -664,8 +664,11 @@ class O2dService {
         currentDispatchInfo.actual_dispatch_date = actual_dispatch_date;
       }
 
+      let assignToStr = ``;
+
       if (invoice_completed_at) {
         currentDispatchInfo.invoice_completed_at = invoice_completed_at;
+        assignToStr = `,assigned_to = (SELECT crm FROM public.customers WHERE company_name = public.sales_orders.client_name OR public.sales_orders.client_name::text = ANY(child_companies) LIMIT 1)`;
       }
 
       // If new invoices are provided, append them to the existing array
@@ -683,6 +686,7 @@ class O2dService {
         invoice_and_dispatch = $1::jsonb,
         updated_at = now(),
         updated_by = $2
+        ${assignToStr}
       WHERE id = $3
       RETURNING *;
     `;
