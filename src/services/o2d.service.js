@@ -576,6 +576,8 @@ class O2dService {
       // Extract the crmId (defaulting to null if the record isn't found)
       const crmId = crmResult.rows[0].crm;
 
+      const soGenerationComplete = ORDER_STAGES.so_generation_completed_stage;
+
       const query = `
         UPDATE public.sales_orders
         SET sale_order_generation = COALESCE(sale_order_generation, '{}'::jsonb) || jsonb_build_object(

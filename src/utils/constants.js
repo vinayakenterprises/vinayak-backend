@@ -12,5 +12,6 @@ export const HTTP_STATUS = {
 export const ORDER_STAGES = {
     credit_limit_approval_stage: "Credit Limit Approval Stage",
     so_generation_stage: "So Generation Stage",
-    order_completed_stage: "Order Completed"
+    order_completed_stage: "Order Completed",
+    so_generation_completed_stage: "So Generation Completed",
 }
