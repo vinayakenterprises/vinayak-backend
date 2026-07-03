@@ -1,4 +1,5 @@
 import pool from "../config/database.js";
+import { ORDER_STAGES } from "../utils/constants.js";
 
 class O2dService {
   async createSaleOrder(data, userId) {
@@ -27,13 +28,20 @@ class O2dService {
       throw new Error("Please Assign CRM First");
     }
 
+    let orderStatus = null;
+    if(credit_limit_info?.credit_limit_approval_request === true){
+      orderStatus = ORDER_STAGES.credit_limit_approval_stage;
+    }else{
+      orderStatus = ORDER_STAGES.so_generation_stage;
+    }
+
     const query = `
       INSERT INTO public.sales_orders (
         client_name, rate, ex_works_rate, freight, quantity_mt, rod_size,
         delivery_date, bill_to, ship_to, dispatch_type, sales_person_name,
-        assigned_to, created_by, updated_by, credit_limit_info
+        assigned_to, created_by, updated_by, credit_limit_info, order_status
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
       ) RETURNING *;
     `;
 
@@ -53,6 +61,7 @@ class O2dService {
       userId,
       userId,
       credit_limit_info,
+      orderStatus
     ];
 
     const { rows } = await pool.query(query, values);
