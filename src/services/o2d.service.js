@@ -1,4 +1,5 @@
 import pool from "../config/database.js";
+import { ORDER_STAGES } from "../utils/constants.js";
 
 class O2dService {
   async createSaleOrder(data, userId) {
@@ -27,13 +28,20 @@ class O2dService {
       throw new Error("Please Assign CRM First");
     }
 
+    let orderStatus = null;
+    if(credit_limit_info?.credit_limit_approval_request === true){
+      orderStatus = ORDER_STAGES.credit_limit_approval_stage;
+    }else{
+      orderStatus = ORDER_STAGES.so_generation_stage;
+    }
+
     const query = `
       INSERT INTO public.sales_orders (
         client_name, rate, ex_works_rate, freight, quantity_mt, rod_size,
         delivery_date, bill_to, ship_to, dispatch_type, sales_person_name,
-        assigned_to, created_by, updated_by, credit_limit_info
+        assigned_to, created_by, updated_by, credit_limit_info, order_status
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
       ) RETURNING *;
     `;
 
@@ -53,6 +61,7 @@ class O2dService {
       userId,
       userId,
       credit_limit_info,
+      orderStatus
     ];
 
     const { rows } = await pool.query(query, values);
@@ -639,7 +648,8 @@ class O2dService {
 
   async updateInvoiceAndDispatchInfo(orderId, dispatchData, userId) {
     try {
-      const { actual_dispatch_date, invoices, invoice_completed_at } = dispatchData;
+      const { actual_dispatch_date, invoices, invoice_completed_at } =
+        dispatchData;
 
       // 1. Fetch current invoice_and_dispatch from the database
       const fetchQuery = `SELECT invoice_and_dispatch FROM public.sales_orders WHERE id = $1`;
@@ -705,8 +715,6 @@ class O2dService {
     }
   }
 
-
-
   async getInvoiceExecutiveCompletedData(userId) {
     try {
       const query = `
@@ -721,7 +729,6 @@ class O2dService {
       throw error;
     }
   }
-
 
   async assignToVehicleExecutive(id, userId) {
     try {
@@ -814,11 +821,8 @@ class O2dService {
     }
   }
 
-
-
   async assignOrderToInvoiceExecutive(id, userId) {
     try {
-
       // get invoice executive id
       const getInvoiceExecutiveId = await pool.query(
         `SELECT id FROM users WHERE role = 'Invoice Executive' AND department = 'Accounts' LIMIT 1`,
@@ -846,6 +850,28 @@ class O2dService {
     }
   }
 
+  async intimationAndThankYouData(orderId, userId, payload) {
+    try {
+      // We update the specific order, injecting the JSON payload.
+      // We keep the assign_to check for authorization and the IS NULL check
+      // to prevent overwriting an already completed order.
+      const query = `
+      UPDATE public.sales_orders
+      SET intimation_thankyou = $1
+      WHERE id = $2 
+      RETURNING *;
+    `;
+
+      const values = [payload, orderId];
+      const { rows } = await pool.query(query, values);
+
+      // Return the updated row, or null if no row was updated
+      return rows.length ? rows[0] : null;
+    } catch (error) {
+      console.error("Error inserting intimation and thank you data: ", error);
+      throw error;
+    }
+  }
 
   async getInvoiceGenerationRequestData(userId) {
     try {

@@ -389,7 +389,8 @@ class O2dController {
   updateInvoiceAndDispatchInfo = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
-      const { order_id, actual_dispatch_date, invoices, invoice_completed_at } = req.body;
+      const { order_id, actual_dispatch_date, invoices, invoice_completed_at } =
+        req.body;
 
       if (!order_id) {
         return res.status(400).json({
@@ -414,7 +415,6 @@ class O2dController {
     }
   };
 
-
   getInvoiceExecutiveCompletedData = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
@@ -424,11 +424,10 @@ class O2dController {
         message: "Invoice executive completed data retrieved successfully",
         data: order,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   assignToVehicleExecutive = async (req, res, next) => {
     try {
@@ -496,26 +495,71 @@ class O2dController {
     }
   };
 
-
   assignOrderToInvoiceExecutive = async (req, res, next) => {
-    try{
+    try {
       const { id } = req.body;
       const userId = req.user?.id || null;
 
-      const updatedOrder = await o2dService.assignOrderToInvoiceExecutive(id, userId);
+      const updatedOrder = await o2dService.assignOrderToInvoiceExecutive(
+        id,
+        userId,
+      );
       return res.status(200).json({
         status: "success",
         message: "Order assigned to invoice executive successfully",
         data: updatedOrder,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
 
+  intimationAndThankYouData = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      // Assuming orderId and screenshot_url are sent in the request body
+      const { orderId, screenshot_url } = req.body;
+
+      if (!orderId) {
+        return res.status(400).json({
+          status: "error",
+          message: "orderId is required",
+        });
+      }
+
+      // Generate the current UTC timestamp on the server
+      const payload = {
+        completed_at: new Date().toISOString(),
+        screenshot_url: screenshot_url || "",
+      };
+
+      const updatedOrder = await o2dService.intimationAndThankYouData(
+        orderId,
+        userId,
+        payload,
+      );
+
+      if (!updatedOrder) {
+        return res.status(404).json({
+          status: "error",
+          message:
+            "Order not found, not assigned to you, or already completed.",
+        });
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: "Intimation and thank you data saved successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
   getInvoiceGenerationRequestData = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id || null;
       const order = await o2dService.getInvoiceGenerationRequestData(userId);
       return res.status(200).json({
@@ -523,11 +567,10 @@ class O2dController {
         message: "Invoice generation request data retrieved successfully",
         data: order,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 }
 
 export default new O2dController();
