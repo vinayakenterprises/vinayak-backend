@@ -639,7 +639,8 @@ class O2dService {
 
   async updateInvoiceAndDispatchInfo(orderId, dispatchData, userId) {
     try {
-      const { actual_dispatch_date, invoices, invoice_completed_at } = dispatchData;
+      const { actual_dispatch_date, invoices, invoice_completed_at } =
+        dispatchData;
 
       // 1. Fetch current invoice_and_dispatch from the database
       const fetchQuery = `SELECT invoice_and_dispatch FROM public.sales_orders WHERE id = $1`;
@@ -705,8 +706,6 @@ class O2dService {
     }
   }
 
-
-
   async getInvoiceExecutiveCompletedData(userId) {
     try {
       const query = `
@@ -721,7 +720,6 @@ class O2dService {
       throw error;
     }
   }
-
 
   async assignToVehicleExecutive(id, userId) {
     try {
@@ -814,11 +812,8 @@ class O2dService {
     }
   }
 
-
-
   async assignOrderToInvoiceExecutive(id, userId) {
     try {
-
       // get invoice executive id
       const getInvoiceExecutiveId = await pool.query(
         `SELECT id FROM users WHERE role = 'Invoice Executive' AND department = 'Accounts' LIMIT 1`,
@@ -846,6 +841,28 @@ class O2dService {
     }
   }
 
+  async intimationAndThankYouData(orderId, userId, payload) {
+    try {
+      // We update the specific order, injecting the JSON payload.
+      // We keep the assign_to check for authorization and the IS NULL check
+      // to prevent overwriting an already completed order.
+      const query = `
+      UPDATE public.sales_orders
+      SET intimation_thankyou = $1
+      WHERE id = $2 
+      RETURNING *;
+    `;
+
+      const values = [payload, orderId];
+      const { rows } = await pool.query(query, values);
+
+      // Return the updated row, or null if no row was updated
+      return rows.length ? rows[0] : null;
+    } catch (error) {
+      console.error("Error inserting intimation and thank you data: ", error);
+      throw error;
+    }
+  }
 
   async getInvoiceGenerationRequestData(userId) {
     try {

@@ -41,6 +41,7 @@ router.get('/get-completed-so-generation-request-data', authMiddleware, o2dContr
 router.get('/get-assigned-so-by-crm', authMiddleware, o2dController.getAssignedSOByCRM);
 router.post('/update-dispatch-information', authMiddleware, o2dController.updateDispatchInformation);
 router.post('/assign-order-to-invoice-executive', authMiddleware, o2dController.assignOrderToInvoiceExecutive);
+router.post('/intimation-and-thank-you-data-update', authMiddleware, o2dController.intimationAndThankYouData);
 
 
 // vehicle arrange phase
