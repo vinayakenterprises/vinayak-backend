@@ -706,10 +706,12 @@ class O2dService {
       }
 
       let assignToStr = ``;
-
+      
       if (invoice_completed_at) {
+        // const invoiceGenerationCompletedStage = ORDER_STAGES.invoice_generation_completed_stage;
+        const thankYouAndIntimationStage = ORDER_STAGES.thank_you_and_intimation_stage;
         currentDispatchInfo.invoice_completed_at = invoice_completed_at;
-        assignToStr = `,assigned_to = (SELECT crm FROM public.customers WHERE company_name = public.sales_orders.client_name OR public.sales_orders.client_name::text = ANY(child_companies) LIMIT 1)`;
+        assignToStr = `,assigned_to = (SELECT crm FROM public.customers WHERE company_name = public.sales_orders.client_name OR public.sales_orders.client_name::text = ANY(child_companies) LIMIT 1), order_status = '${thankYouAndIntimationStage}'`;
       }
 
       // If new invoices are provided, append them to the existing array
@@ -827,12 +829,16 @@ class O2dService {
 
   async markAsDeliveredByTransportExecutive(id, userId) {
     try {
+
+      const vehicleArrangementCompletedStage = ORDER_STAGES.vehicle_arrangement_completed_stage;
+
       const query = `
         UPDATE public.sales_orders
         SET 
           vehicle_arrangement = COALESCE(vehicle_arrangement, '{}'::jsonb) || jsonb_build_object('actual_deliver_date', CURRENT_DATE),
           updated_at = now(),
           updated_by = $2,
+          order_status = $3,
           assigned_to = (
             SELECT crm 
             FROM public.customers 
@@ -844,7 +850,7 @@ class O2dService {
         RETURNING *;
       `;
 
-      const { rows } = await pool.query(query, [id, userId]);
+      const { rows } = await pool.query(query, [id, userId, vehicleArrangementCompletedStage]);
       return rows[0];
     } catch (error) {
       console.error(
@@ -869,14 +875,17 @@ class O2dService {
 
       const invoiceExecutiveId = getInvoiceExecutiveId.rows[0].id;
 
+      const invoiceGenertionStage = ORDER_STAGES.invoice_generation_stage;
+
       const query = `
         UPDATE public.sales_orders
-        SET invoice_and_dispatch = COALESCE(invoice_and_dispatch, '{}'::jsonb) || jsonb_build_object('assign_to', $2::text)
+        SET invoice_and_dispatch = COALESCE(invoice_and_dispatch, '{}'::jsonb) || jsonb_build_object('assign_to', $2::text),
+        order_status = $3,
         WHERE id = $1
         RETURNING *;
       `;
 
-      const { rows } = await pool.query(query, [id, invoiceExecutiveId]);
+      const { rows } = await pool.query(query, [id, invoiceExecutiveId, invoiceGenertionStage]);
       return rows[0];
     } catch (error) {
       console.error("Error in assigning order to invoice executive: ", error);
@@ -889,14 +898,18 @@ class O2dService {
       // We update the specific order, injecting the JSON payload.
       // We keep the assign_to check for authorization and the IS NULL check
       // to prevent overwriting an already completed order.
+
+      const completedStage = ORDER_STAGES.order_completed_stage;
+
       const query = `
       UPDATE public.sales_orders
-      SET intimation_thankyou = $1
+      SET intimation_thankyou = $1,
+      order_status = $3
       WHERE id = $2 
       RETURNING *;
     `;
 
-      const values = [payload, orderId];
+      const values = [payload, orderId, completedStage];
       const { rows } = await pool.query(query, values);
 
       // Return the updated row, or null if no row was updated
