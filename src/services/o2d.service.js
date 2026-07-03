@@ -775,16 +775,19 @@ class O2dService {
 
       const vehicleExecutiveId = getVehicleExecutiveId.rows[0].id;
 
+      const vehicleArrangeMentStage = ORDER_STAGES.vehicle_arrangement_stage;
+
       // FIX 2: Correct spelling of COALESCE and assign it to the 'vehicle_arrangement' column
       const query = `
       UPDATE public.sales_orders
-      SET assigned_to = $2, 
+      SET assigned_to = $2,
+          order_status = $3,
           vehicle_arrangement = COALESCE(vehicle_arrangement, '{}'::jsonb) || jsonb_build_object('assigned_to_vehicle_executive', true::boolean)
       WHERE id = $1
       RETURNING *;
     `;
 
-      const { rows } = await pool.query(query, [id, vehicleExecutiveId]);
+      const { rows } = await pool.query(query, [id, vehicleExecutiveId, vehicleArrangeMentStage]);
       return rows[0];
     } catch (error) {
       console.error("Error in assigning to vehicle executive: ", error);

@@ -14,4 +14,5 @@ export const ORDER_STAGES = {
     so_generation_stage: "So Generation Stage",
     order_completed_stage: "Order Completed",
     so_generation_completed_stage: "So Generation Completed",
+    vehicle_arrangement_stage: "Vehicle Arrangement Stage",
 }
