@@ -29,9 +29,9 @@ class O2dService {
     }
 
     let orderStatus = null;
-    if(credit_limit_info?.credit_limit_approval_request === true){
+    if (credit_limit_info?.credit_limit_approval_request === true) {
       orderStatus = ORDER_STAGES.credit_limit_approval_stage;
-    }else{
+    } else {
       orderStatus = ORDER_STAGES.so_generation_stage;
     }
 
@@ -61,7 +61,7 @@ class O2dService {
       userId,
       userId,
       credit_limit_info,
-      orderStatus
+      orderStatus,
     ];
 
     const { rows } = await pool.query(query, values);
@@ -412,22 +412,51 @@ class O2dService {
 
   async approveCreditLimitExceededSale(body, userId) {
     try {
-      const { order_id } = body;
+      const { order_id, credit_limit_request_approval_status } = body;
 
       if (!order_id) {
         throw new Error("Order ID is required");
       }
 
-      const approveQuery = `
+      let soGenerationStage = '';
+
+      if (credit_limit_request_approval_status === true) {
+
+        soGenerationStage = ORDER_STAGES.so_generation_stage;
+
+        const approveQuery = `
         UPDATE sales_orders
         SET credit_limit_info = COALESCE(credit_limit_info, '{}'::jsonb)
-            || jsonb_build_object('credit_limit_request_approved_at', now())
+            || jsonb_build_object('credit_limit_request_approved_at', now(), 'credit_limit_request_approval_status', true),
+            order_status = $2
         WHERE id = $1
         RETURNING *;
       `;
 
-      const { rows } = await pool.query(approveQuery, [order_id]);
-      return rows[0] || null;
+        const { rows } = await pool.query(approveQuery, [
+          order_id,
+          soGenerationStage,
+        ]);
+        return rows[0] || null;
+      } else {
+
+        soGenerationStage = ORDER_STAGES.order_completed_stage;
+
+        const rejectQuery = `
+        UPDATE sales_orders
+        SET credit_limit_info = COALESCE(credit_limit_info, '{}'::jsonb)
+            || jsonb_build_object('credit_limit_request_approved_at', now(), 'credit_limit_request_approval_status', false),
+            order_status = $2
+        WHERE id = $1
+        RETURNING *;
+      `;
+
+        const { rows } = await pool.query(rejectQuery, [
+          order_id,
+          soGenerationStage,
+        ]);
+        return rows[0] || null;
+      }
     } catch (error) {
       console.log("error in approving credit limit exceeded sale: ", error);
       throw error;
