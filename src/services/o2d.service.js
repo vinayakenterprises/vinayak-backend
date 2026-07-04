@@ -1,5 +1,7 @@
 import pool from "../config/database.js";
 import { ORDER_STAGES } from "../utils/constants.js";
+import { emitToUser } from "../utils/socket.js";
+import { createNotification } from "./notification.service.js";
 
 class O2dService {
   async createSaleOrder(data, userId) {
@@ -31,8 +33,43 @@ class O2dService {
     let orderStatus = null;
     if (credit_limit_info?.credit_limit_approval_request === true) {
       orderStatus = ORDER_STAGES.credit_limit_approval_stage;
+
+      const salesLeadIdResult = await pool.query(
+        `SELECT id FROM users WHERE role = 'Sales Executive Lead' AND department = 'Sales'`,
+      );
+
+      const salesLeadId = salesLeadIdResult.rows[0].id;
+
+      if(!salesLeadId){
+        throw new Error("Sales Executive Lead not found");
+      }
+      
+      const notif = await createNotification(
+        salesLeadId,
+        `Sale Order for ${client_name} requires your approval for credit limit.`,
+        "credit_limit_approval_request_notification",
+      );
+      emitToUser(salesLeadId, "new_notification", notif);
     } else {
       orderStatus = ORDER_STAGES.so_generation_stage;
+
+      const getSoGenerationExecutiveId = await pool.query(
+        `SELECT id FROM users WHERE role = 'Sale Order Executive' AND department = 'Accounts'`,
+      );
+
+      const soGenerationExecutiveId = getSoGenerationExecutiveId.rows[0].id;
+
+      if (!soGenerationExecutiveId) {
+        throw new Error("Sales Executive not found");
+      }
+
+      const notif = await createNotification(
+        soGenerationExecutiveId,
+        `Please create SO for ${client_name}.`,
+        "so_generation_notification",
+      );
+      emitToUser(soGenerationExecutiveId, "new_notification", notif);
+
     }
 
     const query = `
@@ -418,10 +455,9 @@ class O2dService {
         throw new Error("Order ID is required");
       }
 
-      let soGenerationStage = '';
+      let soGenerationStage = "";
 
       if (credit_limit_request_approval_status === true) {
-
         soGenerationStage = ORDER_STAGES.so_generation_stage;
 
         const approveQuery = `
@@ -439,7 +475,6 @@ class O2dService {
         ]);
         return rows[0] || null;
       } else {
-
         soGenerationStage = ORDER_STAGES.order_completed_stage;
 
         const rejectQuery = `
@@ -708,10 +743,11 @@ class O2dService {
       }
 
       let assignToStr = ``;
-      
+
       if (invoice_completed_at) {
         // const invoiceGenerationCompletedStage = ORDER_STAGES.invoice_generation_completed_stage;
-        const thankYouAndIntimationStage = ORDER_STAGES.thank_you_and_intimation_stage;
+        const thankYouAndIntimationStage =
+          ORDER_STAGES.thank_you_and_intimation_stage;
         currentDispatchInfo.invoice_completed_at = invoice_completed_at;
         assignToStr = `,assigned_to = (SELECT crm FROM public.customers WHERE company_name = public.sales_orders.client_name OR public.sales_orders.client_name::text = ANY(child_companies) LIMIT 1), order_status = '${thankYouAndIntimationStage}'`;
       }
@@ -791,7 +827,11 @@ class O2dService {
       RETURNING *;
     `;
 
-      const { rows } = await pool.query(query, [id, vehicleExecutiveId, vehicleArrangeMentStage]);
+      const { rows } = await pool.query(query, [
+        id,
+        vehicleExecutiveId,
+        vehicleArrangeMentStage,
+      ]);
       return rows[0];
     } catch (error) {
       console.error("Error in assigning to vehicle executive: ", error);
@@ -831,8 +871,8 @@ class O2dService {
 
   async markAsDeliveredByTransportExecutive(id, userId) {
     try {
-
-      const vehicleArrangementCompletedStage = ORDER_STAGES.vehicle_arrangement_completed_stage;
+      const vehicleArrangementCompletedStage =
+        ORDER_STAGES.vehicle_arrangement_completed_stage;
 
       const query = `
         UPDATE public.sales_orders
@@ -852,7 +892,11 @@ class O2dService {
         RETURNING *;
       `;
 
-      const { rows } = await pool.query(query, [id, userId, vehicleArrangementCompletedStage]);
+      const { rows } = await pool.query(query, [
+        id,
+        userId,
+        vehicleArrangementCompletedStage,
+      ]);
       return rows[0];
     } catch (error) {
       console.error(
@@ -887,7 +931,11 @@ class O2dService {
         RETURNING *;
       `;
 
-      const { rows } = await pool.query(query, [id, invoiceExecutiveId, invoiceGenertionStage]);
+      const { rows } = await pool.query(query, [
+        id,
+        invoiceExecutiveId,
+        invoiceGenertionStage,
+      ]);
       return rows[0];
     } catch (error) {
       console.error("Error in assigning order to invoice executive: ", error);
