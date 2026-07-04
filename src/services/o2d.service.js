@@ -584,6 +584,7 @@ class O2dService {
             'so_order_completed_at', now(),
             'document_url', $3::text
         ),
+        order_status = $5,
         assigned_to = $4,
         updated_at = now(),
         updated_by = $2
@@ -596,6 +597,7 @@ class O2dService {
         userId,
         document_url,
         crmId,
+        soGenerationComplete,
       ]);
       return rows[0];
     } catch (error) {
@@ -625,7 +627,7 @@ class O2dService {
         SELECT so.* FROM public.sales_orders so
         INNER JOIN public.customers c ON so.client_name = c.company_name
         WHERE c.crm = $1 
-          AND so.sale_order_generation->>'sent_for_so' = 'true' 
+          -- AND so.sale_order_generation->>'sent_for_so' = 'true' 
           -- AND so.sale_order_generation->>'so_order_completed_at' IS NOT NULL 
         ORDER BY so.id DESC;
       `;
@@ -880,7 +882,7 @@ class O2dService {
       const query = `
         UPDATE public.sales_orders
         SET invoice_and_dispatch = COALESCE(invoice_and_dispatch, '{}'::jsonb) || jsonb_build_object('assign_to', $2::text),
-        order_status = $3,
+        order_status = $3
         WHERE id = $1
         RETURNING *;
       `;
