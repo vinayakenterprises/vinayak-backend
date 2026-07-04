@@ -867,6 +867,36 @@ class O2dService {
           ORDER_STAGES.thank_you_and_intimation_stage;
         currentDispatchInfo.invoice_completed_at = invoice_completed_at;
         assignToStr = `,assigned_to = (SELECT crm FROM public.customers WHERE company_name = public.sales_orders.client_name OR public.sales_orders.client_name::text = ANY(child_companies) LIMIT 1), order_status = '${thankYouAndIntimationStage}'`;
+
+        const sendNotificationToCrm = async (order_id) => {
+          try {
+            const crmIdResult = await pool.query(
+              `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+              [order_id],
+            );
+
+            if (
+              crmIdResult.rows.length === 0 ||
+              crmIdResult.rows[0].crm === null
+            ) {
+              throw new Error("Please Assign CRM First");
+            }
+            const crmId = crmIdResult.rows[0].crm;
+
+            const notif = await createNotification(
+              crmId,
+              `Invoice & Dispatch Phase Completed for Order ID: ${orderId}.`,
+              "invoice_and_dispatch_completed_notification_to_crm",
+            );
+            emitToUser(crmId, "new_notification", notif);
+          } catch (error) {
+            console.log("error while sending notification to crm: ", error);
+          }
+        };
+
+
+        sendNotificationToCrm(orderId);
       }
 
       // If new invoices are provided, append them to the existing array
