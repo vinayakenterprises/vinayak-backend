@@ -671,19 +671,12 @@ class O2dService {
       `;
 
       try {
-        // const getSoGenerationExecutiveId = await pool.query(
-        //   `SELECT id FROM users WHERE role = 'Sale Order Executive' AND department = 'Accounts'`,
-        // );
-        // const soGenerationExecutiveId = getSoGenerationExecutiveId.rows[0].id;
-        // if (!soGenerationExecutiveId) {
-        //   throw new Error("Sales Executive not found");
-        // }
-        // const notif = await createNotification(
-        //   soGenerationExecutiveId,
-        //   `Please create SO for ${client_name}.`,
-        //   "so_generation_notification",
-        // );
-        // emitToUser(soGenerationExecutiveId, "new_notification", notif);
+        const notif = await createNotification(
+          crmId,
+          `Sale Order for Order ID: ${id} is created from Accounts Team!`,
+          "so_generation_completion_notification",
+        );
+        emitToUser(crmId, "new_notification", notif);
       } catch (error) {
         console.log("error while sending notification: ", error);
       }
