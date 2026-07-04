@@ -932,7 +932,24 @@ class O2dService {
 
       const vehicleExecutiveId = getVehicleExecutiveId.rows[0].id;
 
+      if(!vehicleExecutiveId){
+        throw new Error("Vehicle Executive not found");
+      }
+
       const vehicleArrangeMentStage = ORDER_STAGES.vehicle_arrangement_stage;
+
+      const sendNotificationToVehicleExecutive = async (order_id) => {
+        try {
+          const notif = await createNotification(
+            vehicleExecutiveId,
+            `Please Arrange Vehicle for Order ID: ${order_id}.`,
+            "vehicle_arrangement_request_notification",
+          );
+          emitToUser(vehicleExecutiveId, "new_notification", notif);
+        }catch(error){
+          console.log("error while sending notification to vehicle executive: ", error);
+        }
+      }
 
       // FIX 2: Correct spelling of COALESCE and assign it to the 'vehicle_arrangement' column
       const query = `
@@ -949,6 +966,9 @@ class O2dService {
         vehicleExecutiveId,
         vehicleArrangeMentStage,
       ]);
+
+      sendNotificationToVehicleExecutive(id);
+
       return rows[0];
     } catch (error) {
       console.error("Error in assigning to vehicle executive: ", error);
