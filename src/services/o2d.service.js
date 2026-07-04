@@ -72,29 +72,27 @@ class O2dService {
     } else {
       orderStatus = ORDER_STAGES.so_generation_stage;
 
-
       // send notification to sale order generator executive
-      try{
+      try {
         const getSoGenerationExecutiveId = await pool.query(
           `SELECT id FROM users WHERE role = 'Sale Order Executive' AND department = 'Accounts'`,
         );
-  
+
         const soGenerationExecutiveId = getSoGenerationExecutiveId.rows[0].id;
-  
+
         if (!soGenerationExecutiveId) {
           throw new Error("Sales Executive not found");
         }
-  
+
         const notif = await createNotification(
           soGenerationExecutiveId,
           `Please create SO for ${client_name}.`,
           "so_generation_notification",
         );
         emitToUser(soGenerationExecutiveId, "new_notification", notif);
-      }catch(error){
+      } catch (error) {
         console.log("error while sending notification: ", error);
       }
-
 
       // send notification to crm
       try {
@@ -500,6 +498,64 @@ class O2dService {
 
       let soGenerationStage = "";
 
+      const sendNotificationToCrm = async (order_id) => {
+        try {
+          const crmIdResult = await pool.query(
+            `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+            [order_id],
+          );
+
+          if (
+            crmIdResult.rows.length === 0 ||
+            crmIdResult.rows[0].crm === null
+          ) {
+            throw new Error("Please Assign CRM First");
+          }
+          const crmId = crmIdResult.rows[0].crm;
+
+          const notif = await createNotification(
+            crmId,
+            `Credit Limit Request for Order ID: ${order_id} has been ${credit_limit_request_approval_status ? "approved" : "rejected"} by Sales Lead.`,
+            "credit_limit_request_result_notification_to_crm",
+          );
+          emitToUser(crmId, "new_notification", notif);
+        } catch (error) {
+          console.log("error while sending notification to crm: ", error);
+        }
+      };
+
+      const sendNotificationToSoExecutive = async (order_id) => {
+        try {
+          try {
+            const getSoGenerationExecutiveId = await pool.query(
+              `SELECT id FROM users WHERE role = 'Sale Order Executive' AND department = 'Accounts'`,
+            );
+
+            const soGenerationExecutiveId =
+              getSoGenerationExecutiveId.rows[0].id;
+
+            if (!soGenerationExecutiveId) {
+              throw new Error("Sales Executive not found");
+            }
+
+            const notif = await createNotification(
+              soGenerationExecutiveId,
+              `Please create SO for Order ID: ${order_id}.`,
+              "so_generation_notification",
+            );
+            emitToUser(soGenerationExecutiveId, "new_notification", notif);
+          } catch (error) {
+            console.log("error while sending notification: ", error);
+          }
+        } catch (error) {
+          console.log(
+            "error while sending notification to so executive: ",
+            error,
+          );
+        }
+      };
+
       if (credit_limit_request_approval_status === true) {
         soGenerationStage = ORDER_STAGES.so_generation_stage;
 
@@ -516,6 +572,10 @@ class O2dService {
           order_id,
           soGenerationStage,
         ]);
+
+        sendNotificationToCrm(order_id);
+        sendNotificationToSoExecutive(order_id);
+
         return rows[0] || null;
       } else {
         soGenerationStage = ORDER_STAGES.order_completed_stage;
@@ -533,6 +593,9 @@ class O2dService {
           order_id,
           soGenerationStage,
         ]);
+
+        sendNotificationToCrm(order_id);
+
         return rows[0] || null;
       }
     } catch (error) {
