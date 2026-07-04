@@ -932,7 +932,7 @@ class O2dService {
 
       const vehicleExecutiveId = getVehicleExecutiveId.rows[0].id;
 
-      if(!vehicleExecutiveId){
+      if (!vehicleExecutiveId) {
         throw new Error("Vehicle Executive not found");
       }
 
@@ -946,10 +946,13 @@ class O2dService {
             "vehicle_arrangement_request_notification",
           );
           emitToUser(vehicleExecutiveId, "new_notification", notif);
-        }catch(error){
-          console.log("error while sending notification to vehicle executive: ", error);
+        } catch (error) {
+          console.log(
+            "error while sending notification to vehicle executive: ",
+            error,
+          );
         }
-      }
+      };
 
       // FIX 2: Correct spelling of COALESCE and assign it to the 'vehicle_arrangement' column
       const query = `
@@ -1011,6 +1014,33 @@ class O2dService {
       const vehicleArrangementCompletedStage =
         ORDER_STAGES.vehicle_arrangement_completed_stage;
 
+      const sendNotificationToCrm = async (order_id) => {
+        try {
+          const crmIdResult = await pool.query(
+            `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+            [order_id],
+          );
+
+          if (
+            crmIdResult.rows.length === 0 ||
+            crmIdResult.rows[0].crm === null
+          ) {
+            throw new Error("Please Assign CRM First");
+          }
+          const crmId = crmIdResult.rows[0].crm;
+
+          const notif = await createNotification(
+            crmId,
+            `Vehicle has been arranged for Order ID: ${order_id}.`,
+            "vehicle_arrangement_completed_notification_to_crm",
+          );
+          emitToUser(crmId, "new_notification", notif);
+        } catch (error) {
+          console.log("error while sending notification to crm: ", error);
+        }
+      };
+
       const query = `
         UPDATE public.sales_orders
         SET 
@@ -1034,6 +1064,9 @@ class O2dService {
         userId,
         vehicleArrangementCompletedStage,
       ]);
+
+      sendNotificationToCrm(id);
+
       return rows[0];
     } catch (error) {
       console.error(
