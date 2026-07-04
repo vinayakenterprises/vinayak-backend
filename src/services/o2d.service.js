@@ -1,7 +1,128 @@
 import pool from "../config/database.js";
 import { ORDER_STAGES } from "../utils/constants.js";
+import { sendMail } from "./mail.service.js";
+import userService from "./user.service.js";
+
 
 class O2dService {
+  // async createSaleOrder(data, userId) {
+  //   const {
+  //     client_name,
+  //     rate,
+  //     ex_works_rate,
+  //     freight,
+  //     quantity_mt,
+  //     rod_size,
+  //     delivery_date,
+  //     bill_to,
+  //     ship_to,
+  //     dispatch_type,
+  //     sales_person_name,
+  //     assigned_to,
+  //     credit_limit_info,
+  //   } = data;
+
+  //   const getCrm = await pool.query(
+  //     `select crm from customers where company_name = $1 or $1::text = any(child_companies)`,
+  //     [client_name],
+  //   );
+
+  //   if (getCrm.rows[0].crm === null) {
+  //     throw new Error("Please Assign CRM First");
+  //   }
+
+  //   let orderStatus = null;
+  //   if (credit_limit_info?.credit_limit_approval_request === true) {
+  //     orderStatus = ORDER_STAGES.credit_limit_approval_stage;
+
+  //     const { rows } = await pool.query(`
+  //       SELECT email_id
+  //       FROM users
+  //       WHERE role = 'Sales Executive Lead'
+  //       LIMIT 1
+  //     `);
+
+  //     if (!rows.length) {
+  //       throw new Error("No Sales Executive Lead found.");
+  //     }
+
+  //     const salesLeadEmail = rows[0].email_id;
+
+  //     console.log('dshgfs>', salesLeadEmail)
+
+  //     // Send email to the sales lead executive for credit limit approval request
+  //     try {
+  //       sendMail({
+  //         to: salesLeadEmail,
+  //         subject: `Action Required: Sales Order Approval - Order #${salesOrder.order_id}`,
+  //         templateName: "sales-order-approval",
+  //         replacements: {
+  //           order_id: salesOrder.order_id,
+  //           client_name: salesOrder.client_name,
+  //           quantity_mt: salesOrder.quantity_mt,
+  //           rate: salesOrder.rate,
+  //           delivery_date: new Date(salesOrder.delivery_date).toLocaleDateString("en-IN"),
+  //           sales_person_name: salesOrder.sales_person_name,
+
+  //           //-- Credit Information --
+  //           credit_message: creditMessage,
+  //           credit_limit: creditLimit,
+  //           remaining_credit: remainingCredit,
+
+  //           //-- Footer --
+  //           appName: "Mittalu Pvt Ltd",
+  //         },
+  //       });
+
+  //       // // send notification
+  //       // const notif = await createNotification(
+  //       //   createdById,
+  //       //   `Your Tender with Tender Title as ${tenderInformationFromDB?.rows[0]?.tender_title} ${isApproved ? "has been approved." : "has been rejected."}.`,
+  //       //   "tender_approval_status",
+  //       // );
+  //       // emitToUser(createdById, "new_notification", notif);
+  //     } catch (error) {
+  //       console.log("error in sending mail: ", error);
+  //     }
+
+
+  //   } else {
+  //     orderStatus = ORDER_STAGES.so_generation_stage;
+  //   }
+
+  //   const query = `
+  //     INSERT INTO public.sales_orders (
+  //       client_name, rate, ex_works_rate, freight, quantity_mt, rod_size,
+  //       delivery_date, bill_to, ship_to, dispatch_type, sales_person_name,
+  //       assigned_to, created_by, updated_by, credit_limit_info, order_status
+  //     ) VALUES (
+  //       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
+  //     ) RETURNING *;
+  //   `;
+
+  //   const values = [
+  //     client_name,
+  //     rate,
+  //     ex_works_rate,
+  //     freight,
+  //     quantity_mt,
+  //     rod_size,
+  //     delivery_date,
+  //     bill_to,
+  //     ship_to,
+  //     dispatch_type,
+  //     sales_person_name,
+  //     userId,
+  //     userId,
+  //     userId,
+  //     credit_limit_info,
+  //     orderStatus
+  //   ];
+
+  //   const { rows } = await pool.query(query, values);
+  //   return rows[0];
+  // }
+
   async createSaleOrder(data, userId) {
     const {
       client_name,
@@ -19,31 +140,62 @@ class O2dService {
       credit_limit_info,
     } = data;
 
+    // Check CRM
     const getCrm = await pool.query(
-      `select crm from customers where company_name = $1 or $1::text = any(child_companies)`,
-      [client_name],
+      `SELECT crm
+     FROM customers
+     WHERE company_name = $1
+        OR $1::text = ANY(child_companies)`,
+      [client_name]
     );
 
     if (getCrm.rows[0].crm === null) {
       throw new Error("Please Assign CRM First");
     }
 
-    let orderStatus = null;
-    if(credit_limit_info?.credit_limit_approval_request === true){
-      orderStatus = ORDER_STAGES.credit_limit_approval_stage;
-    }else{
-      orderStatus = ORDER_STAGES.so_generation_stage;
-    }
+    // Decide Order Status and Calculate credit limit dynamically using existing helper function
+    const calculatedCreditInfo = await this.checkCreditLimit(
+      { client_name, quantity_mt: Number(quantity_mt) },
+      userId
+    );
 
+    const finalCreditLimitInfo = {
+      ...credit_limit_info,
+      ...calculatedCreditInfo,
+      credit_limit_approval_request:
+        calculatedCreditInfo.message === "Credit Limit Exceeded" ||
+        calculatedCreditInfo.message === "Advance Payment Required",
+    };
+
+    const orderStatus = finalCreditLimitInfo.credit_limit_approval_request
+      ? ORDER_STAGES.credit_limit_approval_stage
+      : ORDER_STAGES.so_generation_stage;
+
+    // Insert Sales Order
     const query = `
-      INSERT INTO public.sales_orders (
-        client_name, rate, ex_works_rate, freight, quantity_mt, rod_size,
-        delivery_date, bill_to, ship_to, dispatch_type, sales_person_name,
-        assigned_to, created_by, updated_by, credit_limit_info, order_status
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
-      ) RETURNING *;
-    `;
+    INSERT INTO public.sales_orders (
+      client_name,
+      rate,
+      ex_works_rate,
+      freight,
+      quantity_mt,
+      rod_size,
+      delivery_date,
+      bill_to,
+      ship_to,
+      dispatch_type,
+      sales_person_name,
+      assigned_to,
+      created_by,
+      updated_by,
+      credit_limit_info,
+      order_status
+    )
+    VALUES (
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16
+    )
+    RETURNING *;
+  `;
 
     const values = [
       client_name,
@@ -57,15 +209,117 @@ class O2dService {
       ship_to,
       dispatch_type,
       sales_person_name,
-      userId,
-      userId,
-      userId,
-      credit_limit_info,
-      orderStatus
+      userId, // assigned_to
+      userId, // created_by
+      userId, // updated_by
+      finalCreditLimitInfo,
+      orderStatus,
     ];
 
+    console.log("credit limit info :", finalCreditLimitInfo);
+
     const { rows } = await pool.query(query, values);
-    return rows[0];
+    const salesOrder = rows[0];
+
+    // Send approval email only if credit limit approval is required
+    if (finalCreditLimitInfo.credit_limit_approval_request) {
+      const { rows: leadRows } = await pool.query(`
+      SELECT email_id
+      FROM users
+      WHERE role = 'Sales Executive Lead'
+      LIMIT 1
+    `);
+
+      if (!leadRows.length) {
+        throw new Error("No Sales Executive Lead found.");
+      }
+
+      const salesLeadEmail = leadRows[0].email_id;
+
+      // These come from credit limit calculation
+      const {
+        message = "",
+        credit_limit = "",
+        remaining_credit = "",
+      } = finalCreditLimitInfo;
+
+      try {
+        await sendMail({
+          to: salesLeadEmail,
+          subject: `Action Required: Sales Order Approval - Order #${salesOrder.id}`,
+          templateName: "sales-order-credit-limit-approval-mail",
+          replacements: {
+            order_id: salesOrder.id,
+            client_name: salesOrder.client_name,
+            quantity_mt: salesOrder.quantity_mt,
+            rate: salesOrder.rate,
+            delivery_date: new Date(
+              salesOrder.delivery_date
+            ).toLocaleDateString("en-IN"),
+            sales_person_name: salesOrder.sales_person_name,
+
+            // Credit Information
+            credit_message: message,
+            credit_limit,
+            remaining_credit,
+
+            // Footer
+            appName: "Mittalu Pvt Ltd",
+          }
+        });
+
+        console.log("Approval email sent successfully.");
+      } catch (error) {
+        console.error("Error sending approval email:", error);
+      }
+    }
+    // else {
+    //   // now email will go to the crm
+    //   try {
+    //     const crmId = getCrm.rows[0].crm;
+    //     const crmUser = await userService.getUserById(crmId);
+
+    //     if (crmUser) {
+    //       const crmEmail = crmUser.email_id;
+
+    //       const {
+    //         message = "Within the Credit Limit",
+    //         remaining_credit = "",
+    //       } = finalCreditLimitInfo;
+
+    //       await sendMail({
+    //         to: crmEmail,
+    //         subject: `New Sales Order Created - Order #${salesOrder.id}`,
+    //         templateName: "sales-order-crm-notification-mail",
+    //         replacements: {
+    //           order_id: salesOrder.id,
+    //           client_name: salesOrder.client_name,
+    //           quantity_mt: salesOrder.quantity_mt,
+    //           rate: salesOrder.rate,
+    //           delivery_date: new Date(
+    //             salesOrder.delivery_date
+    //           ).toLocaleDateString("en-IN"),
+    //           sales_person_name: salesOrder.sales_person_name,
+
+    //           // Credit Information
+    //           credit_message: message,
+    //           remaining_credit,
+
+    //           // Footer
+    //           appName: "Mittalu Pvt Ltd",
+    //         }
+    //       });
+
+    //       console.log("CRM notification email sent successfully.");
+    //     } else {
+    //       console.log("No CRM user found with ID:", crmId);
+    //     }
+    //   } catch (error) {
+    //     console.error("Error sending CRM notification email:", error);
+    //   }
+    // }
+
+    return salesOrder;
   }
 
   async getAllClientNamesList() {
