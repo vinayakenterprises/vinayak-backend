@@ -153,21 +153,8 @@ class O2dService {
       throw new Error("Please Assign CRM First");
     }
 
-    // Decide Order Status and Calculate credit limit dynamically using existing helper function
-    const calculatedCreditInfo = await this.checkCreditLimit(
-      { client_name, quantity_mt: Number(quantity_mt) },
-      userId
-    );
-
-    const finalCreditLimitInfo = {
-      ...credit_limit_info,
-      ...calculatedCreditInfo,
-      credit_limit_approval_request:
-        calculatedCreditInfo.message === "Credit Limit Exceeded" ||
-        calculatedCreditInfo.message === "Advance Payment Required",
-    };
-
-    const orderStatus = finalCreditLimitInfo.credit_limit_approval_request
+    // Decide Order Status
+    const orderStatus = credit_limit_info?.credit_limit_approval_request
       ? ORDER_STAGES.credit_limit_approval_stage
       : ORDER_STAGES.so_generation_stage;
 
@@ -212,17 +199,15 @@ class O2dService {
       userId, // assigned_to
       userId, // created_by
       userId, // updated_by
-      finalCreditLimitInfo,
+      credit_limit_info,
       orderStatus,
     ];
-
-    console.log("credit limit info :", finalCreditLimitInfo);
 
     const { rows } = await pool.query(query, values);
     const salesOrder = rows[0];
 
     // Send approval email only if credit limit approval is required
-    if (finalCreditLimitInfo.credit_limit_approval_request) {
+    if (credit_limit_info?.credit_limit_approval_request) {
       const { rows: leadRows } = await pool.query(`
       SELECT email_id
       FROM users
@@ -235,13 +220,6 @@ class O2dService {
       }
 
       const salesLeadEmail = leadRows[0].email_id;
-
-      // These come from credit limit calculation
-      const {
-        message = "",
-        credit_limit = "",
-        remaining_credit = "",
-      } = finalCreditLimitInfo;
 
       try {
         await sendMail({
@@ -259,9 +237,9 @@ class O2dService {
             sales_person_name: salesOrder.sales_person_name,
 
             // Credit Information
-            credit_message: message,
-            credit_limit,
-            remaining_credit,
+            credit_message: credit_limit_info.message,
+            credit_limit: credit_limit_info.credit_limit,
+            remaining_credit: credit_limit_info.remaining_credit,
 
             // Footer
             appName: "Mittalu Pvt Ltd",
@@ -271,54 +249,9 @@ class O2dService {
         console.log("Approval email sent successfully.");
       } catch (error) {
         console.error("Error sending approval email:", error);
+        throw error;
       }
     }
-    // else {
-    //   // now email will go to the crm
-    //   try {
-    //     const crmId = getCrm.rows[0].crm;
-    //     const crmUser = await userService.getUserById(crmId);
-
-    //     if (crmUser) {
-    //       const crmEmail = crmUser.email_id;
-
-    //       const {
-    //         message = "Within the Credit Limit",
-    //         remaining_credit = "",
-    //       } = finalCreditLimitInfo;
-
-    //       await sendMail({
-    //         to: crmEmail,
-    //         subject: `New Sales Order Created - Order #${salesOrder.id}`,
-    //         templateName: "sales-order-crm-notification-mail",
-    //         replacements: {
-    //           order_id: salesOrder.id,
-    //           client_name: salesOrder.client_name,
-    //           quantity_mt: salesOrder.quantity_mt,
-    //           rate: salesOrder.rate,
-    //           delivery_date: new Date(
-    //             salesOrder.delivery_date
-    //           ).toLocaleDateString("en-IN"),
-    //           sales_person_name: salesOrder.sales_person_name,
-
-    //           // Credit Information
-    //           credit_message: message,
-    //           remaining_credit,
-
-    //           // Footer
-    //           appName: "Mittalu Pvt Ltd",
-    //         }
-    //       });
-
-    //       console.log("CRM notification email sent successfully.");
-    //     } else {
-    //       console.log("No CRM user found with ID:", crmId);
-    //     }
-    //   } catch (error) {
-    //     console.error("Error sending CRM notification email:", error);
-    //   }
-    // }
-
     return salesOrder;
   }
 
