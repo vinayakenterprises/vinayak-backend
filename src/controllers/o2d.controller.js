@@ -18,7 +18,15 @@ class O2dController {
 
   getAllClientNamesList = async (req, res, next) => {
     try {
-      const clientName = await o2dService.getAllClientNamesList();
+      const userId = req.user?.id || null;
+
+      console.log("userId: ", userId);
+
+      let clientName = await o2dService.getAllClientNamesList(userId);
+
+      if(!clientName){
+        clientName = [];
+      }
 
       const staticClientNameList = [];
 

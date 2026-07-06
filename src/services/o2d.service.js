@@ -146,21 +146,22 @@ class O2dService {
     return rows[0];
   }
 
-  async getAllClientNamesList() {
+  async getAllClientNamesList(userId) {
     try {
       const query = `
       SELECT ARRAY_AGG(client_name) AS master_client_list
       FROM (
-          SELECT company_name AS client_name FROM customers
+          SELECT company_name AS client_name FROM customers where sales_person = $1
           UNION
           SELECT UNNEST(child_companies) AS client_name 
           FROM customers 
-          WHERE child_companies IS NOT NULL
+          WHERE sales_person = $1 and child_companies IS NOT NULL 
       ) AS combined_names;
     `;
-      const { rows } = await pool.query(query);
+      const { rows } = await pool.query(query, [userId]);
 
       // Here, rows[0] is correct because the query only returns exactly 1 row containing the aggregated array
+      // console.log("Retrieved client names list: ", rows[0].master_client_list);
       return rows[0].master_client_list;
 
       // Example output: ['AS Metals', 'Alpha Communication LLP', 'Goyal Industries', ...]
