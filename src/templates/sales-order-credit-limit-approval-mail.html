@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,6 +13,7 @@
       padding: 0;
       color: #333333;
     }
+
     .email-container {
       max-width: 600px;
       margin: 40px auto;
@@ -21,46 +23,56 @@
       box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
       border: 1px solid #e0e0e0;
     }
+
     .email-header {
       background-color: #c0392b;
       color: #ffffff;
       padding: 25px 30px;
       text-align: center;
     }
+
     .email-header h1 {
       margin: 0;
       font-size: 22px;
       font-weight: 600;
     }
+
     .email-body {
       padding: 30px;
     }
+
     .email-body p {
       line-height: 1.6;
       font-size: 15px;
       margin-bottom: 20px;
     }
+
     .order-details {
       width: 100%;
       border-collapse: collapse;
       margin-bottom: 25px;
       background-color: #fcfcfc;
     }
-    .order-details th, .order-details td {
+
+    .order-details th,
+    .order-details td {
       padding: 12px 15px;
       text-align: left;
       border-bottom: 1px solid #eeeeee;
       font-size: 14px;
     }
+
     .order-details th {
       width: 40%;
       color: #666666;
       font-weight: 600;
     }
+
     .order-details td {
       color: #222222;
       font-weight: 500;
     }
+
     .email-footer {
       background-color: #f8f9fa;
       text-align: center;
@@ -71,6 +83,7 @@
     }
   </style>
 </head>
+
 <body>
   <div class="email-container">
     <div class="email-header">
@@ -79,7 +92,8 @@
 
     <div class="email-body">
       <p>Dear Sales Lead,</p>
-      <p>A new sales order has been created that requires your approval because the client's credit limit has been exceeded or advance payment is required.</p>
+      <p>A new sales order has been created that requires your approval because the client's credit limit has been
+        exceeded.</p>
 
       <table class="order-details">
         <tr>
@@ -124,8 +138,10 @@
     </div>
 
     <div class="email-footer">
-      <p>This is an automated message from <strong>{{appName}}</strong>.<br>Please do not reply directly to this email.</p>
+      <p>This is an automated message from <strong>{{appName}}</strong>.<br>Please do not reply directly to this email.
+      </p>
     </div>
   </div>
 </body>
+
 </html>
