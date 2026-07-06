@@ -57,18 +57,18 @@ class O2dService {
       }
 
       // send notification to crm
-      try {
-        const crmId = getCrm.rows[0].crm;
+      // try {
+      //   const crmId = getCrm.rows[0].crm;
 
-        const notif = await createNotification(
-          crmId,
-          `Sale Order for ${client_name} is created and requires credit limit approval from sales lead.`,
-          "credit_limit_approval_request_notification_to_crm",
-        );
-        emitToUser(crmId, "new_notification", notif);
-      } catch (error) {
-        console.log("error in sending notification to crm: ", error);
-      }
+      //   const notif = await createNotification(
+      //     crmId,
+      //     `Sale Order for ${client_name} is created and requires credit limit approval from sales lead.`,
+      //     "credit_limit_approval_request_notification_to_crm",
+      //   );
+      //   emitToUser(crmId, "new_notification", notif);
+      // } catch (error) {
+      //   console.log("error in sending notification to crm: ", error);
+      // }
     } else {
       orderStatus = ORDER_STAGES.so_generation_stage;
 
@@ -780,7 +780,7 @@ class O2dService {
         SELECT so.* FROM public.sales_orders so
         INNER JOIN public.customers c ON so.client_name = c.company_name
         WHERE c.crm = $1 
-          -- AND so.sale_order_generation->>'sent_for_so' = 'true' 
+          AND so.sale_order_generation->>'sent_for_so' = 'true' 
           -- AND so.sale_order_generation->>'so_order_completed_at' IS NOT NULL 
         ORDER BY so.id DESC;
       `;
