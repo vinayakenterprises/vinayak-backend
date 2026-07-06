@@ -499,30 +499,31 @@ class O2dService {
 
       let soGenerationStage = "";
 
-      const sendNotificationToCrm = async (order_id) => {
+      const sendNotificationSaleExecutive = async (order_id) => {
         try {
           const crmIdResult = await pool.query(
-            `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+            `select c.sales_person from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
           where so.id = $1`,
             [order_id],
           );
 
+
           if (
             crmIdResult.rows.length === 0 ||
-            crmIdResult.rows[0].crm === null
+            crmIdResult.rows[0].sales_person === null
           ) {
-            throw new Error("Please Assign CRM First");
+            throw new Error("Please Assign Sales Executive First");
           }
-          const crmId = crmIdResult.rows[0].crm;
+          const salesPersonId = crmIdResult.rows[0].sales_person;
 
           const notif = await createNotification(
-            crmId,
+            salesPersonId,
             `Credit Limit Request for Order ID: ${order_id} has been ${credit_limit_request_approval_status ? "approved" : "rejected"} by Sales Lead.`,
-            "credit_limit_request_result_notification_to_crm",
+            "credit_limit_request_result_notification_to_sales_executive",
           );
-          emitToUser(crmId, "new_notification", notif);
+          emitToUser(salesPersonId, "new_notification", notif);
         } catch (error) {
-          console.log("error while sending notification to crm: ", error);
+          console.log("error while sending notification to sales executive: ", error);
         }
       };
 
@@ -574,8 +575,9 @@ class O2dService {
           soGenerationStage,
         ]);
 
-        sendNotificationToCrm(order_id);
+        // sendNotificationToCrm(order_id);
         sendNotificationToSoExecutive(order_id);
+        sendNotificationSaleExecutive(order_id);
 
         return rows[0] || null;
       } else {
@@ -595,7 +597,8 @@ class O2dService {
           soGenerationStage,
         ]);
 
-        sendNotificationToCrm(order_id);
+        // sendNotificationToCrm(order_id);
+        sendNotificationSaleExecutive(order_id);
 
         return rows[0] || null;
       }

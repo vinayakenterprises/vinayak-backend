@@ -20,7 +20,6 @@ class O2dController {
     try {
       const userId = req.user?.id || null;
 
-      console.log("userId: ", userId);
 
       let clientName = await o2dService.getAllClientNamesList(userId);
 
