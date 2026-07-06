@@ -1,5 +1,7 @@
 import pool from "../config/database.js";
 import { ORDER_STAGES } from "../utils/constants.js";
+import { emitToUser } from "../utils/socket.js";
+import { createNotification } from "./notification.service.js";
 
 class O2dService {
   async createSaleOrder(data, userId) {
@@ -29,10 +31,86 @@ class O2dService {
     }
 
     let orderStatus = null;
-    if(credit_limit_info?.credit_limit_approval_request === true){
+    if (credit_limit_info?.credit_limit_approval_request === true) {
       orderStatus = ORDER_STAGES.credit_limit_approval_stage;
-    }else{
+
+      // send notification to sales lead for credit limit approval
+      try {
+        const salesLeadIdResult = await pool.query(
+          `SELECT id FROM users WHERE role = 'Sales Executive Lead' AND department = 'Sales'`,
+        );
+
+        const salesLeadId = salesLeadIdResult.rows[0].id;
+
+        if (!salesLeadId) {
+          throw new Error("Sales Executive Lead not found");
+        }
+
+        const notif = await createNotification(
+          salesLeadId,
+          `Sale Order for ${client_name} requires your approval for credit limit.`,
+          "credit_limit_approval_request_notification",
+        );
+        emitToUser(salesLeadId, "new_notification", notif);
+      } catch (error) {
+        console.log("error in sending notification to sales lead: ", error);
+      }
+
+      // send notification to crm
+      try {
+        const crmId = getCrm.rows[0].crm;
+
+        const notif = await createNotification(
+          crmId,
+          `Sale Order for ${client_name} is created and requires credit limit approval from sales lead.`,
+          "credit_limit_approval_request_notification_to_crm",
+        );
+        emitToUser(crmId, "new_notification", notif);
+      } catch (error) {
+        console.log("error in sending notification to crm: ", error);
+      }
+    } else {
       orderStatus = ORDER_STAGES.so_generation_stage;
+
+      // send notification to sale order generator executive
+      try {
+        const getSoGenerationExecutiveId = await pool.query(
+          `SELECT id FROM users WHERE role = 'Sale Order Executive' AND department = 'Accounts'`,
+        );
+
+        const soGenerationExecutiveId = getSoGenerationExecutiveId.rows[0].id;
+
+        if (!soGenerationExecutiveId) {
+          throw new Error("Sales Executive not found");
+        }
+
+        const notif = await createNotification(
+          soGenerationExecutiveId,
+          `Please create SO for ${client_name}.`,
+          "so_generation_notification",
+        );
+        emitToUser(soGenerationExecutiveId, "new_notification", notif);
+      } catch (error) {
+        console.log("error while sending notification: ", error);
+      }
+
+      // send notification to crm
+      try {
+        try {
+          const crmId = getCrm.rows[0].crm;
+
+          const notif = await createNotification(
+            crmId,
+            `Sale Order for ${client_name} is created and sent to sale order generator executive.`,
+            "so_generation_notification_to_crm",
+          );
+          emitToUser(crmId, "new_notification", notif);
+        } catch (error) {
+          console.log("error in sending notification to crm: ", error);
+        }
+      } catch (error) {
+        console.log("error in sending notification to crm: ", error);
+      }
     }
 
     const query = `
@@ -61,7 +139,7 @@ class O2dService {
       userId,
       userId,
       credit_limit_info,
-      orderStatus
+      orderStatus,
     ];
 
     const { rows } = await pool.query(query, values);
@@ -412,22 +490,114 @@ class O2dService {
 
   async approveCreditLimitExceededSale(body, userId) {
     try {
-      const { order_id } = body;
+      const { order_id, credit_limit_request_approval_status } = body;
 
       if (!order_id) {
         throw new Error("Order ID is required");
       }
 
-      const approveQuery = `
+      let soGenerationStage = "";
+
+      const sendNotificationToCrm = async (order_id) => {
+        try {
+          const crmIdResult = await pool.query(
+            `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+            [order_id],
+          );
+
+          if (
+            crmIdResult.rows.length === 0 ||
+            crmIdResult.rows[0].crm === null
+          ) {
+            throw new Error("Please Assign CRM First");
+          }
+          const crmId = crmIdResult.rows[0].crm;
+
+          const notif = await createNotification(
+            crmId,
+            `Credit Limit Request for Order ID: ${order_id} has been ${credit_limit_request_approval_status ? "approved" : "rejected"} by Sales Lead.`,
+            "credit_limit_request_result_notification_to_crm",
+          );
+          emitToUser(crmId, "new_notification", notif);
+        } catch (error) {
+          console.log("error while sending notification to crm: ", error);
+        }
+      };
+
+      const sendNotificationToSoExecutive = async (order_id) => {
+        try {
+          try {
+            const getSoGenerationExecutiveId = await pool.query(
+              `SELECT id FROM users WHERE role = 'Sale Order Executive' AND department = 'Accounts'`,
+            );
+
+            const soGenerationExecutiveId =
+              getSoGenerationExecutiveId.rows[0].id;
+
+            if (!soGenerationExecutiveId) {
+              throw new Error("Sales Executive not found");
+            }
+
+            const notif = await createNotification(
+              soGenerationExecutiveId,
+              `Please create SO for Order ID: ${order_id}.`,
+              "so_generation_notification",
+            );
+            emitToUser(soGenerationExecutiveId, "new_notification", notif);
+          } catch (error) {
+            console.log("error while sending notification: ", error);
+          }
+        } catch (error) {
+          console.log(
+            "error while sending notification to so executive: ",
+            error,
+          );
+        }
+      };
+
+      if (credit_limit_request_approval_status === true) {
+        soGenerationStage = ORDER_STAGES.so_generation_stage;
+
+        const approveQuery = `
         UPDATE sales_orders
         SET credit_limit_info = COALESCE(credit_limit_info, '{}'::jsonb)
-            || jsonb_build_object('credit_limit_request_approved_at', now())
+            || jsonb_build_object('credit_limit_request_approved_at', now(), 'credit_limit_request_approval_status', true),
+            order_status = $2
         WHERE id = $1
         RETURNING *;
       `;
 
-      const { rows } = await pool.query(approveQuery, [order_id]);
-      return rows[0] || null;
+        const { rows } = await pool.query(approveQuery, [
+          order_id,
+          soGenerationStage,
+        ]);
+
+        sendNotificationToCrm(order_id);
+        sendNotificationToSoExecutive(order_id);
+
+        return rows[0] || null;
+      } else {
+        soGenerationStage = ORDER_STAGES.order_completed_stage;
+
+        const rejectQuery = `
+        UPDATE sales_orders
+        SET credit_limit_info = COALESCE(credit_limit_info, '{}'::jsonb)
+            || jsonb_build_object('credit_limit_request_approved_at', now(), 'credit_limit_request_approval_status', false),
+            order_status = $2
+        WHERE id = $1
+        RETURNING *;
+      `;
+
+        const { rows } = await pool.query(rejectQuery, [
+          order_id,
+          soGenerationStage,
+        ]);
+
+        sendNotificationToCrm(order_id);
+
+        return rows[0] || null;
+      }
     } catch (error) {
       console.log("error in approving credit limit exceeded sale: ", error);
       throw error;
@@ -547,12 +717,15 @@ class O2dService {
       // Extract the crmId (defaulting to null if the record isn't found)
       const crmId = crmResult.rows[0].crm;
 
+      const soGenerationComplete = ORDER_STAGES.so_generation_completed_stage;
+
       const query = `
         UPDATE public.sales_orders
         SET sale_order_generation = COALESCE(sale_order_generation, '{}'::jsonb) || jsonb_build_object(
             'so_order_completed_at', now(),
             'document_url', $3::text
         ),
+        order_status = $5,
         assigned_to = $4,
         updated_at = now(),
         updated_by = $2
@@ -560,11 +733,23 @@ class O2dService {
         RETURNING *;
       `;
 
+      try {
+        const notif = await createNotification(
+          crmId,
+          `Sale Order for Order ID: ${id} is created from Accounts Team!`,
+          "so_generation_completion_notification",
+        );
+        emitToUser(crmId, "new_notification", notif);
+      } catch (error) {
+        console.log("error while sending notification: ", error);
+      }
+
       const { rows } = await pool.query(query, [
         id,
         userId,
         document_url,
         crmId,
+        soGenerationComplete,
       ]);
       return rows[0];
     } catch (error) {
@@ -594,7 +779,7 @@ class O2dService {
         SELECT so.* FROM public.sales_orders so
         INNER JOIN public.customers c ON so.client_name = c.company_name
         WHERE c.crm = $1 
-          AND so.sale_order_generation->>'sent_for_so' = 'true' 
+          -- AND so.sale_order_generation->>'sent_for_so' = 'true' 
           -- AND so.sale_order_generation->>'so_order_completed_at' IS NOT NULL 
         ORDER BY so.id DESC;
       `;
@@ -677,8 +862,41 @@ class O2dService {
       let assignToStr = ``;
 
       if (invoice_completed_at) {
+        // const invoiceGenerationCompletedStage = ORDER_STAGES.invoice_generation_completed_stage;
+        const thankYouAndIntimationStage =
+          ORDER_STAGES.thank_you_and_intimation_stage;
         currentDispatchInfo.invoice_completed_at = invoice_completed_at;
-        assignToStr = `,assigned_to = (SELECT crm FROM public.customers WHERE company_name = public.sales_orders.client_name OR public.sales_orders.client_name::text = ANY(child_companies) LIMIT 1)`;
+        assignToStr = `,assigned_to = (SELECT crm FROM public.customers WHERE company_name = public.sales_orders.client_name OR public.sales_orders.client_name::text = ANY(child_companies) LIMIT 1), order_status = '${thankYouAndIntimationStage}'`;
+
+        const sendNotificationToCrm = async (order_id) => {
+          try {
+            const crmIdResult = await pool.query(
+              `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+              [order_id],
+            );
+
+            if (
+              crmIdResult.rows.length === 0 ||
+              crmIdResult.rows[0].crm === null
+            ) {
+              throw new Error("Please Assign CRM First");
+            }
+            const crmId = crmIdResult.rows[0].crm;
+
+            const notif = await createNotification(
+              crmId,
+              `Invoice & Dispatch Phase Completed for Order ID: ${orderId}.`,
+              "invoice_and_dispatch_completed_notification_to_crm",
+            );
+            emitToUser(crmId, "new_notification", notif);
+          } catch (error) {
+            console.log("error while sending notification to crm: ", error);
+          }
+        };
+
+
+        sendNotificationToCrm(orderId);
       }
 
       // If new invoices are provided, append them to the existing array
@@ -744,16 +962,46 @@ class O2dService {
 
       const vehicleExecutiveId = getVehicleExecutiveId.rows[0].id;
 
+      if (!vehicleExecutiveId) {
+        throw new Error("Vehicle Executive not found");
+      }
+
+      const vehicleArrangeMentStage = ORDER_STAGES.vehicle_arrangement_stage;
+
+      const sendNotificationToVehicleExecutive = async (order_id) => {
+        try {
+          const notif = await createNotification(
+            vehicleExecutiveId,
+            `Please Arrange Vehicle for Order ID: ${order_id}.`,
+            "vehicle_arrangement_request_notification",
+          );
+          emitToUser(vehicleExecutiveId, "new_notification", notif);
+        } catch (error) {
+          console.log(
+            "error while sending notification to vehicle executive: ",
+            error,
+          );
+        }
+      };
+
       // FIX 2: Correct spelling of COALESCE and assign it to the 'vehicle_arrangement' column
       const query = `
       UPDATE public.sales_orders
-      SET assigned_to = $2, 
+      SET assigned_to = $2,
+          order_status = $3,
           vehicle_arrangement = COALESCE(vehicle_arrangement, '{}'::jsonb) || jsonb_build_object('assigned_to_vehicle_executive', true::boolean)
       WHERE id = $1
       RETURNING *;
     `;
 
-      const { rows } = await pool.query(query, [id, vehicleExecutiveId]);
+      const { rows } = await pool.query(query, [
+        id,
+        vehicleExecutiveId,
+        vehicleArrangeMentStage,
+      ]);
+
+      sendNotificationToVehicleExecutive(id);
+
       return rows[0];
     } catch (error) {
       console.error("Error in assigning to vehicle executive: ", error);
@@ -793,12 +1041,43 @@ class O2dService {
 
   async markAsDeliveredByTransportExecutive(id, userId) {
     try {
+      const vehicleArrangementCompletedStage =
+        ORDER_STAGES.vehicle_arrangement_completed_stage;
+
+      const sendNotificationToCrm = async (order_id) => {
+        try {
+          const crmIdResult = await pool.query(
+            `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+            [order_id],
+          );
+
+          if (
+            crmIdResult.rows.length === 0 ||
+            crmIdResult.rows[0].crm === null
+          ) {
+            throw new Error("Please Assign CRM First");
+          }
+          const crmId = crmIdResult.rows[0].crm;
+
+          const notif = await createNotification(
+            crmId,
+            `Vehicle has been arranged for Order ID: ${order_id}.`,
+            "vehicle_arrangement_completed_notification_to_crm",
+          );
+          emitToUser(crmId, "new_notification", notif);
+        } catch (error) {
+          console.log("error while sending notification to crm: ", error);
+        }
+      };
+
       const query = `
         UPDATE public.sales_orders
         SET 
           vehicle_arrangement = COALESCE(vehicle_arrangement, '{}'::jsonb) || jsonb_build_object('actual_deliver_date', CURRENT_DATE),
           updated_at = now(),
           updated_by = $2,
+          order_status = $3,
           assigned_to = (
             SELECT crm 
             FROM public.customers 
@@ -810,7 +1089,14 @@ class O2dService {
         RETURNING *;
       `;
 
-      const { rows } = await pool.query(query, [id, userId]);
+      const { rows } = await pool.query(query, [
+        id,
+        userId,
+        vehicleArrangementCompletedStage,
+      ]);
+
+      sendNotificationToCrm(id);
+
       return rows[0];
     } catch (error) {
       console.error(
@@ -835,14 +1121,21 @@ class O2dService {
 
       const invoiceExecutiveId = getInvoiceExecutiveId.rows[0].id;
 
+      const invoiceGenertionStage = ORDER_STAGES.invoice_generation_stage;
+
       const query = `
         UPDATE public.sales_orders
-        SET invoice_and_dispatch = COALESCE(invoice_and_dispatch, '{}'::jsonb) || jsonb_build_object('assign_to', $2::text)
+        SET invoice_and_dispatch = COALESCE(invoice_and_dispatch, '{}'::jsonb) || jsonb_build_object('assign_to', $2::text),
+        order_status = $3
         WHERE id = $1
         RETURNING *;
       `;
 
-      const { rows } = await pool.query(query, [id, invoiceExecutiveId]);
+      const { rows } = await pool.query(query, [
+        id,
+        invoiceExecutiveId,
+        invoiceGenertionStage,
+      ]);
       return rows[0];
     } catch (error) {
       console.error("Error in assigning order to invoice executive: ", error);
@@ -855,14 +1148,18 @@ class O2dService {
       // We update the specific order, injecting the JSON payload.
       // We keep the assign_to check for authorization and the IS NULL check
       // to prevent overwriting an already completed order.
+
+      const completedStage = ORDER_STAGES.order_completed_stage;
+
       const query = `
       UPDATE public.sales_orders
-      SET intimation_thankyou = $1
+      SET intimation_thankyou = $1,
+      order_status = $3
       WHERE id = $2 
       RETURNING *;
     `;
 
-      const values = [payload, orderId];
+      const values = [payload, orderId, completedStage];
       const { rows } = await pool.query(query, values);
 
       // Return the updated row, or null if no row was updated

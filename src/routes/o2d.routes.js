@@ -40,12 +40,12 @@ router.get('/get-completed-so-generation-request-data', authMiddleware, o2dContr
 // crm phase
 router.get('/get-assigned-so-by-crm', authMiddleware, o2dController.getAssignedSOByCRM);
 router.post('/update-dispatch-information', authMiddleware, o2dController.updateDispatchInformation);
+router.post('/assign-to-vehicle-executive', authMiddleware, o2dController.assignToVehicleExecutive);
 router.post('/assign-order-to-invoice-executive', authMiddleware, o2dController.assignOrderToInvoiceExecutive);
 router.post('/intimation-and-thank-you-data-update', authMiddleware, o2dController.intimationAndThankYouData);
 
 
 // vehicle arrange phase
-router.post('/assign-to-vehicle-executive', authMiddleware, o2dController.assignToVehicleExecutive);
 router.get('/get-vehicle-executive-assigned-data', authMiddleware, o2dController.getVehicleExecutiveAssignedData);
 router.get('/vehicle-executive-work-history', authMiddleware, o2dController.getVehicleExecutiveWorkHistory);
 router.post('/mark-as-delivered-by-transport-executive', authMiddleware, o2dController.markAsDeliveredByTransportExecutive);
