@@ -1197,7 +1197,7 @@ class O2dService {
 
       const query = `
         UPDATE public.sales_orders
-        SET invoice_and_dispatch = COALESCE(invoice_and_dispatch, '{}'::jsonb) || jsonb_build_object(
+        SET payment_status = COALESCE(payment_status, '{}'::jsonb) || jsonb_build_object(
             'payment_status', $2::boolean,
             'payment_status_marked_at', $3::timestamp,
             'payment_done_at', $4::timestamp
