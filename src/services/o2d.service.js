@@ -507,7 +507,6 @@ class O2dService {
             [order_id],
           );
 
-
           if (
             crmIdResult.rows.length === 0 ||
             crmIdResult.rows[0].sales_person === null
@@ -523,7 +522,10 @@ class O2dService {
           );
           emitToUser(salesPersonId, "new_notification", notif);
         } catch (error) {
-          console.log("error while sending notification to sales executive: ", error);
+          console.log(
+            "error while sending notification to sales executive: ",
+            error,
+          );
         }
       };
 
@@ -899,7 +901,6 @@ class O2dService {
           }
         };
 
-
         sendNotificationToCrm(orderId);
       }
 
@@ -1043,7 +1044,7 @@ class O2dService {
     }
   }
 
-  async markAsDeliveredByTransportExecutive(id, userId) {
+  async markAsDeliveredByTransportExecutive(id, userId, body) {
     try {
       const vehicleArrangementCompletedStage =
         ORDER_STAGES.vehicle_arrangement_completed_stage;
@@ -1064,6 +1065,9 @@ class O2dService {
           }
           const crmId = crmIdResult.rows[0].crm;
 
+          // Note: "vehicle_arrangement_completed_notification_to_crm" is exactly 49 characters long.
+          // If your notification type column is still limited to VARCHAR(50) from the previous error,
+          // this will pass, but leaves no room for future adjustments.
           const notif = await createNotification(
             crmId,
             `Vehicle has been arranged for Order ID: ${order_id}.`,
@@ -1075,10 +1079,20 @@ class O2dService {
         }
       };
 
+      // 1. Extract only the valid additional fields from the body
+      const additionalVehicleData = {};
+      if (body.vehicle_no) additionalVehicleData.vehicle_no = body.vehicle_no;
+      if (body.bilty_url) additionalVehicleData.bilty_url = body.bilty_url;
+      if (body.loaded_proof_urls)
+        additionalVehicleData.loaded_proof_urls = body.loaded_proof_urls;
+
+      // 2. Merge actual_deliver_date with the dynamic JSON payload ($4)
       const query = `
         UPDATE public.sales_orders
         SET 
-          vehicle_arrangement = COALESCE(vehicle_arrangement, '{}'::jsonb) || jsonb_build_object('actual_deliver_date', CURRENT_DATE),
+          vehicle_arrangement = COALESCE(vehicle_arrangement, '{}'::jsonb) 
+            || jsonb_build_object('actual_deliver_date', CURRENT_DATE)
+            || $4::jsonb,
           updated_at = now(),
           updated_by = $2,
           order_status = $3,
@@ -1093,10 +1107,14 @@ class O2dService {
         RETURNING *;
       `;
 
+      console.log("additionalVehicleData: ", additionalVehicleData);
+
+      // 3. Stringify the dynamic object so pg parses it cleanly as JSONB
       const { rows } = await pool.query(query, [
         id,
         userId,
         vehicleArrangementCompletedStage,
+        JSON.stringify(additionalVehicleData),
       ]);
 
       sendNotificationToCrm(id);

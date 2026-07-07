@@ -491,6 +491,7 @@ class O2dController {
       const updatedOrder = await o2dService.markAsDeliveredByTransportExecutive(
         id,
         userId,
+        req.body
       );
       return res.status(200).json({
         status: "success",
