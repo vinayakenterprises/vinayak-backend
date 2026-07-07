@@ -420,7 +420,10 @@ class O2dService {
         const creditLimit = clientCreditLimit.rows[0].credit_limit;
 
         const totalPendingOrder = await pool.query(
-          `select sum(quantity_mt) as total_pending_quantity from sales_orders where client_name = $1 and payment_status is null`,
+          `SELECT sum(quantity_mt) AS total_pending_quantity 
+          FROM sales_orders 
+          WHERE client_name = $1 
+            AND (payment_status is null or (payment_status->>'payment_status')::boolean = false)`,
           [client_name],
         );
         const totalPendingOrderQuantity =
