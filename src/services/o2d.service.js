@@ -1107,8 +1107,6 @@ class O2dService {
         RETURNING *;
       `;
 
-      console.log("additionalVehicleData: ", additionalVehicleData);
-
       // 3. Stringify the dynamic object so pg parses it cleanly as JSONB
       const { rows } = await pool.query(query, [
         id,
@@ -1188,6 +1186,40 @@ class O2dService {
       return rows.length ? rows[0] : null;
     } catch (error) {
       console.error("Error inserting intimation and thank you data: ", error);
+      throw error;
+    }
+  }
+
+  async updatePaymentInformation(id, userId, body) {
+    try {
+      const { payment_status, payment_status_marked_at, payment_done_at } =
+        body;
+
+      const query = `
+        UPDATE public.sales_orders
+        SET invoice_and_dispatch = COALESCE(invoice_and_dispatch, '{}'::jsonb) || jsonb_build_object(
+            'payment_status', $2::boolean,
+            'payment_status_marked_at', $3::timestamp,
+            'payment_done_at', $4::timestamp
+        ),
+        updated_at = now(),
+        updated_by = $1
+        WHERE id = $5
+        RETURNING *;
+      `;
+
+      const values = [
+        userId,
+        payment_status,
+        payment_status_marked_at || null,
+        payment_done_at || null,
+        id,
+      ];
+
+      const { rows } = await pool.query(query, values);
+      return rows[0];
+    } catch (error) {
+      console.error("Error in updating payment information: ", error);
       throw error;
     }
   }
