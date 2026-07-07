@@ -19,6 +19,7 @@ class O2dService {
       sales_person_name,
       assigned_to,
       credit_limit_info,
+      vehicle_type
     } = data;
 
     const getCrm = await pool.query(
@@ -117,9 +118,9 @@ class O2dService {
       INSERT INTO public.sales_orders (
         client_name, rate, ex_works_rate, freight, quantity_mt, rod_size,
         delivery_date, bill_to, ship_to, dispatch_type, sales_person_name,
-        assigned_to, created_by, updated_by, credit_limit_info, order_status
+        assigned_to, created_by, updated_by, credit_limit_info, order_status, vehicle_type
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
       ) RETURNING *;
     `;
 
@@ -140,6 +141,7 @@ class O2dService {
       userId,
       credit_limit_info,
       orderStatus,
+      vehicle_type,
     ];
 
     const { rows } = await pool.query(query, values);
