@@ -1002,7 +1002,7 @@ class O2dService {
           vehicle_arrangement = COALESCE(vehicle_arrangement, '{}'::jsonb) || jsonb_build_object('assigned_to_vehicle_executive', true::boolean)
       WHERE id = $1
       RETURNING *;
-    `;
+      `;
 
       const { rows } = await pool.query(query, [
         id,
@@ -1146,12 +1146,17 @@ class O2dService {
 
       const invoiceExecutiveId = getInvoiceExecutiveId.rows[0].id;
 
+      console.log("Invoice Executive ID: ", invoiceExecutiveId);
+
       const invoiceGenertionStage = ORDER_STAGES.invoice_generation_stage;
 
       const query = `
         UPDATE public.sales_orders
         SET invoice_and_dispatch = COALESCE(invoice_and_dispatch, '{}'::jsonb) || jsonb_build_object('assign_to', $2::text),
-        order_status = $3
+        order_status = $3,
+        assigned_to = $2::integer,
+        updated_at = now(),
+        updated_by = $4
         WHERE id = $1
         RETURNING *;
       `;
@@ -1160,7 +1165,25 @@ class O2dService {
         id,
         invoiceExecutiveId,
         invoiceGenertionStage,
+        userId
       ]);
+
+
+      if(invoiceExecutiveId) {
+        try{
+          const notif = await createNotification(
+            invoiceExecutiveId,
+            `Order with Order ID: ${id} has been assigned to You.`,
+            "order_assigned_to_invoice_executive",
+          );
+          emitToUser(invoiceExecutiveId, "new_notification", notif);
+        }catch(error) {
+          console.log("error in sending notification to invoice executive: ", error);
+        }
+      }
+
+      
+
       return rows[0];
     } catch (error) {
       console.error("Error in assigning order to invoice executive: ", error);
