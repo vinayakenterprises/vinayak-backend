@@ -19,7 +19,7 @@ class O2dService {
       sales_person_name,
       assigned_to,
       credit_limit_info,
-      vehicle_type
+      vehicle_type,
     } = data;
 
     const getCrm = await pool.query(
@@ -213,10 +213,36 @@ class O2dService {
     return rows[0];
   }
 
-  async retrieveAllCustomersList() {
-    const query = "SELECT * FROM public.customers ORDER BY id DESC";
-    const { rows } = await pool.query(query);
-    return rows;
+  async retrieveAllCustomersList(userId) {
+    try {
+      const query = `SELECT 
+            c.*,
+            COALESCE(pending.total_pending_quantity, 0) AS total_pending_quantity,
+            CASE 
+                WHEN c.credit_limit = 0 THEN 0
+                ELSE c.credit_limit - COALESCE(pending.total_pending_quantity, 0)
+            END AS remaining_credit_limit
+        FROM 
+            public.customers c
+        LEFT JOIN LATERAL (
+            SELECT sum(quantity_mt) AS total_pending_quantity
+            FROM sales_orders so
+            WHERE 
+                (so.client_name = c.company_name OR so.client_name = ANY(c.child_companies))
+                AND (so.payment_status IS NULL OR (so.payment_status->>'payment_status')::boolean = false)
+        ) pending ON true
+        WHERE 
+            c.sales_person = $1
+        ORDER BY 
+            c.id DESC;`;
+
+            
+      const { rows } = await pool.query(query, [userId]);
+      return rows;
+    } catch (error) {
+      console.log("error in retrieving customer list: ", error);
+      throw error;
+    }
   }
 
   async retrieveCustomerDetailsById(id) {
@@ -1165,24 +1191,24 @@ class O2dService {
         id,
         invoiceExecutiveId,
         invoiceGenertionStage,
-        userId
+        userId,
       ]);
 
-
-      if(invoiceExecutiveId) {
-        try{
+      if (invoiceExecutiveId) {
+        try {
           const notif = await createNotification(
             invoiceExecutiveId,
             `Order with Order ID: ${id} has been assigned to You.`,
             "order_assigned_to_invoice_executive",
           );
           emitToUser(invoiceExecutiveId, "new_notification", notif);
-        }catch(error) {
-          console.log("error in sending notification to invoice executive: ", error);
+        } catch (error) {
+          console.log(
+            "error in sending notification to invoice executive: ",
+            error,
+          );
         }
       }
-
-      
 
       return rows[0];
     } catch (error) {

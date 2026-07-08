@@ -57,7 +57,10 @@ class O2dController {
 
   retrieveAllCustomersList = async (req, res, next) => {
     try {
-      const customersList = await o2dService.retrieveAllCustomersList();
+
+      const userId = req.user?.id || null;
+
+      const customersList = await o2dService.retrieveAllCustomersList(userId);
 
       return res.status(200).json({
         status: "success",

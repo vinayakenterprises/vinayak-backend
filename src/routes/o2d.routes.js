@@ -11,7 +11,7 @@ router.post('/create-new-customer', authMiddleware, o2dController.createNewCusto
 router.get('/retrieve-all-customers', authMiddleware, o2dController.retrieveAllCustomersList);
 router.get('/retrieve-customer-by-id/:id', authMiddleware, o2dController.retrieveCustomerDetailsById);
 router.put('/update-existing-customer/:id', authMiddleware, o2dController.updateExistingCustomerDetails);
-router.delete('/remove-customer-record/:id', authMiddleware, o2dController.removeCustomerRecordById);
+// router.delete('/remove-customer-record/:id', authMiddleware, o2dController.removeCustomerRecordById); - todo
 
 
 // sale order related
