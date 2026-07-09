@@ -6,6 +6,7 @@ import tenderRoutes from './tender.routes.js';
 import notificationRoutes from './notification.routes.js';
 import profileRoutes from './profile.routes.js';
 import o2dRoutes from './o2d.routes.js';
+import imsRoutes from './ims.routes.js';
 
 const router = Router();
 
@@ -17,5 +18,6 @@ router.use('/tenders', tenderRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/profile', profileRoutes);
 router.use('/o2d', o2dRoutes);
+router.use('/ims', imsRoutes);
 
 export default router;
