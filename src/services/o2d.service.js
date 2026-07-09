@@ -236,7 +236,7 @@ class O2dService {
         ORDER BY 
             c.id DESC;`;
 
-            
+
       const { rows } = await pool.query(query, [userId]);
       return rows;
     } catch (error) {
@@ -1274,6 +1274,61 @@ class O2dService {
       return rows[0];
     } catch (error) {
       console.error("Error in updating payment information: ", error);
+      throw error;
+    }
+  }
+
+  async updateDeliveryAndWeightInformation(id, userId, body) {
+    try {
+
+      console.log("Received body for updateDeliveryAndWeightInformation: ", body);
+
+      const {
+        actual_delivery_timestamp,
+        delivery_status,
+        weight_difference,
+        settlement,
+      } = body;
+
+      // Dynamically build the payload so we only update provided fields.
+      // This prevents overwriting existing data with nulls during partial updates.
+      const deliveryPayload = {};
+
+      if (actual_delivery_timestamp !== undefined) {
+        deliveryPayload.actual_delivery_timestamp = actual_delivery_timestamp;
+      }
+      if (delivery_status !== undefined) {
+        deliveryPayload.delivery_status = delivery_status;
+      }
+      if (weight_difference !== undefined) {
+        // Map the input variable to the specific DB column key and ensure it's a float
+        deliveryPayload.weight_difference_in_kg = parseFloat(weight_difference);
+      }
+      if (settlement !== undefined) {
+        deliveryPayload.settlement = settlement;
+      }
+
+      const query = `
+        UPDATE public.sales_orders
+        SET delivery_and_weight = COALESCE(delivery_and_weight, '{}'::jsonb) || $2::jsonb,
+            updated_at = now(),
+            updated_by = $1
+        WHERE id = $3
+        RETURNING *;
+      `;
+
+      const values = [
+        userId,
+        JSON.stringify(deliveryPayload),
+        id,
+      ];
+
+      const { rows } = await pool.query(query, values);
+      
+      return rows.length ? rows[0] : null;
+
+    } catch (error) {
+      console.error("error in updating delivery and weight information: ", error);
       throw error;
     }
   }

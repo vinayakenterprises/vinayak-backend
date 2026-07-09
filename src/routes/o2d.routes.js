@@ -44,6 +44,7 @@ router.post('/assign-to-vehicle-executive', authMiddleware, o2dController.assign
 router.post('/assign-order-to-invoice-executive', authMiddleware, o2dController.assignOrderToInvoiceExecutive);
 router.post('/intimation-and-thank-you-data-update', authMiddleware, o2dController.intimationAndThankYouData);
 router.post('/update-payment-information', authMiddleware, o2dController.updatePaymentInformation);
+router.post('/update-delivery-and-weight-information', authMiddleware, o2dController.updateDeliveryAndWeightInformation);
 
 
 // vehicle arrange phase
