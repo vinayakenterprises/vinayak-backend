@@ -458,6 +458,7 @@ class ImsService {
 
             // Log transaction only if stock changed
             if (difference !== 0) {
+                // 1. Log manual adjustment audit log
                 await client.query(
                     `
                 INSERT INTO ims_inventory_transactions
@@ -465,8 +466,6 @@ class ImsService {
                     material_id,
                     transaction_type,
                     quantity,
-                    previous_stock,
-                    current_stock,
                     created_by
                 )
                 VALUES
@@ -474,19 +473,52 @@ class ImsService {
                     $1,
                     'MANUAL_ADJUSTMENT',
                     $2,
-                    $3,
-                    $4,
-                    $5
+                    $3
                 );
                 `,
                     [
                         Number(material_id),
                         difference,
-                        previousStock,
-                        currentStock,
                         updated_by
                     ]
                 );
+
+                // 2. Log corresponding flow transaction for the current date
+                let flowType = null;
+                if (status === 'AVAILABLE') {
+                    flowType = 'QA_APPROVED';
+                } else if (status === 'PENDING_QUALITY') {
+                    flowType = 'RECEIVED';
+                } else if (status === 'NOT_OK') {
+                    flowType = 'QA_REJECTED';
+                }
+
+                if (flowType) {
+                    await client.query(
+                        `
+                    INSERT INTO ims_inventory_transactions
+                    (
+                        material_id,
+                        transaction_type,
+                        quantity,
+                        created_by
+                    )
+                    VALUES
+                    (
+                        $1,
+                        $2,
+                        $3,
+                        $4
+                    );
+                    `,
+                        [
+                            Number(material_id),
+                            flowType,
+                            difference,
+                            updated_by
+                        ]
+                    );
+                }
             }
 
             await client.query("COMMIT");
