@@ -1246,32 +1246,69 @@ class O2dService {
 
   async updatePaymentInformation(id, userId, body) {
     try {
-      const { payment_status, payment_status_marked_at, payment_done_at } =
-        body;
+      const {
+        payment_status,
+        payment_status_marked_at,
+        payment_done_at,
+        under_one_lakh,
+        is_interest_note_issue,
+        interest_note_issued_on_timestamp
+        // cn_or_dn_issue_status,
+        // cn_or_dn_issue_timestamp,
+      } = body;
+
+      // Dynamically build the payload so we only update provided fields.
+      const paymentPayload = {};
+
+      if (payment_status !== undefined) {
+        paymentPayload.payment_status = payment_status;
+      }
+      if (payment_status_marked_at !== undefined) {
+        paymentPayload.payment_status_marked_at = payment_status_marked_at;
+      }
+      if (payment_done_at !== undefined) {
+        paymentPayload.payment_done_at = payment_done_at;
+      }
+      if (under_one_lakh !== undefined) {
+        paymentPayload.under_one_lakh = under_one_lakh;
+      }
+      if (is_interest_note_issue !== undefined) {
+        paymentPayload.is_interest_note_issue = is_interest_note_issue;
+      }
+      if (interest_note_issued_on_timestamp !== undefined) {
+        paymentPayload.interest_note_issued_on_timestamp = interest_note_issued_on_timestamp;
+      }
+
+      // if (cn_or_dn_issue_status !== undefined) {
+      //   paymentPayload.cn_or_dn_issue_status = cn_or_dn_issue_status;
+      // }
+      // if (cn_or_dn_issue_timestamp !== undefined) {
+      //   paymentPayload.cn_or_dn_issue_timestamp = cn_or_dn_issue_timestamp;
+      // }
+
+      // Optional: Prevent database call if payload is empty
+      if (Object.keys(paymentPayload).length === 0) {
+        throw new Error("No valid payment fields provided for update.");
+      }
 
       const query = `
         UPDATE public.sales_orders
-        SET payment_status = COALESCE(payment_status, '{}'::jsonb) || jsonb_build_object(
-            'payment_status', $2::boolean,
-            'payment_status_marked_at', $3::timestamp,
-            'payment_done_at', $4::timestamp
-        ),
-        updated_at = now(),
-        updated_by = $1
-        WHERE id = $5
+        SET payment_status = COALESCE(payment_status, '{}'::jsonb) || $2::jsonb,
+            updated_at = now(),
+            updated_by = $1
+        WHERE id = $3
         RETURNING *;
       `;
 
       const values = [
         userId,
-        payment_status,
-        payment_status_marked_at || null,
-        payment_done_at || null,
+        JSON.stringify(paymentPayload),
         id,
       ];
 
       const { rows } = await pool.query(query, values);
       return rows[0];
+      
     } catch (error) {
       console.error("Error in updating payment information: ", error);
       throw error;
@@ -1288,6 +1325,8 @@ class O2dService {
         delivery_status,
         weight_difference,
         settlement,
+        cn_or_dn_issue_status,
+        cn_or_dn_issue_timestamp,
       } = body;
 
       // Dynamically build the payload so we only update provided fields.
@@ -1306,6 +1345,12 @@ class O2dService {
       }
       if (settlement !== undefined) {
         deliveryPayload.settlement = settlement;
+      }
+      if (cn_or_dn_issue_status !== undefined) {
+        deliveryPayload.cn_or_dn_issue_status = cn_or_dn_issue_status;
+      }
+      if (cn_or_dn_issue_timestamp !== undefined) {
+        deliveryPayload.cn_or_dn_issue_timestamp = cn_or_dn_issue_timestamp;
       }
 
       const query = `
