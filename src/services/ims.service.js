@@ -333,6 +333,13 @@ class ImsService {
                 WHERE material_id = $3 AND status = 'PENDING_QUALITY' AND is_deleted = FALSE
             `, [totalProcessed, updated_by, material_id]);
 
+            // Log corresponding flow transaction for the current date to reduce pending quality
+            await client.query(`
+                INSERT INTO ims_inventory_transactions (material_id, transaction_type, quantity, created_by)
+                VALUES ($1, 'RECEIVED', $2, $3)
+            `, [material_id, -Number(totalProcessed), updated_by]);
+
+
             if (approved_quantity > 0) {
                 await client.query(`
                     INSERT INTO ims_inventory (material_id, quantity, status, created_by, updated_by) 
