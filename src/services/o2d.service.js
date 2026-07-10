@@ -1322,7 +1322,6 @@ class O2dService {
   async updateDeliveryAndWeightInformation(id, userId, body) {
     try {
 
-      console.log("Received body for updateDeliveryAndWeightInformation: ", body);
 
       const {
         actual_delivery_timestamp,
@@ -1331,6 +1330,8 @@ class O2dService {
         settlement,
         cn_or_dn_issue_status,
         cn_or_dn_issue_timestamp,
+        quality_confirmation_status,
+        quality_confirmation_timestamp
       } = body;
 
       // Dynamically build the payload so we only update provided fields.
@@ -1355,6 +1356,12 @@ class O2dService {
       }
       if (cn_or_dn_issue_timestamp !== undefined) {
         deliveryPayload.cn_or_dn_issue_timestamp = cn_or_dn_issue_timestamp;
+      }
+      if (quality_confirmation_status !== undefined) {
+        deliveryPayload.quality_confirmation_status = quality_confirmation_status;
+      }
+      if (quality_confirmation_timestamp !== undefined) {
+        deliveryPayload.quality_confirmation_timestamp = quality_confirmation_timestamp;
       }
 
       const query = `
