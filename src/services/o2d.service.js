@@ -2,6 +2,7 @@ import pool from "../config/database.js";
 import { ORDER_STAGES } from "../utils/constants.js";
 import { emitToUser } from "../utils/socket.js";
 import { createNotification } from "./notification.service.js";
+import crypto from "node:crypto";
 
 class O2dService {
   async createSaleOrder(data, userId) {
@@ -235,7 +236,6 @@ class O2dService {
             c.sales_person = $1
         ORDER BY 
             c.id DESC;`;
-
 
       const { rows } = await pool.query(query, [userId]);
       return rows;
@@ -1253,7 +1253,7 @@ class O2dService {
         under_one_lakh,
         is_interest_note_issue,
         interest_note_issued_on_timestamp,
-        interest_note_collected_on_timestamp
+        interest_note_collected_on_timestamp,
         // cn_or_dn_issue_status,
         // cn_or_dn_issue_timestamp,
       } = body;
@@ -1277,10 +1277,12 @@ class O2dService {
         paymentPayload.is_interest_note_issue = is_interest_note_issue;
       }
       if (interest_note_issued_on_timestamp !== undefined) {
-        paymentPayload.interest_note_issued_on_timestamp = interest_note_issued_on_timestamp;
+        paymentPayload.interest_note_issued_on_timestamp =
+          interest_note_issued_on_timestamp;
       }
       if (interest_note_collected_on_timestamp !== undefined) {
-        paymentPayload.interest_note_collected_on_timestamp = interest_note_collected_on_timestamp;
+        paymentPayload.interest_note_collected_on_timestamp =
+          interest_note_collected_on_timestamp;
       }
 
       // if (cn_or_dn_issue_status !== undefined) {
@@ -1304,15 +1306,10 @@ class O2dService {
         RETURNING *;
       `;
 
-      const values = [
-        userId,
-        JSON.stringify(paymentPayload),
-        id,
-      ];
+      const values = [userId, JSON.stringify(paymentPayload), id];
 
       const { rows } = await pool.query(query, values);
       return rows[0];
-      
     } catch (error) {
       console.error("Error in updating payment information: ", error);
       throw error;
@@ -1321,8 +1318,6 @@ class O2dService {
 
   async updateDeliveryAndWeightInformation(id, userId, body) {
     try {
-
-
       const {
         actual_delivery_timestamp,
         delivery_status,
@@ -1331,7 +1326,7 @@ class O2dService {
         cn_or_dn_issue_status,
         cn_or_dn_issue_timestamp,
         quality_confirmation_status,
-        quality_confirmation_timestamp
+        quality_confirmation_timestamp,
       } = body;
 
       // Dynamically build the payload so we only update provided fields.
@@ -1358,10 +1353,12 @@ class O2dService {
         deliveryPayload.cn_or_dn_issue_timestamp = cn_or_dn_issue_timestamp;
       }
       if (quality_confirmation_status !== undefined) {
-        deliveryPayload.quality_confirmation_status = quality_confirmation_status;
+        deliveryPayload.quality_confirmation_status =
+          quality_confirmation_status;
       }
       if (quality_confirmation_timestamp !== undefined) {
-        deliveryPayload.quality_confirmation_timestamp = quality_confirmation_timestamp;
+        deliveryPayload.quality_confirmation_timestamp =
+          quality_confirmation_timestamp;
       }
 
       const query = `
@@ -1373,18 +1370,183 @@ class O2dService {
         RETURNING *;
       `;
 
-      const values = [
-        userId,
-        JSON.stringify(deliveryPayload),
-        id,
-      ];
+      const values = [userId, JSON.stringify(deliveryPayload), id];
 
       const { rows } = await pool.query(query, values);
-      
-      return rows.length ? rows[0] : null;
 
+      return rows.length ? rows[0] : null;
     } catch (error) {
-      console.error("error in updating delivery and weight information: ", error);
+      console.error(
+        "error in updating delivery and weight information: ",
+        error,
+      );
+      throw error;
+    }
+  }
+
+  async addRemarksToOrder(orderId, data, userId) {
+    try {
+      const { remark } = data;
+
+      if (!remark?.trim()) {
+        throw new Error("Remark is required");
+      }
+
+      const { rows } = await pool.query(
+        `
+      SELECT remarks
+      FROM sales_orders
+      WHERE id = $1
+      `,
+        [orderId],
+      );
+
+      if (!rows.length) {
+        throw new Error("Sales order not found");
+      }
+
+      const remarks = rows[0].remarks || [];
+
+      remarks.push({
+        id: crypto.randomUUID(),
+        remark,
+        created_at: new Date().toISOString(),
+        created_by: userId,
+        updated_at: null,
+      });
+
+      await pool.query(
+        `
+      UPDATE sales_orders
+      SET remarks = $1,
+          updated_by = $2,
+          updated_at = NOW()
+      WHERE id = $3
+      `,
+        [JSON.stringify(remarks), userId, orderId],
+      );
+
+      return remarks;
+    } catch (error) {
+      console.error("Error in addRemarksToOrder:", error);
+      throw error;
+    }
+  }
+
+  async getRemarksForOrder(orderId) {
+    try {
+      const { rows } = await pool.query(
+        `
+      SELECT remarks
+      FROM sales_orders
+      WHERE id = $1
+      `,
+        [orderId],
+      );
+
+      if (!rows.length) {
+        throw new Error("Sales order not found");
+      }
+
+      return rows[0].remarks || [];
+    } catch (error) {
+      console.error("Error in getRemarksForOrder:", error);
+      throw error;
+    }
+  }
+
+  async updateRemarksForOrder(orderId, remarkId, data, userId) {
+    try {
+      const { remark } = data;
+
+      if (!remark?.trim()) {
+        throw new Error("Remark is required");
+      }
+
+      const { rows } = await pool.query(
+        `
+      SELECT remarks
+      FROM sales_orders
+      WHERE id = $1
+      `,
+        [orderId],
+      );
+
+      if (!rows.length) {
+        throw new Error("Sales order not found");
+      }
+
+      const remarks = rows[0].remarks || [];
+
+      const index = remarks.findIndex((r) => r.id === remarkId);
+
+      if (index === -1) {
+        throw new Error("Remark not found");
+      }
+
+      remarks[index] = {
+        ...remarks[index],
+        remark,
+        updated_at: new Date().toISOString(),
+      };
+
+      await pool.query(
+        `
+      UPDATE sales_orders
+      SET remarks = $1,
+          updated_by = $2,
+          updated_at = NOW()
+      WHERE id = $3
+      `,
+        [JSON.stringify(remarks), userId, orderId],
+      );
+
+      return remarks[index];
+    } catch (error) {
+      console.error("Error in updateRemarksForOrder:", error);
+      throw error;
+    }
+  }
+
+  async deleteRemarksForOrder(orderId, remarkId, userId) {
+    try {
+      const { rows } = await pool.query(
+        `
+      SELECT remarks
+      FROM sales_orders
+      WHERE id = $1
+      `,
+        [orderId],
+      );
+
+      if (!rows.length) {
+        throw new Error("Sales order not found");
+      }
+
+      let remarks = rows[0].remarks || [];
+
+      const exists = remarks.some((r) => r.id === remarkId);
+
+      if (!exists) {
+        throw new Error("Remark not found");
+      }
+
+      remarks = remarks.filter((r) => r.id !== remarkId);
+
+      await pool.query(
+        `
+      UPDATE sales_orders
+      SET remarks = $1,
+          updated_by = $2,
+          updated_at = NOW()
+      WHERE id = $3
+      `,
+        [JSON.stringify(remarks), userId, orderId],
+      );
+
+      return remarks;
+    } catch (error) {
+      console.error("Error in deleteRemarksForOrder:", error);
       throw error;
     }
   }

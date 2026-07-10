@@ -45,6 +45,10 @@ router.post('/assign-order-to-invoice-executive', authMiddleware, o2dController.
 router.post('/intimation-and-thank-you-data-update', authMiddleware, o2dController.intimationAndThankYouData);
 router.post('/update-payment-information', authMiddleware, o2dController.updatePaymentInformation);
 router.post('/update-delivery-and-weight-information', authMiddleware, o2dController.updateDeliveryAndWeightInformation);
+router.post("/sale-orders/:id/remarks", authMiddleware, o2dController.addRemarksToOrder);
+router.get("/sale-orders/:id/remarks", authMiddleware, o2dController.getRemarksForOrder);
+router.put("/sale-orders/:id/remarks/:remarkId", authMiddleware, o2dController.updateRemarksForOrder);
+router.delete("/sale-orders/:id/remarks/:remarkId", authMiddleware, o2dController.deleteRemarksForOrder);
 
 
 // vehicle arrange phase

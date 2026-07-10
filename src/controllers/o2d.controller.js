@@ -20,10 +20,9 @@ class O2dController {
     try {
       const userId = req.user?.id || null;
 
-
       let clientName = await o2dService.getAllClientNamesList(userId);
 
-      if(!clientName){
+      if (!clientName) {
         clientName = [];
       }
 
@@ -57,7 +56,6 @@ class O2dController {
 
   retrieveAllCustomersList = async (req, res, next) => {
     try {
-
       const userId = req.user?.id || null;
 
       const customersList = await o2dService.retrieveAllCustomersList(userId);
@@ -494,7 +492,7 @@ class O2dController {
       const updatedOrder = await o2dService.markAsDeliveredByTransportExecutive(
         id,
         userId,
-        req.body
+        req.body,
       );
       return res.status(200).json({
         status: "success",
@@ -569,7 +567,6 @@ class O2dController {
     }
   };
 
-
   updatePaymentInformation = async (req, res, next) => {
     try {
       const { id } = req.body;
@@ -591,7 +588,6 @@ class O2dController {
     }
   };
 
-
   updateDeliveryAndWeightInformation = async (req, res, next) => {
     try {
       const { id } = req.body;
@@ -611,8 +607,84 @@ class O2dController {
     } catch (error) {
       next(error);
     }
-  }
+  };
 
+  addRemarksToOrder = async (req, res, next) => {
+    try {
+      const userId = req.user?.id;
+      const orderId = req.params.id;
+
+      const result = await o2dService.addRemarksToOrder(
+        orderId,
+        req.body,
+        userId,
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Remark added successfully",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getRemarksForOrder = async (req, res, next) => {
+    try {
+      const orderId = req.params.id;
+
+      const remarks = await o2dService.getRemarksForOrder(orderId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Remarks fetched successfully",
+        data: remarks,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateRemarksForOrder = async (req, res, next) => {
+    try {
+      const userId = req.user?.id;
+
+      const { id, remarkId } = req.params;
+
+      const result = await o2dService.updateRemarksForOrder(
+        id,
+        remarkId,
+        req.body,
+        userId,
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Remark updated successfully",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  deleteRemarksForOrder = async (req, res, next) => {
+    try {
+      const userId = req.user?.id;
+
+      const { id, remarkId } = req.params;
+
+      await o2dService.deleteRemarksForOrder(id, remarkId, userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Remark deleted successfully",
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
   getInvoiceGenerationRequestData = async (req, res, next) => {
     try {
