@@ -1252,7 +1252,8 @@ class O2dService {
         payment_done_at,
         under_one_lakh,
         is_interest_note_issue,
-        interest_note_issued_on_timestamp
+        interest_note_issued_on_timestamp,
+        interest_note_collected_on_timestamp
         // cn_or_dn_issue_status,
         // cn_or_dn_issue_timestamp,
       } = body;
@@ -1277,6 +1278,9 @@ class O2dService {
       }
       if (interest_note_issued_on_timestamp !== undefined) {
         paymentPayload.interest_note_issued_on_timestamp = interest_note_issued_on_timestamp;
+      }
+      if (interest_note_collected_on_timestamp !== undefined) {
+        paymentPayload.interest_note_collected_on_timestamp = interest_note_collected_on_timestamp;
       }
 
       // if (cn_or_dn_issue_status !== undefined) {
