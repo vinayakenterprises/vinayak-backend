@@ -984,6 +984,207 @@ class O2dService {
     }
   }
 
+  async createComplaintForSaleOrder(saleOrderId, data, userId) {
+    try {
+      const {
+        description,
+        documents,
+        contact_person_name,
+        contact_person_number,
+        priority_level,
+        remark,
+      } = data;
+
+      if (!description?.trim()) {
+        throw new Error("Description is required");
+      }
+
+      if (!priority_level?.trim()) {
+        throw new Error("Priority level is required");
+      }
+
+      const orderExists = await pool.query(
+        `
+      SELECT id
+      FROM sales_orders
+      WHERE id = $1
+      `,
+        [saleOrderId],
+      );
+
+      if (!orderExists.rows.length) {
+        throw new Error("Sales order not found");
+      }
+
+      const { rows } = await pool.query(
+        `
+      INSERT INTO complaint_info (
+        sale_order_id,
+        description,
+        documents,
+        contact_person_name,
+        contact_person_number,
+        priority_level,
+        remark,
+        created_by,
+        updated_by
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9
+      )
+      RETURNING *;
+      `,
+        [
+          saleOrderId,
+          description,
+          JSON.stringify(documents || []),
+          // documents || [],
+          contact_person_name || null,
+          contact_person_number || null,
+          priority_level,
+          remark || null,
+          userId,
+          userId,
+        ],
+      );
+
+      return rows[0];
+    } catch (error) {
+      console.error("Error in createComplaintForSaleOrder:", error);
+      throw error;
+    }
+  }
+
+  async getAllComplaintsForSaleOrder(saleOrderId) {
+    try {
+      const { rows } = await pool.query(
+        `
+      SELECT *
+      FROM complaint_info
+      WHERE sale_order_id = $1
+      ORDER BY created_at DESC
+      `,
+        [saleOrderId],
+      );
+
+      return rows;
+    } catch (error) {
+      console.error("Error in getAllComplaintsForSaleOrder:", error);
+      throw error;
+    }
+  }
+
+  async getComplaintDetailsForSaleOrder(saleOrderId, complaintId) {
+    try {
+      const { rows } = await pool.query(
+        `
+      SELECT *
+      FROM complaint_info
+      WHERE complaint_id = $1
+      AND sale_order_id = $2
+      `,
+        [complaintId, saleOrderId],
+      );
+
+      if (!rows.length) {
+        throw new Error("Complaint not found");
+      }
+
+      return rows[0];
+    } catch (error) {
+      console.error("Error in getComplaintDetailsForSaleOrder:", error);
+      throw error;
+    }
+  }
+
+  async updateComplaintDetailsForSaleOrder(
+    saleOrderId,
+    complaintId,
+    data,
+    userId,
+  ) {
+    try {
+      const {
+        description,
+        documents,
+        contact_person_name,
+        contact_person_number,
+        priority_level,
+        remark,
+      } = data;
+
+      const complaintExists = await pool.query(
+        `
+      SELECT complaint_id
+      FROM complaint_info
+      WHERE complaint_id = $1
+      AND sale_order_id = $2
+      `,
+        [complaintId, saleOrderId],
+      );
+
+      if (!complaintExists.rows.length) {
+        throw new Error("Complaint not found");
+      }
+
+      const { rows } = await pool.query(
+        `
+      UPDATE complaint_info
+      SET
+        description = $1,
+        documents = $2,
+        contact_person_name = $3,
+        contact_person_number = $4,
+        priority_level = $5,
+        remark = $6,
+        updated_by = $7,
+        updated_at = NOW()
+      WHERE complaint_id = $8
+      AND sale_order_id = $9
+      RETURNING *;
+      `,
+        [
+          description,
+          documents || [],
+          contact_person_name || null,
+          contact_person_number || null,
+          priority_level,
+          remark || null,
+          userId,
+          complaintId,
+          saleOrderId,
+        ],
+      );
+
+      return rows[0];
+    } catch (error) {
+      console.error("Error in updateComplaintDetailsForSaleOrder:", error);
+      throw error;
+    }
+  }
+
+  async deleteComplaintForSaleOrder(saleOrderId, complaintId) {
+    try {
+      const { rowCount } = await pool.query(
+        `
+      DELETE FROM complaint_info
+      WHERE complaint_id = $1
+      AND sale_order_id = $2
+      `,
+        [complaintId, saleOrderId],
+      );
+
+      if (!rowCount) {
+        throw new Error("Complaint not found");
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Error in deleteComplaintForSaleOrder:", error);
+      throw error;
+    }
+  }
+
   async assignToVehicleExecutive(id, userId) {
     try {
       // Get vehicle executive id

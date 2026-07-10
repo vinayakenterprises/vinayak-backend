@@ -437,6 +437,101 @@ class O2dController {
     }
   };
 
+  createComplaintForSaleOrder = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+      const saleOrderId = req.params.id;
+
+      const complaint = await o2dService.createComplaintForSaleOrder(
+        saleOrderId,
+        req.body,
+        userId,
+      );
+
+      return res.status(201).json({
+        status: "success",
+        message: "Complaint created successfully",
+        data: complaint,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getAllComplaintsForSaleOrder = async (req, res, next) => {
+    try {
+      const saleOrderId = req.params.id;
+
+      const complaints =
+        await o2dService.getAllComplaintsForSaleOrder(saleOrderId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Complaints fetched successfully",
+        data: complaints,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getComplaintDetailsForSaleOrder = async (req, res, next) => {
+    try {
+      const { id, complaintId } = req.params;
+
+      const complaint = await o2dService.getComplaintDetailsForSaleOrder(
+        id,
+        complaintId,
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Complaint details fetched successfully",
+        data: complaint,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateComplaintDetailsForSaleOrder = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      const { id, complaintId } = req.params;
+
+      const complaint = await o2dService.updateComplaintDetailsForSaleOrder(
+        id,
+        complaintId,
+        req.body,
+        userId,
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Complaint updated successfully",
+        data: complaint,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  deleteComplaintForSaleOrder = async (req, res, next) => {
+    try {
+      const { id, complaintId } = req.params;
+
+      await o2dService.deleteComplaintForSaleOrder(id, complaintId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Complaint deleted successfully",
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   assignToVehicleExecutive = async (req, res, next) => {
     try {
       const { id } = req.body;

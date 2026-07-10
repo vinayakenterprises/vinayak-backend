@@ -62,4 +62,36 @@ router.post('/update-invoice-and-dispatch-info', authMiddleware, o2dController.u
 router.get('/get-invoice-executive-completed-data', authMiddleware, o2dController.getInvoiceExecutiveCompletedData);
 
 
+// complaints related 
+router.post(
+  "/sale-orders/:id/complaints",
+  authMiddleware,
+  o2dController.createComplaintForSaleOrder
+);
+
+router.get(
+  "/sale-orders/:id/complaints",
+  authMiddleware,
+  o2dController.getAllComplaintsForSaleOrder
+);
+
+router.get(
+  "/sale-orders/:id/complaints/:complaintId",
+  authMiddleware,
+  o2dController.getComplaintDetailsForSaleOrder
+);
+
+router.put(
+  "/sale-orders/:id/complaints/:complaintId",
+  authMiddleware,
+  o2dController.updateComplaintDetailsForSaleOrder
+);
+
+router.delete(
+  "/sale-orders/:id/complaints/:complaintId",
+  authMiddleware,
+  o2dController.deleteComplaintForSaleOrder
+);
+
+
 export default router;
