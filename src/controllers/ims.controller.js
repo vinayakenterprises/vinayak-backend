@@ -312,6 +312,26 @@ class ImsController {
       next(error);
     }
   };
+
+  logPastData = async (req, res, next) => {
+    try {
+      const payload = {
+        ...req.body,
+        created_by: req.user?.id
+      };
+
+      const result = await imsService.logPastData(payload);
+
+      return res.status(201).json({
+        status: "success",
+        message: "Past data logged successfully.",
+        data: result,
+      });
+
+    } catch (error) {
+      next(error);
+    }
+  };
 }
 
 export default new ImsController();

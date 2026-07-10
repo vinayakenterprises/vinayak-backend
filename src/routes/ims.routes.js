@@ -36,4 +36,7 @@ router.put('/update-daily-stock-count', authMiddleware, imsController.updateDail
 // FILTER DATA BY DATE
 router.get('/get-filtered-inventory', authMiddleware, imsController.getFilteredInventory);
 
+// LOG PAST DATA
+router.post('/log-past-data', authMiddleware, imsController.logPastData);
+
 export default router;

@@ -145,7 +145,7 @@ class ImsService {
             FROM ims_materials m
             JOIN ims_material_categories c ON m.category_id = c.id
             WHERE m.is_deleted = FALSE AND c.is_deleted = FALSE
-            ORDER BY c.name ASC, m.name ASC;
+            ORDER BY m.category_id ASC, m.id ASC;
         `;
 
         try {
@@ -553,7 +553,7 @@ class ImsService {
             LEFT JOIN ims_inventory i ON m.id = i.material_id AND i.is_deleted = FALSE
             WHERE m.is_deleted = FALSE
             GROUP BY m.id, m.name, c.name
-            ORDER BY c.name ASC, m.name ASC;
+            ORDER BY m.category_id ASC, m.id ASC;
         `;
 
         try {
@@ -656,7 +656,7 @@ class ImsService {
             LEFT JOIN AggregatedInventory ai ON m.id = ai.material_id
             LEFT JOIN AggregatedDailyFlow adf ON m.id = adf.material_id
             WHERE m.is_deleted = FALSE
-            ORDER BY c.name ASC, m.name ASC;
+            ORDER BY m.category_id ASC, m.id ASC;
         `;
 
         try {
@@ -665,6 +665,84 @@ class ImsService {
         } catch (error) {
             console.error("Error fetching filtered inventory:", error);
             throw new Error("Failed to fetch inventory data.");
+        }
+    }
+
+    async logPastData(data) {
+        const { material_id, transaction_type, quantity, transaction_date, created_by } = data;
+
+        if (!material_id || isNaN(Number(material_id))) throw new Error("A valid material_id is required.");
+        if (quantity === undefined || isNaN(Number(quantity))) throw new Error("Quantity must be a valid number.");
+        if (!transaction_date) throw new Error("A transaction date is required.");
+        if (!created_by) throw new Error("User authorization is missing.");
+
+        const validTypes = ['RECEIVED', 'QA_APPROVED', 'QA_REJECTED'];
+        if (!validTypes.includes(transaction_type)) {
+            throw new Error("Transaction type must be 'RECEIVED', 'QA_APPROVED', or 'QA_REJECTED'.");
+        }
+
+        const client = await pool.connect();
+
+        try {
+            await client.query('BEGIN');
+
+            // 1. Check material exists
+            const checkMaterialQuery = `SELECT id FROM ims_materials WHERE id = $1 AND is_deleted = FALSE`;
+            const checkRes = await client.query(checkMaterialQuery, [Number(material_id)]);
+            if (checkRes.rowCount === 0) throw new Error("The provided material_id does not exist or has been deleted.");
+
+            // 2. Insert transaction with specific transaction_date
+            const insertTxQuery = `
+                INSERT INTO ims_inventory_transactions (material_id, transaction_type, quantity, transaction_date, created_by)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING *;
+            `;
+            const txResult = await client.query(insertTxQuery, [
+                Number(material_id),
+                transaction_type,
+                Number(quantity),
+                transaction_date,
+                created_by
+            ]);
+
+            // 3. Map transaction type to inventory status
+            let status = null;
+            if (transaction_type === 'RECEIVED') {
+                status = 'PENDING_QUALITY';
+            } else if (transaction_type === 'QA_APPROVED') {
+                status = 'AVAILABLE';
+            } else if (transaction_type === 'QA_REJECTED') {
+                status = 'NOT_OK';
+            }
+
+            // 4. Update the current inventory level
+            if (status) {
+                const upsertQuery = `
+                    INSERT INTO ims_inventory (material_id, quantity, status, created_by, updated_by) 
+                    VALUES ($1, $2, $3, $4, $4)
+                    ON CONFLICT (material_id, status) 
+                    DO UPDATE SET 
+                        quantity = GREATEST(0, ims_inventory.quantity + EXCLUDED.quantity),
+                        updated_by = EXCLUDED.updated_by,
+                        updated_at = CURRENT_TIMESTAMP
+                    RETURNING *;
+                `;
+                await client.query(upsertQuery, [
+                    Number(material_id),
+                    Number(quantity),
+                    status,
+                    created_by
+                ]);
+            }
+
+            await client.query('COMMIT');
+            return txResult.rows[0];
+        } catch (error) {
+            await client.query('ROLLBACK');
+            console.error("Error in logPastData:", error);
+            throw error;
+        } finally {
+            client.release();
         }
     }
 }
