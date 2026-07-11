@@ -93,5 +93,7 @@ router.delete(
   o2dController.deleteComplaintForSaleOrder
 );
 
+router.post("/update-callaction-information", authMiddleware, o2dController.updateCallActionInformation);
+
 
 export default router;

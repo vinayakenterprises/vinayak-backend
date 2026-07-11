@@ -1185,6 +1185,52 @@ class O2dService {
     }
   }
 
+
+  async updateCallActionInformation(id, userId, body) {
+    try {
+      const { action_done_at, visit_status } = body;
+
+      // Dynamically build the payload so we only update provided fields
+      const callActionPayload = {};
+
+      if (action_done_at !== undefined) {
+        callActionPayload.action_done_at = action_done_at;
+      }
+      if (visit_status !== undefined) {
+        callActionPayload.visit_status = visit_status;
+      }
+
+      // Prevent database call if the payload is completely empty
+      if (Object.keys(callActionPayload).length === 0) {
+        throw new Error("No valid call action fields provided for update.");
+      }
+
+      const query = `
+        UPDATE public.complaint_info
+        SET call_action = COALESCE(call_action, '{}'::jsonb) || $2::jsonb,
+            updated_at = now(),
+            updated_by = $1
+        WHERE complaint_id = $3
+        RETURNING *;
+      `;
+
+      const values = [
+        userId,
+        JSON.stringify(callActionPayload),
+        id,
+      ];
+
+      const { rows } = await pool.query(query, values);
+      
+      return rows.length ? rows[0] : null;
+
+    } catch (error) {
+      console.error("error in updating call action information: ", error);
+      throw error; // Make sure to throw the error to be caught by your controller
+    }
+  }
+
+
   async assignToVehicleExecutive(id, userId) {
     try {
       // Get vehicle executive id
