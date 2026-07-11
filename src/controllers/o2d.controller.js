@@ -553,6 +553,24 @@ class O2dController {
     }
   };
 
+
+  getCallComplaintData = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      const complaint = await o2dService.getCallComplaintData(userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Call Complaint Data retrieved successfully",
+        data: complaint,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+
   assignToVehicleExecutive = async (req, res, next) => {
     try {
       const { id } = req.body;

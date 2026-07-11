@@ -1231,6 +1231,21 @@ class O2dService {
   }
 
 
+  async getCallComplaintData(userId) {
+    try {
+      const query = `
+        SELECT * FROM public.complaint_info
+        ORDER BY created_at DESC
+        `;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      console.error("error in getting call complaint data: ", error);
+      throw error;
+    }
+  }
+
+
   async assignToVehicleExecutive(id, userId) {
     try {
       // Get vehicle executive id
