@@ -1246,6 +1246,81 @@ class O2dService {
   }
 
 
+  async updatePlantVisitInformation(id, userId, body) {
+    try {
+      const {
+        plant_visit_done_at,
+        documents,
+        solution,
+        person_met_at_site,
+        quantity_replaced,
+      } = body;
+
+      // Dynamically build the payload so we only update provided fields
+      const visitActionPayload = {};
+
+      if (plant_visit_done_at !== undefined) {
+        visitActionPayload.plant_visit_done_at = plant_visit_done_at;
+      }
+      if (documents !== undefined) {
+        // Ensure documents is stored as an array
+        visitActionPayload.documents = Array.isArray(documents) ? documents : [];
+      }
+      if (solution !== undefined) {
+        visitActionPayload.solution = solution;
+      }
+      if (person_met_at_site !== undefined) {
+        visitActionPayload.person_met_at_site = person_met_at_site;
+      }
+      if (quantity_replaced !== undefined) {
+        // Ensure it is stored as a float
+        visitActionPayload.quantity_replaced = parseFloat(quantity_replaced);
+      }
+
+      // Prevent database call if the payload is completely empty
+      if (Object.keys(visitActionPayload).length === 0) {
+        throw new Error("No valid plant visit fields provided for update.");
+      }
+
+      // const query = `
+      //   UPDATE public.complaint_info
+      //   SET visit_action_related = COALESCE(visit_action_related, '{}'::jsonb) || $2::jsonb,
+      //       updated_at = now(),
+      //       updated_by = $1
+      //   WHERE complaint_id = $3
+      //   RETURNING *;
+      // `;
+      const query = `
+        UPDATE public.complaint_info
+        SET visit_action_related = COALESCE(visit_action_related, '{}'::jsonb) 
+            || $2::jsonb 
+            || jsonb_build_object(
+                'created_at', COALESCE((visit_action_related->>'created_at')::timestamptz, now()),
+                'updated_at', now()
+              ),
+            updated_at = now(),
+            updated_by = $1
+        WHERE complaint_id = $3
+        RETURNING *;
+      `;
+
+      const values = [
+        userId,
+        JSON.stringify(visitActionPayload),
+        id, // Assuming 'id' passed to the function is the complaint_id
+      ];
+
+      const { rows } = await pool.query(query, values);
+      
+      return rows.length ? rows[0] : null;
+
+    } catch (error) {
+      console.error("Error in updating plant visit information: ", error);
+      throw error;
+    }
+  }
+
+
   async assignToVehicleExecutive(id, userId) {
     try {
       // Get vehicle executive id
