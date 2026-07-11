@@ -1,4 +1,6 @@
 import pool from "../config/database.js";
+import { createNotification } from "./notification.service.js";
+import { emitToUser } from "../utils/socket.js";
 
 class ImsService {
 
@@ -408,7 +410,7 @@ class ImsService {
                     `SELECT id, name FROM ims_materials WHERE category_id = $1 AND is_deleted = FALSE`,
                     [Number(target_category_id)]
                 );
-                
+
                 const normalize = (str) => (str || '').toLowerCase().replace(/[^a-z]/g, '');
                 const sourceNorm = normalize(sourceMaterial.name);
                 const matchedTarget = targetMaterialsRes.rows.find(m => normalize(m.name) === sourceNorm);
@@ -858,6 +860,81 @@ class ImsService {
             throw error;
         } finally {
             client.release();
+        }
+    }
+
+    async checkCategoryStockLevelsAndNotify() {
+        const stockQuery = `
+            SELECT 
+                c.id AS category_id,
+                c.name AS category_name,
+                c.max_level,
+                COALESCE(SUM(CASE WHEN i.status = 'AVAILABLE' THEN i.quantity ELSE 0 END), 0) AS category_available_stock
+            FROM ims_material_categories c
+            LEFT JOIN ims_materials m ON m.category_id = c.id AND m.is_deleted = FALSE
+            LEFT JOIN ims_inventory i ON i.material_id = m.id AND i.is_deleted = FALSE
+            WHERE c.is_deleted = FALSE
+              AND TRIM(LOWER(c.name)) <> 'total bundle'
+            GROUP BY c.id, c.name, c.max_level
+        `;
+
+        try {
+            // 1. Fetch categories stock calculation
+            const { rows: categories } = await pool.query(stockQuery);
+
+            // 2. Filter categories that are Under Stock or Over Stock
+            const alerts = [];
+            for (const cat of categories) {
+                const max = parseInt(cat.max_level) || 0;
+                const val = parseInt(cat.category_available_stock) || 0;
+
+                if (max > 0) {
+                    if (val <= max * 0.33) {
+                        alerts.push({
+                            name: cat.category_name,
+                            status: 'Under Stock',
+                            available: val,
+                            max: max
+                        });
+                    } else if (val > max) {
+                        alerts.push({
+                            name: cat.category_name,
+                            status: 'Over Stock',
+                            available: val,
+                            max: max
+                        });
+                    }
+                }
+            }
+
+            if (alerts.length === 0) {
+                console.log("CRON: No categories are Over or Under stock.");
+                return;
+            }
+
+            // 3. Fetch all Purchase Executive users
+            const { rows: purchaseExecutives } = await pool.query(
+                `SELECT id FROM public.users WHERE role = 'Purchase Executive'`
+            );
+
+            if (purchaseExecutives.length === 0) {
+                console.log("CRON: No users with role 'Purchase Executive' found.");
+                return;
+            }
+
+            // 4. Create and emit notifications
+            for (const pe of purchaseExecutives) {
+                for (const alert of alerts) {
+                    const message = `Category "${alert.name}" is ${alert.status} at ${alert.available} MT (Max Limit: ${alert.max} MT).`;
+                    const type = "stock_status_alert";
+
+                    const notif = await createNotification(pe.id, message, type);
+                    emitToUser(pe.id, "new_notification", notif);
+                }
+            }
+            console.log(`CRON: Successfully sent ${alerts.length * purchaseExecutives.length} stock status alerts.`);
+        } catch (error) {
+            console.error("Error checking stock status and notifying:", error);
         }
     }
 }
