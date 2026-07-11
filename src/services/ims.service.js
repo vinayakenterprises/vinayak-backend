@@ -404,12 +404,17 @@ class ImsService {
 
             // 2. If target_category_id is provided and differs from source category, find or create target material
             if (target_category_id && Number(target_category_id) !== sourceMaterial.category_id) {
-                const targetMatRes = await client.query(
-                    `SELECT id FROM ims_materials WHERE category_id = $1 AND name = $2 AND is_deleted = FALSE`,
-                    [Number(target_category_id), sourceMaterial.name]
+                const targetMaterialsRes = await client.query(
+                    `SELECT id, name FROM ims_materials WHERE category_id = $1 AND is_deleted = FALSE`,
+                    [Number(target_category_id)]
                 );
-                if (targetMatRes.rows.length > 0) {
-                    targetMaterialId = targetMatRes.rows[0].id;
+                
+                const normalize = (str) => (str || '').toLowerCase().replace(/[^a-z]/g, '');
+                const sourceNorm = normalize(sourceMaterial.name);
+                const matchedTarget = targetMaterialsRes.rows.find(m => normalize(m.name) === sourceNorm);
+
+                if (matchedTarget) {
+                    targetMaterialId = matchedTarget.id;
                 } else {
                     // Create new master material in target category
                     const createMatRes = await client.query(
