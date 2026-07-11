@@ -132,7 +132,7 @@ class ImsController {
         }
     };
 
-    updateMaterial = async (req, res, nex) => {
+    updateMaterial = async (req, res, next) => {
         try {
             const materialId = req.params.id;
 

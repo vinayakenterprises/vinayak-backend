@@ -187,30 +187,108 @@ class ImsService {
         if (!id || isNaN(Number(id))) throw new Error("A valid material ID is required.");
 
         const { name, category_id } = updateData;
-
-        const query = `
-            WITH updated_material AS (
-                UPDATE ims_materials 
-                SET 
-                    name = COALESCE($1, name),
-                    category_id = COALESCE($2, category_id),
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = $3 AND is_deleted = FALSE
-                RETURNING *
-            )
-            SELECT 
-                u.id, u.category_id, c.name AS category_name, u.name, u.created_at, u.updated_at 
-            FROM updated_material u
-            JOIN ims_material_categories c ON u.category_id = c.id;
-        `;
+        const client = await pool.connect();
 
         try {
-            const { rows } = await pool.query(query, [name, category_id, id]);
-            if (rows.length === 0) throw new Error(`Material with ID ${id} not found.`);
-            return rows[0];
+            await client.query('BEGIN');
+
+            // 1. Get current material details
+            const currentRes = await client.query(
+                `SELECT name, category_id FROM ims_materials WHERE id = $1 AND is_deleted = FALSE`,
+                [Number(id)]
+            );
+            if (currentRes.rows.length === 0) throw new Error(`Material with ID ${id} not found.`);
+            const currentMaterial = currentRes.rows[0];
+
+            const newName = name !== undefined ? name : currentMaterial.name;
+            const newCategoryId = category_id !== undefined ? Number(category_id) : currentMaterial.category_id;
+
+            // 2. Check for duplicate name in target category (other than this material)
+            const duplicateCheck = await client.query(
+                `SELECT id FROM ims_materials 
+                 WHERE category_id = $1 AND name = $2 AND id <> $3 AND is_deleted = FALSE`,
+                [newCategoryId, newName, Number(id)]
+            );
+
+            if (duplicateCheck.rows.length > 0) {
+                // Perform a merge!
+                const targetMaterialId = duplicateCheck.rows[0].id;
+
+                // Move transactions
+                await client.query(
+                    `UPDATE ims_inventory_transactions SET material_id = $1 WHERE material_id = $2`,
+                    [targetMaterialId, Number(id)]
+                );
+
+                // Move/Merge inventory quantities
+                const sourceInventory = await client.query(
+                    `SELECT quantity, status FROM ims_inventory WHERE material_id = $1 AND is_deleted = FALSE`,
+                    [Number(id)]
+                );
+
+                for (const inv of sourceInventory.rows) {
+                    await client.query(
+                        `INSERT INTO ims_inventory (material_id, quantity, status, created_by, updated_by)
+                         VALUES ($1, $2, $3, 1, 1)
+                         ON CONFLICT (material_id, status)
+                         DO UPDATE SET 
+                             quantity = ims_inventory.quantity + EXCLUDED.quantity,
+                             updated_at = CURRENT_TIMESTAMP
+                        `,
+                        [targetMaterialId, Number(inv.quantity), inv.status]
+                    );
+                }
+
+                // Delete old inventory rows
+                await client.query(
+                    `UPDATE ims_inventory SET is_deleted = TRUE, updated_at = CURRENT_TIMESTAMP WHERE material_id = $1`,
+                    [Number(id)]
+                );
+
+                // Soft-delete the source material
+                await client.query(
+                    `UPDATE ims_materials SET is_deleted = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+                    [Number(id)]
+                );
+
+                await client.query('COMMIT');
+
+                // Return target material details
+                const resultRes = await client.query(`
+                    SELECT m.id, m.category_id, c.name AS category_name, m.name, m.created_at, m.updated_at 
+                    FROM ims_materials m
+                    JOIN ims_material_categories c ON m.category_id = c.id
+                    WHERE m.id = $1
+                `, [targetMaterialId]);
+                return resultRes.rows[0];
+            } else {
+                // No duplicate, perform regular update
+                await client.query(`
+                    UPDATE ims_materials 
+                    SET 
+                        name = $1,
+                        category_id = $2,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = $3 AND is_deleted = FALSE
+                `, [newName, newCategoryId, Number(id)]);
+
+                await client.query('COMMIT');
+
+                // Fetch details with category name
+                const resultRes = await client.query(`
+                    SELECT m.id, m.category_id, c.name AS category_name, m.name, m.created_at, m.updated_at 
+                    FROM ims_materials m
+                    JOIN ims_material_categories c ON m.category_id = c.id
+                    WHERE m.id = $1
+                `, [Number(id)]);
+                return resultRes.rows[0];
+            }
         } catch (error) {
+            await client.query('ROLLBACK');
             console.error("Error in updating the material:", error);
             throw error;
+        } finally {
+            client.release();
         }
     }
 
@@ -301,7 +379,7 @@ class ImsService {
     }
 
     async processQualityCheck(data) {
-        const { material_id, approved_quantity = 0, rejected_quantity = 0, updated_by } = data;
+        const { material_id, approved_quantity = 0, rejected_quantity = 0, updated_by, target_category_id } = data;
 
         if (!material_id || isNaN(Number(material_id))) throw new Error("A valid material_id is required.");
 
@@ -314,12 +392,43 @@ class ImsService {
         try {
             await client.query('BEGIN');
 
+            // 1. Get the source material info
+            const sourceMaterialRes = await client.query(
+                `SELECT name, category_id FROM ims_materials WHERE id = $1 AND is_deleted = FALSE`,
+                [Number(material_id)]
+            );
+            if (sourceMaterialRes.rows.length === 0) throw new Error("Source material not found.");
+            const sourceMaterial = sourceMaterialRes.rows[0];
+
+            let targetMaterialId = Number(material_id);
+
+            // 2. If target_category_id is provided and differs from source category, find or create target material
+            if (target_category_id && Number(target_category_id) !== sourceMaterial.category_id) {
+                const targetMatRes = await client.query(
+                    `SELECT id FROM ims_materials WHERE category_id = $1 AND name = $2 AND is_deleted = FALSE`,
+                    [Number(target_category_id), sourceMaterial.name]
+                );
+                if (targetMatRes.rows.length > 0) {
+                    targetMaterialId = targetMatRes.rows[0].id;
+                } else {
+                    // Create new master material in target category
+                    const createMatRes = await client.query(
+                        `INSERT INTO ims_materials (category_id, name, created_at, updated_at) 
+                         VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) 
+                         RETURNING id`,
+                        [Number(target_category_id), sourceMaterial.name]
+                    );
+                    targetMaterialId = createMatRes.rows[0].id;
+                }
+            }
+
+            // 3. Subtract pending quantity from the source material
             const checkQuery = `
                 SELECT quantity FROM ims_inventory 
                 WHERE material_id = $1 AND status = 'PENDING_QUALITY' AND is_deleted = FALSE
                 FOR UPDATE;
             `;
-            const { rows } = await client.query(checkQuery, [material_id]);
+            const { rows } = await client.query(checkQuery, [Number(material_id)]);
             if (rows.length === 0) throw new Error("No pending quality stock found for this material.");
 
             const currentPending = Number(rows[0].quantity);
@@ -331,15 +440,15 @@ class ImsService {
                 UPDATE ims_inventory 
                 SET quantity = quantity - $1, updated_by = $2, updated_at = CURRENT_TIMESTAMP
                 WHERE material_id = $3 AND status = 'PENDING_QUALITY' AND is_deleted = FALSE
-            `, [totalProcessed, updated_by, material_id]);
+            `, [totalProcessed, updated_by, Number(material_id)]);
 
-            // Log corresponding flow transaction for the current date to reduce pending quality
+            // Log transaction for the source material (reducing pending quality)
             await client.query(`
                 INSERT INTO ims_inventory_transactions (material_id, transaction_type, quantity, created_by)
                 VALUES ($1, 'RECEIVED', $2, $3)
-            `, [material_id, -Number(totalProcessed), updated_by]);
+            `, [Number(material_id), -Number(totalProcessed), updated_by]);
 
-
+            // 4. Add approved stock to target material
             if (approved_quantity > 0) {
                 await client.query(`
                     INSERT INTO ims_inventory (material_id, quantity, status, created_by, updated_by) 
@@ -349,14 +458,15 @@ class ImsService {
                         quantity = ims_inventory.quantity + EXCLUDED.quantity,
                         updated_by = EXCLUDED.updated_by,
                         updated_at = CURRENT_TIMESTAMP
-                `, [material_id, Number(approved_quantity), updated_by]);
+                `, [targetMaterialId, Number(approved_quantity), updated_by]);
 
                 await client.query(`
                     INSERT INTO ims_inventory_transactions (material_id, transaction_type, quantity, created_by) 
                     VALUES ($1, 'QA_APPROVED', $2, $3)
-                `, [material_id, Number(approved_quantity), updated_by]);
+                `, [targetMaterialId, Number(approved_quantity), updated_by]);
             }
 
+            // 5. Add rejected stock to target material
             if (rejected_quantity > 0) {
                 await client.query(`
                     INSERT INTO ims_inventory (material_id, quantity, status, created_by, updated_by) 
@@ -366,12 +476,12 @@ class ImsService {
                         quantity = ims_inventory.quantity + EXCLUDED.quantity,
                         updated_by = EXCLUDED.updated_by,
                         updated_at = CURRENT_TIMESTAMP
-                `, [material_id, Number(rejected_quantity), updated_by]);
+                `, [targetMaterialId, Number(rejected_quantity), updated_by]);
 
                 await client.query(`
                     INSERT INTO ims_inventory_transactions (material_id, transaction_type, quantity, created_by) 
                     VALUES ($1, 'QA_REJECTED', $2, $3)
-                `, [material_id, Number(rejected_quantity), updated_by]);
+                `, [targetMaterialId, Number(rejected_quantity), updated_by]);
             }
 
             await client.query('COMMIT');
