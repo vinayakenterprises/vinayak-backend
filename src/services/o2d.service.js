@@ -1207,9 +1207,9 @@ class O2dService {
         console.log("visit status: ", visit_status);
         callActionPayload.visit_status = visit_status;
 
-        if(visit_status === "Required") {
+        if (visit_status === "Required") {
           newComplaintStatus = "Plant Visit Required";
-        }else{
+        } else {
           newComplaintStatus = "Call Action Done";
         }
       }
@@ -1352,21 +1352,16 @@ class O2dService {
         RETURNING *;
       `;
 
-      const values = [
-        userId,
-        complaint_id
-      ];
+      const values = [userId, complaint_id];
 
       const { rows } = await pool.query(query, values);
-      
-      return rows.length ? rows[0] : null;
 
+      return rows.length ? rows[0] : null;
     } catch (error) {
       console.error("Error in updating complaint closure information: ", error);
       throw error;
     }
   }
-
 
   async getCnDnIssueData(userId) {
     try {
@@ -1385,7 +1380,6 @@ class O2dService {
     }
   }
 
-
   async getCnDnWorkHistory(userId) {
     try {
       const query = `
@@ -1400,7 +1394,6 @@ class O2dService {
       throw error;
     }
   }
-
 
   async getInterestNoteIssueData(userId) {
     try {
@@ -1417,7 +1410,6 @@ class O2dService {
     }
   }
 
-
   async getInterestNoteIssueWorkHistory(userId) {
     try {
       const query = `
@@ -1428,11 +1420,13 @@ class O2dService {
       const { rows } = await pool.query(query, []);
       return rows;
     } catch (error) {
-      console.error("Error in getting interest note issue work history: ", error);
+      console.error(
+        "Error in getting interest note issue work history: ",
+        error,
+      );
       throw error;
     }
   }
-
 
   async assignToVehicleExecutive(id, userId) {
     try {
@@ -1755,7 +1749,6 @@ class O2dService {
         if (is_interest_note_issue === true) {
           sendNotificationToJuniorAccountant(id);
         }
-
       }
       if (interest_note_issued_on_timestamp !== undefined) {
         paymentPayload.interest_note_issued_on_timestamp =
@@ -1787,7 +1780,7 @@ class O2dService {
             console.log("error while sending notification to crm: ", error);
           }
         };
-        sendNotificationToCrm(id);  
+        sendNotificationToCrm(id);
       }
       if (interest_note_collected_on_timestamp !== undefined) {
         paymentPayload.interest_note_collected_on_timestamp =
@@ -1854,6 +1847,38 @@ class O2dService {
       }
       if (settlement !== undefined) {
         deliveryPayload.settlement = settlement;
+
+        const sendNotificationToJuniorAccountant = async (order_id) => {
+          try {
+            const juniorAccountantIdResult = await pool.query(
+              `select id from users where role = 'Junior Accountant' and department = 'Accounts'`,
+            );
+
+            const juniorAccountantId = juniorAccountantIdResult.rows[0].id;
+
+            if (!juniorAccountantId) {
+              throw new Error("Junior Accountant not found");
+            }
+
+            const notif = await createNotification(
+              juniorAccountantId,
+              `Please Create ${settlement === "CN Issue" ? "Credit" : "Debit"} Note for Order ID: ${order_id}.`,
+              "cn_dn_issue_notification_to_junior_accountant",
+            );
+            emitToUser(juniorAccountantId, "new_notification", notif);
+          } catch (error) {
+            console.log(
+              "error while sending notification to junior accountant: ",
+              error,
+            );
+          }
+        };
+
+
+        if(settlement === "CN Issue" || settlement === "DN Issue"){
+          sendNotificationToJuniorAccountant(id);
+        }
+
       }
       if (cn_or_dn_issue_status !== undefined) {
         deliveryPayload.cn_or_dn_issue_status = cn_or_dn_issue_status;
