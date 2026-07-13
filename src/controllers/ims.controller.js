@@ -290,48 +290,48 @@ class ImsController {
     };
 
     getFilteredInventory = async (req, res, next) => {
-    try {
-      // Extract the query parameters sent by the React frontend
-      const { filter, date, startDate, endDate } = req.query;
+        try {
+            // Extract the query parameters sent by the React frontend
+            const { filter, date, startDate, endDate } = req.query;
 
-      // Pass the parameters to the service logic
-      const matrixData = await imsService.getFilteredInventory({
-        filter,
-        date,
-        startDate,
-        endDate
-      });
+            // Pass the parameters to the service logic
+            const matrixData = await imsService.getFilteredInventory({
+                filter,
+                date,
+                startDate,
+                endDate
+            });
 
-      return res.status(200).json({
-        status: "success",
-        message: `Inventory data for ${filter || 'all time'} retrieved successfully`,
-        data: matrixData,
-      });
-      
-    } catch (error) {
-      next(error);
-    }
-  };
+            return res.status(200).json({
+                status: "success",
+                message: `Inventory data for ${filter || 'all time'} retrieved successfully`,
+                data: matrixData,
+            });
 
-  logPastData = async (req, res, next) => {
-    try {
-      const payload = {
-        ...req.body,
-        created_by: req.user?.id
-      };
+        } catch (error) {
+            next(error);
+        }
+    };
 
-      const result = await imsService.logPastData(payload);
+    logPastData = async (req, res, next) => {
+        try {
+            const payload = {
+                ...req.body,
+                created_by: req.user?.id
+            };
 
-      return res.status(201).json({
-        status: "success",
-        message: "Past data logged successfully.",
-        data: result,
-      });
+            const result = await imsService.logPastData(payload);
 
-    } catch (error) {
-      next(error);
-    }
-  };
+            return res.status(201).json({
+                status: "success",
+                message: "Past data logged successfully.",
+                data: result,
+            });
+
+        } catch (error) {
+            next(error);
+        }
+    };
 }
 
 export default new ImsController();
