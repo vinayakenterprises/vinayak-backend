@@ -101,6 +101,8 @@ router.post("/complaint-closure-info-update", authMiddleware, o2dController.upda
 // jatin dashboard related apis
 router.get("/get-cn-dn-issue-data", authMiddleware, o2dController.getCnDnIssueData);
 router.get("/get-cn-dn-work-history", authMiddleware, o2dController.getCnDnWorkHistory);
+router.get("/get-interest-note-issue-data", authMiddleware, o2dController.getInterestNoteIssueData);
+router.get("/get-interest-note-issue-work-history", authMiddleware, o2dController.getInterestNoteIssueWorkHistory);
 
 
 export default router;

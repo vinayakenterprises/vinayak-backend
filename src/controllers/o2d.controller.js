@@ -641,6 +641,38 @@ class O2dController {
     }
   }
 
+  getInterestNoteIssueData = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      const order = await o2dService.getInterestNoteIssueData(userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Interest Note Issue Data retrieved successfully",
+        data: order,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+  getInterestNoteIssueWorkHistory = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      const order = await o2dService.getInterestNoteIssueWorkHistory(userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Interest Note Issue Work History retrieved successfully",
+        data: order,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
   assignToVehicleExecutive = async (req, res, next) => {
     try {
       const { id } = req.body;

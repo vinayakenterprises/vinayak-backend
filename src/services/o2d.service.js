@@ -1401,6 +1401,39 @@ class O2dService {
     }
   }
 
+
+  async getInterestNoteIssueData(userId) {
+    try {
+      const query = `
+        SELECT * FROM public.sales_orders
+        WHERE payment_status->>'is_interest_note_issue' = 'true'
+        ORDER BY id DESC
+      `;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      console.error("Error in getting interest note issue data: ", error);
+      throw error;
+    }
+  }
+
+
+  async getInterestNoteIssueWorkHistory(userId) {
+    try {
+      const query = `
+        SELECT * FROM public.sales_orders
+        WHERE payment_status->>'interest_note_issued_on_timestamp' IS NOT NULL
+        ORDER BY id DESC
+      `;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      console.error("Error in getting interest note issue work history: ", error);
+      throw error;
+    }
+  }
+
+
   async assignToVehicleExecutive(id, userId) {
     try {
       // Get vehicle executive id
