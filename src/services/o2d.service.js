@@ -1385,6 +1385,22 @@ class O2dService {
     }
   }
 
+
+  async getCnDnWorkHistory(userId) {
+    try {
+      const query = `
+        SELECT * FROM public.sales_orders
+        WHERE delivery_and_weight->>'cn_or_dn_issue_timestamp' IS NOT NULL
+        ORDER BY id DESC
+      `;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      console.error("Error in getting cn/dn work history: ", error);
+      throw error;
+    }
+  }
+
   async assignToVehicleExecutive(id, userId) {
     try {
       // Get vehicle executive id
