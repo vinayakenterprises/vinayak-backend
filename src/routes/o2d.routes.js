@@ -98,5 +98,8 @@ router.get("/get-call-complaint-data", authMiddleware, o2dController.getCallComp
 router.post("/plant-visit-info-update", authMiddleware, o2dController.updatePlantVisitInformation);
 router.post("/complaint-closure-info-update", authMiddleware, o2dController.updateComplaintClosureInformation);
 
+// jatin dashboard related apis
+router.get("/get-cn-dn-issue-data", authMiddleware, o2dController.getCnDnIssueData);
+
 
 export default router;

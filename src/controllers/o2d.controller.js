@@ -540,7 +540,7 @@ class O2dController {
       const updatedOrder = await o2dService.updateCallActionInformation(
         id,
         userId,
-        req.body
+        req.body,
       );
 
       return res.status(200).json({
@@ -552,7 +552,6 @@ class O2dController {
       next(error);
     }
   };
-
 
   getCallComplaintData = async (req, res, next) => {
     try {
@@ -589,27 +588,42 @@ class O2dController {
     }
   };
 
+  updateComplaintClosureInformation = async (req, res, next) => {
+    try {
+      const { complaint_id } = req.body;
+      const userId = req.user?.id || null;
 
-    updateComplaintClosureInformation = async (req, res, next) => {
-      try {
-        const { complaint_id } = req.body;
-        const userId = req.user?.id || null;
+      const updatedOrder = await o2dService.updateComplaintClosureInformation(
+        complaint_id,
+        userId,
+      );
 
-        const updatedOrder = await o2dService.updateComplaintClosureInformation(
-          complaint_id,
-          userId,
-        );
-
-        return res.status(200).json({
-          status: "success",
-          message: "Complaint Closure Information updated successfully",
-          data: updatedOrder,
-        });
-      }catch(error){
-        next(error);
-      }
+      return res.status(200).json({
+        status: "success",
+        message: "Complaint Closure Information updated successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
     }
+  };
 
+
+  getCnDnIssueData = async (req, res, next) => {
+    try{
+      const userId = req.user?.id || null;
+
+      const order = await o2dService.getCnDnIssueData(userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "CN/DN Issue Data retrieved successfully",
+        data: order,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
 
   assignToVehicleExecutive = async (req, res, next) => {
     try {
