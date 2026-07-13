@@ -1111,6 +1111,7 @@ class O2dService {
         contact_person_number,
         priority_level,
         remark,
+        remark_final,
       } = data;
 
       const complaintExists = await pool.query(
@@ -1137,6 +1138,7 @@ class O2dService {
         contact_person_number = $4,
         priority_level = $5,
         remark = $6,
+        remark_final = $10,
         updated_by = $7,
         updated_at = NOW()
       WHERE complaint_id = $8
@@ -1145,7 +1147,7 @@ class O2dService {
       `,
         [
           description,
-          documents || [],
+          JSON.stringify(documents || []),
           contact_person_name || null,
           contact_person_number || null,
           priority_level,
@@ -1153,6 +1155,7 @@ class O2dService {
           userId,
           complaintId,
           saleOrderId,
+          remark_final || null,
         ],
       );
 
@@ -1185,22 +1188,33 @@ class O2dService {
     }
   }
 
-
   async updateCallActionInformation(id, userId, body) {
     try {
       const { action_done_at, visit_status } = body;
 
-      // Dynamically build the payload so we only update provided fields
+      // Dynamically build the payload
       const callActionPayload = {};
+      let newComplaintStatus = null; // Defaults to null (no change to status)
 
       if (action_done_at !== undefined) {
         callActionPayload.action_done_at = action_done_at;
-      }
-      if (visit_status !== undefined) {
-        callActionPayload.visit_status = visit_status;
+
+        // Since action_done_at is provided, we set the string for the DB to update
+        newComplaintStatus = "Call Action Done";
       }
 
-      // Prevent database call if the payload is completely empty
+      if (visit_status !== undefined) {
+        console.log("visit status: ", visit_status);
+        callActionPayload.visit_status = visit_status;
+
+        if(visit_status === "Required") {
+          newComplaintStatus = "Plant Visit Required";
+        }else{
+          newComplaintStatus = "Call Action Done";
+        }
+      }
+
+      // Prevent database call if nothing was actually sent
       if (Object.keys(callActionPayload).length === 0) {
         throw new Error("No valid call action fields provided for update.");
       }
@@ -1208,6 +1222,7 @@ class O2dService {
       const query = `
         UPDATE public.complaint_info
         SET call_action = COALESCE(call_action, '{}'::jsonb) || $2::jsonb,
+            complaint_status = COALESCE($4, complaint_status), 
             updated_at = now(),
             updated_by = $1
         WHERE complaint_id = $3
@@ -1216,27 +1231,33 @@ class O2dService {
 
       const values = [
         userId,
-        JSON.stringify(callActionPayload),
-        id,
+        JSON.stringify(callActionPayload), // $2: The JSON object
+        id, // $3: complaint_id
+        newComplaintStatus, // $4: The VARCHAR status (or null)
       ];
 
       const { rows } = await pool.query(query, values);
-      
-      return rows.length ? rows[0] : null;
 
+      return rows.length ? rows[0] : null;
     } catch (error) {
       console.error("error in updating call action information: ", error);
-      throw error; // Make sure to throw the error to be caught by your controller
+      throw error;
     }
   }
-
 
   async getCallComplaintData(userId) {
     try {
       const query = `
-        SELECT * FROM public.complaint_info
-        ORDER BY created_at DESC
-        `;
+        SELECT 
+            ci.*,
+            so.client_name
+        FROM 
+            public.complaint_info ci
+        LEFT JOIN 
+            public.sales_orders so ON ci.sale_order_id = so.id
+        ORDER BY 
+            ci.created_at DESC
+      `;
       const { rows } = await pool.query(query, []);
       return rows;
     } catch (error) {
@@ -1244,7 +1265,6 @@ class O2dService {
       throw error;
     }
   }
-
 
   async updatePlantVisitInformation(id, userId, body) {
     try {
@@ -1264,7 +1284,9 @@ class O2dService {
       }
       if (documents !== undefined) {
         // Ensure documents is stored as an array
-        visitActionPayload.documents = Array.isArray(documents) ? documents : [];
+        visitActionPayload.documents = Array.isArray(documents)
+          ? documents
+          : [];
       }
       if (solution !== undefined) {
         visitActionPayload.solution = solution;
@@ -1311,15 +1333,13 @@ class O2dService {
       ];
 
       const { rows } = await pool.query(query, values);
-      
-      return rows.length ? rows[0] : null;
 
+      return rows.length ? rows[0] : null;
     } catch (error) {
       console.error("Error in updating plant visit information: ", error);
       throw error;
     }
   }
-
 
   async assignToVehicleExecutive(id, userId) {
     try {
