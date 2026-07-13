@@ -96,6 +96,7 @@ router.delete(
 router.post("/update-callaction-information", authMiddleware, o2dController.updateCallActionInformation);
 router.get("/get-call-complaint-data", authMiddleware, o2dController.getCallComplaintData);
 router.post("/plant-visit-info-update", authMiddleware, o2dController.updatePlantVisitInformation);
+router.post("/complaint-closure-info-update", authMiddleware, o2dController.updateComplaintClosureInformation);
 
 
 export default router;

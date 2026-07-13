@@ -1341,6 +1341,32 @@ class O2dService {
     }
   }
 
+  async updateComplaintClosureInformation(complaint_id, userId) {
+    try {
+      const query = `
+        UPDATE public.complaint_info
+        SET complaint_status = 'Closed',
+            updated_at = now(),
+            updated_by = $1
+        WHERE complaint_id = $2
+        RETURNING *;
+      `;
+
+      const values = [
+        userId,
+        complaint_id
+      ];
+
+      const { rows } = await pool.query(query, values);
+      
+      return rows.length ? rows[0] : null;
+
+    } catch (error) {
+      console.error("Error in updating complaint closure information: ", error);
+      throw error;
+    }
+  }
+
   async assignToVehicleExecutive(id, userId) {
     try {
       // Get vehicle executive id
