@@ -97,7 +97,7 @@ export const initCronJobs = () => {
   });
 
   // Stock level alerts for Purchase Executive at 4:00 PM (16:00) every day
-  cron.schedule("3 18 * * *", async () => {
+  cron.schedule("0 16 * * *", async () => {
     console.log("CRON: Checking stock levels for Purchase Executive at 4:00 PM...");
     try {
       await imsService.checkCategoryStockLevelsAndNotify();
