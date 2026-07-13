@@ -1882,6 +1882,38 @@ class O2dService {
       }
       if (cn_or_dn_issue_status !== undefined) {
         deliveryPayload.cn_or_dn_issue_status = cn_or_dn_issue_status;
+
+        const sendNotificationToCrm = async (order_id) => {
+          try {
+            const crmIdResult = await pool.query(
+              `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+              [order_id],
+            );
+
+            if (
+              crmIdResult.rows.length === 0 ||
+              crmIdResult.rows[0].crm === null
+            ) {
+              throw new Error("Please Assign CRM First");
+            }
+            const crmId = crmIdResult.rows[0].crm;
+
+            const notif = await createNotification(
+              crmId,
+              `CN/DN has been issued for Order ID: ${order_id}.`,
+              "cn_dn_issue_completed_notification_to_crm",
+            );
+            emitToUser(crmId, "new_notification", notif);
+          } catch (error) {
+            console.log("error while sending notification to crm: ", error);
+          }
+        };
+
+        if(cn_or_dn_issue_status === true){
+          sendNotificationToCrm(id);
+        }
+
       }
       if (cn_or_dn_issue_timestamp !== undefined) {
         deliveryPayload.cn_or_dn_issue_timestamp = cn_or_dn_issue_timestamp;
