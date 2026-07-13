@@ -1725,10 +1725,69 @@ class O2dService {
       }
       if (is_interest_note_issue !== undefined) {
         paymentPayload.is_interest_note_issue = is_interest_note_issue;
+
+        const sendNotificationToJuniorAccountant = async (order_id) => {
+          try {
+            const juniorAccountantIdResult = await pool.query(
+              `select id from users where role = 'Junior Accountant' and department = 'Accounts'`,
+            );
+
+            const juniorAccountantId = juniorAccountantIdResult.rows[0].id;
+
+            if (!juniorAccountantId) {
+              throw new Error("Junior Accountant not found");
+            }
+
+            const notif = await createNotification(
+              juniorAccountantId,
+              `Please Issue Interest Note for Order ID: ${order_id}.`,
+              "interest_note_issue_notification_to_junior_accountant",
+            );
+            emitToUser(juniorAccountantId, "new_notification", notif);
+          } catch (error) {
+            console.log(
+              "error while sending notification to junior accountant: ",
+              error,
+            );
+          }
+        };
+
+        if (is_interest_note_issue === true) {
+          sendNotificationToJuniorAccountant(id);
+        }
+
       }
       if (interest_note_issued_on_timestamp !== undefined) {
         paymentPayload.interest_note_issued_on_timestamp =
           interest_note_issued_on_timestamp;
+
+        const sendNotificationToCrm = async (order_id) => {
+          try {
+            const crmIdResult = await pool.query(
+              `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+              [order_id],
+            );
+
+            if (
+              crmIdResult.rows.length === 0 ||
+              crmIdResult.rows[0].crm === null
+            ) {
+              throw new Error("Please Assign CRM First");
+            }
+            const crmId = crmIdResult.rows[0].crm;
+
+            const notif = await createNotification(
+              crmId,
+              `Interest Note Work has been completed for Order ID: ${id}.`,
+              "interest_note_issue_completed_notification_to_crm",
+            );
+            emitToUser(crmId, "new_notification", notif);
+          } catch (error) {
+            console.log("error while sending notification to crm: ", error);
+          }
+        };
+        sendNotificationToCrm(id);  
       }
       if (interest_note_collected_on_timestamp !== undefined) {
         paymentPayload.interest_note_collected_on_timestamp =
