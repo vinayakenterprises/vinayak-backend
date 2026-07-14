@@ -429,31 +429,59 @@ class ImsService {
                 }
             }
 
-            // 3. Subtract pending quantity from the source material
+            // 3. Subtract pending quantity from the source material(s)
+            // Get all materials with the same normalized name
+            const allMaterialsRes = await client.query(
+                `SELECT id FROM ims_materials 
+                 WHERE regexp_replace(lower(name), '[^a-z]', '', 'g') = regexp_replace(lower($1), '[^a-z]', '', 'g')
+                   AND is_deleted = FALSE`,
+                [sourceMaterial.name]
+            );
+            const materialIds = allMaterialsRes.rows.map(r => Number(r.id));
+
             const checkQuery = `
-                SELECT quantity FROM ims_inventory 
-                WHERE material_id = $1 AND status = 'PENDING_QUALITY' AND is_deleted = FALSE
+                SELECT material_id, quantity FROM ims_inventory 
+                WHERE material_id = ANY($1) AND status = 'PENDING_QUALITY' AND is_deleted = FALSE
                 FOR UPDATE;
             `;
-            const { rows } = await client.query(checkQuery, [Number(material_id)]);
-            if (rows.length === 0) throw new Error("No pending quality stock found for this material.");
+            const { rows: inventoryRows } = await client.query(checkQuery, [materialIds]);
+            if (inventoryRows.length === 0) throw new Error("No pending quality stock found for this material.");
 
-            const currentPending = Number(rows[0].quantity);
+            const currentPending = inventoryRows.reduce((sum, r) => sum + Number(r.quantity), 0);
             if (currentPending < totalProcessed) {
                 throw new Error(`Cannot process ${totalProcessed}. Only ${currentPending} available in pending.`);
             }
 
-            await client.query(`
-                UPDATE ims_inventory 
-                SET quantity = quantity - $1, updated_by = $2, updated_at = CURRENT_TIMESTAMP
-                WHERE material_id = $3 AND status = 'PENDING_QUALITY' AND is_deleted = FALSE
-            `, [totalProcessed, updated_by, Number(material_id)]);
+            let remainingToProcess = totalProcessed;
+            // Prioritize requested material_id first
+            const sortedRows = [...inventoryRows].sort((a, b) => {
+                if (a.material_id === Number(material_id)) return -1;
+                if (b.material_id === Number(material_id)) return 1;
+                return 0;
+            });
 
-            // Log transaction for the source material (reducing pending quality)
-            await client.query(`
-                INSERT INTO ims_inventory_transactions (material_id, transaction_type, quantity, created_by)
-                VALUES ($1, 'RECEIVED', $2, $3)
-            `, [Number(material_id), -Number(totalProcessed), updated_by]);
+            for (const row of sortedRows) {
+                if (remainingToProcess <= 0) break;
+                const rowQty = Number(row.quantity);
+                const toSubtract = Math.min(rowQty, remainingToProcess);
+
+                if (toSubtract > 0) {
+                    await client.query(`
+                        UPDATE ims_inventory 
+                        SET quantity = quantity - $1, updated_by = $2, updated_at = CURRENT_TIMESTAMP
+                        WHERE material_id = $3 AND status = 'PENDING_QUALITY' AND is_deleted = FALSE
+                    `, [toSubtract, updated_by, row.material_id]);
+
+                    // Log transaction for the source material (reducing pending quality)
+                    await client.query(`
+                        INSERT INTO ims_inventory_transactions (material_id, transaction_type, quantity, created_by)
+                        VALUES ($1, 'RECEIVED', $2, $3)
+                    `, [row.material_id, -toSubtract, updated_by]);
+
+                    remainingToProcess -= toSubtract;
+                }
+            }
+
 
             // 4. Add approved stock to target material
             if (approved_quantity > 0) {
@@ -760,7 +788,7 @@ class ImsService {
                 GROUP BY material_id
             )
             SELECT 
-                m.id AS material_id, m.name AS material_name, c.name AS category_name,
+                m.id AS material_id, m.name AS material_name, c.name AS category_name, c.id AS category_id,
                 COALESCE(ai.available_stock, 0) AS available_stock,
                 COALESCE(ai.pending_stock, 0) AS pending_stock,
                 COALESCE(ai.rejected_stock, 0) AS rejected_stock,
