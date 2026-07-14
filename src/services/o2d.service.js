@@ -1428,6 +1428,42 @@ class O2dService {
     }
   }
 
+
+  async getAdminDashboardCardsData(userId) {
+    try {
+      const query = `
+        SELECT 
+            -- Pending Metrics
+            COUNT(*) FILTER (
+                WHERE delivery_and_weight->>'delivery_status' IS DISTINCT FROM 'Delivered'
+            ) AS total_pending_orders,
+            
+            COALESCE(SUM(quantity_mt) FILTER (
+                WHERE delivery_and_weight->>'delivery_status' IS DISTINCT FROM 'Delivered'
+            ), 0) AS total_pending_quantity_mt,
+
+            -- Delivered Metrics
+            COUNT(*) FILTER (
+                WHERE delivery_and_weight->>'delivery_status' = 'Delivered'
+            ) AS total_delivered_orders,
+            
+            COALESCE(SUM(quantity_mt) FILTER (
+                WHERE delivery_and_weight->>'delivery_status' = 'Delivered'
+            ), 0) AS total_delivered_quantity_mt
+
+        FROM public.sales_orders
+        -- New global filter for credit limit approval
+        WHERE credit_limit_info->>'credit_limit_request_approval_status' IS DISTINCT FROM 'false';
+        `;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      console.error("Error in getting admin dashboard cards data: ", error);
+      throw error;
+    }
+  }
+
+
   async assignToVehicleExecutive(id, userId) {
     try {
       // Get vehicle executive id

@@ -673,6 +673,23 @@ class O2dController {
     }
   }
 
+
+  getAdminDashboardCardsData = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      const order = await o2dService.getAdminDashboardCardsData(userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Admin Dashboard Cards Data retrieved successfully",
+        data: order,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
   assignToVehicleExecutive = async (req, res, next) => {
     try {
       const { id } = req.body;

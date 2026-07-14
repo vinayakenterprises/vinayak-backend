@@ -105,4 +105,8 @@ router.get("/get-interest-note-issue-data", authMiddleware, o2dController.getInt
 router.get("/get-interest-note-issue-work-history", authMiddleware, o2dController.getInterestNoteIssueWorkHistory);
 
 
+// admin dashboard related apis
+router.get("/get-admin-dashboard-cards-data", authMiddleware, o2dController.getAdminDashboardCardsData);
+
+
 export default router;
