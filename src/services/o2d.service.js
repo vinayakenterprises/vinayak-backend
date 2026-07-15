@@ -216,6 +216,16 @@ class O2dService {
 
   async retrieveAllCustomersList(userId) {
     try {
+
+
+      let whereCondition = 'WHERE c.sales_person = $1';
+      let inputArray = [userId];
+      if(userId === 15){
+        whereCondition = '';
+        inputArray = [];
+      }
+
+
       const query = `SELECT 
             c.*,
             COALESCE(pending.total_pending_quantity, 0) AS total_pending_quantity,
@@ -232,12 +242,11 @@ class O2dService {
                 (so.client_name = c.company_name OR so.client_name = ANY(c.child_companies))
                 AND (so.payment_status IS NULL OR (so.payment_status->>'payment_status')::boolean = false)
         ) pending ON true
-        WHERE 
-            c.sales_person = $1
+        ${whereCondition}
         ORDER BY 
             c.id DESC;`;
 
-      const { rows } = await pool.query(query, [userId]);
+      const { rows } = await pool.query(query, inputArray);
       return rows;
     } catch (error) {
       console.log("error in retrieving customer list: ", error);
@@ -1462,6 +1471,30 @@ class O2dService {
       throw error;
     }
   }
+
+
+  async getActiveSaleOrdersAdminDashboard(userId) {
+    try {
+      // Get active sale orders
+      const getActiveSaleOrders = await pool.query(
+        `SELECT * FROM sales_orders order by id desc`,
+        [],
+      );
+
+      // FIX 1: Safely check if the array is empty to prevent a Node.js crash
+      if (getActiveSaleOrders.rows.length === 0) {
+        throw new Error("No active sale orders found");
+      }
+
+      return getActiveSaleOrders.rows;
+    } catch (error) {
+      console.error("Error in getting active sale orders admin dashboard data: ", error);
+      throw error;
+    }
+  }
+
+
+  
 
 
   async assignToVehicleExecutive(id, userId) {

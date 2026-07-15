@@ -690,6 +690,24 @@ class O2dController {
     }
   }
 
+
+  getActiveSaleOrdersAdminDashboard = async (req, res, next) => {
+    try{
+      const userId = req.user?.id || null;
+      const order = await o2dService.getActiveSaleOrdersAdminDashboard(userId);
+      return res.status(200).json({
+        status: "success",
+        message: "Active Sale Orders Admin Dashboard Data retrieved successfully",
+        data: order,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+  
+
   assignToVehicleExecutive = async (req, res, next) => {
     try {
       const { id } = req.body;
