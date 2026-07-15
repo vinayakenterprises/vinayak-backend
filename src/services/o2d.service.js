@@ -1259,7 +1259,9 @@ class O2dService {
       const query = `
         SELECT 
             ci.*,
-            so.client_name
+            so.client_name,
+            so.delivery_and_weight->>'quality_confirmation_status' AS complaint_tat_informatoin,
+            so.quantity_mt
         FROM 
             public.complaint_info ci
         LEFT JOIN 
