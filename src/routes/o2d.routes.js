@@ -110,4 +110,9 @@ router.get("/get-admin-dashboard-cards-data", authMiddleware, o2dController.getA
 router.get("/get-all-sale-orders-admin-dashboard", authMiddleware, o2dController.getActiveSaleOrdersAdminDashboard);
 
 
+
+// overdue summary 
+router.get('/get-overdue-report-data', authMiddleware, o2dController.getOverdueReportData);
+
+
 export default router;

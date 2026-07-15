@@ -877,13 +877,17 @@ class O2dService {
     }
   }
 
+
+  
+
+
   async updateInvoiceAndDispatchInfo(orderId, dispatchData, userId) {
     try {
       const { actual_dispatch_date, invoices, invoice_completed_at } =
         dispatchData;
 
       // 1. Fetch current invoice_and_dispatch from the database
-      const fetchQuery = `SELECT invoice_and_dispatch FROM public.sales_orders WHERE id = $1`;
+      const fetchQuery = `SELECT invoice_and_dispatch, client_name FROM public.sales_orders WHERE id = $1`;
       const { rows } = await pool.query(fetchQuery, [orderId]);
 
       if (rows.length === 0) {
@@ -892,6 +896,7 @@ class O2dService {
 
       // 2. Parse existing data or initialize an empty structure
       let currentDispatchInfo = rows[0].invoice_and_dispatch || {};
+      
 
       // Ensure the invoices array exists so we can safely push to it
       if (!currentDispatchInfo.invoices) {
@@ -946,6 +951,34 @@ class O2dService {
 
       // If new invoices are provided, append them to the existing array
       if (invoices && Array.isArray(invoices) && invoices.length > 0) {
+
+        console.log("lskjdlsdfk -> ", invoices);
+
+        // todo - save to overdue summary report
+        const clientName = rows[0].client_name || null;
+        const invoiceDate = invoices[0].dispatch_timestamp || null;
+        const invoiceNo = invoices[0].invoice || null;
+        const invoiceUrl = invoices[0].invoice_url || null;
+
+        const insertQuery = `INSERT INTO public.overdue_summary_report (
+            sale_order_id, 
+            invoice_date, 
+            invoice_no, 
+            client_name,
+            balance,
+            invoice_url
+        ) 
+        VALUES (
+            $1,                   
+            $2,            
+            $3, 
+            $4, 
+            0,
+            $5
+        )`
+
+        await pool.query(insertQuery, [orderId, invoiceDate, invoiceNo, clientName, invoiceUrl]);
+
         currentDispatchInfo.invoices = [
           ...currentDispatchInfo.invoices,
           ...invoices,
@@ -1491,6 +1524,22 @@ class O2dService {
       return getActiveSaleOrders.rows;
     } catch (error) {
       console.error("Error in getting active sale orders admin dashboard data: ", error);
+      throw error;
+    }
+  }
+
+
+
+  async getOverdueReportData(id, userId) {
+    try{
+      const query = `select * from overdue_summary_report where is_deleted = false`;
+
+      const { rows } = await pool.query(query, []);
+
+      return rows;
+
+    }catch(error){
+      console.error("Error in getting overdue report data: ", error);
       throw error;
     }
   }
