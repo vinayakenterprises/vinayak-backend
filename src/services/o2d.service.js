@@ -216,15 +216,12 @@ class O2dService {
 
   async retrieveAllCustomersList(userId) {
     try {
-
-
-      let whereCondition = 'WHERE c.sales_person = $1';
+      let whereCondition = "WHERE c.sales_person = $1";
       let inputArray = [userId];
-      if(userId === 15){
-        whereCondition = '';
+      if (userId === 15) {
+        whereCondition = "";
         inputArray = [];
       }
-
 
       const query = `SELECT 
             c.*,
@@ -877,10 +874,6 @@ class O2dService {
     }
   }
 
-
-  
-
-
   async updateInvoiceAndDispatchInfo(orderId, dispatchData, userId) {
     try {
       const { actual_dispatch_date, invoices, invoice_completed_at } =
@@ -896,7 +889,6 @@ class O2dService {
 
       // 2. Parse existing data or initialize an empty structure
       let currentDispatchInfo = rows[0].invoice_and_dispatch || {};
-      
 
       // Ensure the invoices array exists so we can safely push to it
       if (!currentDispatchInfo.invoices) {
@@ -951,7 +943,6 @@ class O2dService {
 
       // If new invoices are provided, append them to the existing array
       if (invoices && Array.isArray(invoices) && invoices.length > 0) {
-
         console.log("lskjdlsdfk -> ", invoices);
 
         // todo - save to overdue summary report
@@ -975,9 +966,15 @@ class O2dService {
             $4, 
             0,
             $5
-        )`
+        )`;
 
-        await pool.query(insertQuery, [orderId, invoiceDate, invoiceNo, clientName, invoiceUrl]);
+        await pool.query(insertQuery, [
+          orderId,
+          invoiceDate,
+          invoiceNo,
+          clientName,
+          invoiceUrl,
+        ]);
 
         currentDispatchInfo.invoices = [
           ...currentDispatchInfo.invoices,
@@ -1472,7 +1469,6 @@ class O2dService {
     }
   }
 
-
   async getAdminDashboardCardsData(userId) {
     try {
       const query = `
@@ -1507,7 +1503,6 @@ class O2dService {
     }
   }
 
-
   async getActiveSaleOrdersAdminDashboard(userId) {
     try {
       // Get active sale orders
@@ -1523,30 +1518,89 @@ class O2dService {
 
       return getActiveSaleOrders.rows;
     } catch (error) {
-      console.error("Error in getting active sale orders admin dashboard data: ", error);
+      console.error(
+        "Error in getting active sale orders admin dashboard data: ",
+        error,
+      );
       throw error;
     }
   }
 
-
-
   async getOverdueReportData(id, userId) {
-    try{
-      const query = `select * from overdue_summary_report where is_deleted = false`;
+    try {
+      const query = `select * from overdue_summary_report where is_deleted = false order by id desc`;
 
       const { rows } = await pool.query(query, []);
 
       return rows;
-
-    }catch(error){
+    } catch (error) {
       console.error("Error in getting overdue report data: ", error);
       throw error;
     }
   }
 
+  async updateOverdueSummaryReportInformation(id, userId, body) {
+    try {
+      const keys = Object.keys(body);
+      if (keys.length === 0) {
+        throw new Error("No fields provided to update.");
+      }
 
-  
+      const setClauses = [];
+      const values = [];
+      let paramIndex = 1;
 
+      const allowedFields = [
+        'sale_order_id', 
+        'invoice_date', 
+        'invoice_no', 
+        'client_name', 
+        'balance', 
+        'is_deleted'
+      ];
+
+      for (const key of keys) {
+        if (allowedFields.includes(key)) {
+          setClauses.push(`${key} = $${paramIndex}`);
+          values.push(body[key]);
+          paramIndex++;
+        }
+      }
+
+      if (setClauses.length === 0) {
+        throw new Error("No valid fields provided to update.");
+      }
+
+      // Add the userId for updated_by securely using parameterization
+      setClauses.push(`updated_by = $${paramIndex}`);
+      values.push(userId);
+      paramIndex++;
+
+      // Use PostgreSQL's native NOW() function for the current timestamp
+      setClauses.push(`updated_at = NOW()`);
+
+      // Push the row id to the very end of the values array for the WHERE condition
+      values.push(id);
+
+      const query = `
+        UPDATE public.overdue_summary_report
+        SET ${setClauses.join(', ')}
+        WHERE id = $${paramIndex}
+        RETURNING *;
+      `;
+
+      // Executing the query matching your reference style
+      const { rows } = await pool.query(query, values);
+      return rows[0]; // Returning the single updated row
+
+    } catch (error) {
+      console.error(
+        "Error in updating overdue summary report information: ", 
+        error
+      );
+      throw error;
+    }
+  }
 
   async assignToVehicleExecutive(id, userId) {
     try {
@@ -1994,11 +2048,9 @@ class O2dService {
           }
         };
 
-
-        if(settlement === "CN Issue" || settlement === "DN Issue"){
+        if (settlement === "CN Issue" || settlement === "DN Issue") {
           sendNotificationToJuniorAccountant(id);
         }
-
       }
       if (cn_or_dn_issue_status !== undefined) {
         deliveryPayload.cn_or_dn_issue_status = cn_or_dn_issue_status;
@@ -2030,10 +2082,9 @@ class O2dService {
           }
         };
 
-        if(cn_or_dn_issue_status === true){
+        if (cn_or_dn_issue_status === true) {
           sendNotificationToCrm(id);
         }
-
       }
       if (cn_or_dn_issue_timestamp !== undefined) {
         deliveryPayload.cn_or_dn_issue_timestamp = cn_or_dn_issue_timestamp;
