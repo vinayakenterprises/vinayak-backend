@@ -754,7 +754,9 @@ class O2dController {
   getActiveSaleOrdersAdminDashboard = async (req, res, next) => {
     try{
       const userId = req.user?.id || null;
-      const order = await o2dService.getActiveSaleOrdersAdminDashboard(userId);
+
+      const { start_date, end_date } = req.body;
+      const order = await o2dService.getActiveSaleOrdersAdminDashboard(userId, start_date, end_date);
       return res.status(200).json({
         status: "success",
         message: "Active Sale Orders Admin Dashboard Data retrieved successfully",

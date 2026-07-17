@@ -109,7 +109,7 @@ router.get("/get-interest-note-issue-work-history", authMiddleware, o2dControlle
 
 // admin dashboard related apis
 router.get("/get-admin-dashboard-cards-data", authMiddleware, o2dController.getAdminDashboardCardsData);
-router.get("/get-all-sale-orders-admin-dashboard", authMiddleware, o2dController.getActiveSaleOrdersAdminDashboard);
+router.post("/get-all-sale-orders-admin-dashboard", authMiddleware, o2dController.getActiveSaleOrdersAdminDashboard);
 
 
 

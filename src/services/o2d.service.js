@@ -334,29 +334,24 @@ class O2dService {
     return rows[0] || null;
   }
 
-
-
   async getCrmAndSalesPerson(crm, sales_person) {
-    try{
+    try {
       let query = ``;
-      if(crm){
+      if (crm) {
         query = `select id, username, role, department from users where role = 'Customer Relations Handler'`;
       }
-      if(sales_person){
+      if (sales_person) {
         query = `select id, username, role, department from users where role = 'Sales Executive'`;
       }
 
       const { rows } = await pool.query(query);
 
       return rows;
-
-    }catch(error){
+    } catch (error) {
       console.log("error in getting crm and sales person: ", error);
       throw error;
     }
   }
-
-
 
   async updateCrmAndSalesPerson(id, crm, sales) {
     try {
@@ -1587,23 +1582,28 @@ class O2dService {
     }
   }
 
-  async getActiveSaleOrdersAdminDashboard(userId) {
+  async getActiveSaleOrdersAdminDashboard(userId, start_date, end_date) {
     try {
-      // Get active sale orders
-      const getActiveSaleOrders = await pool.query(
-        `SELECT * FROM sales_orders order by id desc`,
-        [],
-      );
+      let query = `SELECT * FROM sales_orders`;
+      const values = [];
 
-      // FIX 1: Safely check if the array is empty to prevent a Node.js crash
-      if (getActiveSaleOrders.rows.length === 0) {
+      if (start_date && end_date) {
+        query += ` WHERE created_at BETWEEN $1 AND $2`;
+        values.push(start_date, end_date);
+      }
+
+      query += ` ORDER BY id DESC`;
+
+      const { rows } = await pool.query(query, values);
+
+      if (rows.length === 0) {
         throw new Error("No active sale orders found");
       }
 
-      return getActiveSaleOrders.rows;
+      return rows;
     } catch (error) {
       console.error(
-        "Error in getting active sale orders admin dashboard data: ",
+        "Error in getting active sale orders admin dashboard data:",
         error,
       );
       throw error;
