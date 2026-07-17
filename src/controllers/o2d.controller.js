@@ -117,6 +117,65 @@ class O2dController {
     }
   };
 
+
+  getCrmAndSalesPerson = async (req, res, next) => {
+    try {
+      const { crm, sales_person } = req.body;
+
+      if(!crm && !sales_person){
+        return res.status(400).json({
+          status: "error",
+          message: "Please Provide CRM or Sales Person",
+        });
+      }
+
+      const customerDetails = await o2dService.getCrmAndSalesPerson(crm, sales_person);
+
+      if (!customerDetails) {
+        return res.status(404).json({
+          status: "error",
+          message: "Customer record not found",
+        });
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: "Customer details retrieved successfully",
+        data: customerDetails,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+
+  
+
+
+  updateCrmAndSalesPerson = async (req, res, next) => {
+    try {
+      const { id, crm, sales_person } = req.body;
+
+      const updatedCustomerDetails =
+        await o2dService.updateCrmAndSalesPerson(id, crm, sales_person);
+
+      if (!updatedCustomerDetails) {
+        return res.status(404).json({
+          status: "error",
+          message: "Customer record not found or already deleted",
+        });
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: "Customer details updated successfully",
+        data: updatedCustomerDetails,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   removeCustomerRecordById = async (req, res, next) => {
     try {
       const { id } = req.params;

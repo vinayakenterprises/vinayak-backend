@@ -245,7 +245,6 @@ class O2dService {
 
       const { rows } = await pool.query(query, inputArray);
 
-
       // const crmIds = rows.map((item) => {
       //   const {crm} = item;
       //   if(crm === null){
@@ -254,11 +253,10 @@ class O2dService {
       //   return crm;
       // });
 
-
       const userIdsSet = new Set();
-      for(const item of rows){
-        const {crm, sales_person} = item;
-        if(crm === null || sales_person === null){
+      for (const item of rows) {
+        const { crm, sales_person } = item;
+        if (crm === null || sales_person === null) {
           continue;
         }
         userIdsSet.add(crm);
@@ -267,10 +265,9 @@ class O2dService {
 
       const userIds = [...userIdsSet];
 
-      
-      const userDetails = await pool.query(`select id, username from users where id in (${userIds.join(",")})`);
-
-
+      const userDetails = await pool.query(
+        `select id, username from users where id in (${userIds.join(",")})`,
+      );
 
       return [rows, userDetails?.rows];
     } catch (error) {
@@ -335,6 +332,65 @@ class O2dService {
 
     const { rows } = await pool.query(query, values);
     return rows[0] || null;
+  }
+
+
+
+  async getCrmAndSalesPerson(crm, sales_person) {
+    try{
+      let query = ``;
+      if(crm){
+        query = `select id, username, role, department from users where role = 'Customer Relations Handler'`;
+      }
+      if(sales_person){
+        query = `select id, username, role, department from users where role = 'Sales Executive'`;
+      }
+
+      const { rows } = await pool.query(query);
+
+      return rows;
+
+    }catch(error){
+      console.log("error in getting crm and sales person: ", error);
+      throw error;
+    }
+  }
+
+
+
+  async updateCrmAndSalesPerson(id, crm, sales) {
+    try {
+      const updates = [];
+      const values = [id];
+      let index = 2;
+
+      if (crm !== undefined) {
+        updates.push(`crm = $${index++}`);
+        values.push(crm);
+      }
+
+      if (sales !== undefined) {
+        updates.push(`sales_person = $${index++}`);
+        values.push(sales);
+      }
+
+      if (updates.length === 0) {
+        throw new Error("No fields to update");
+      }
+
+      const query = `
+      UPDATE public.customers
+      SET ${updates.join(", ")}
+      WHERE id = $1
+      RETURNING *;
+    `;
+
+      const { rows } = await pool.query(query, values);
+      return rows[0] || null;
+    } catch (error) {
+      console.error("Error updating CRM and sales person:", error);
+      throw error;
+    }
   }
 
   async removeCustomerRecordById(id) {
@@ -1579,12 +1635,12 @@ class O2dService {
       let paramIndex = 1;
 
       const allowedFields = [
-        'sale_order_id', 
-        'invoice_date', 
-        'invoice_no', 
-        'client_name', 
-        'balance', 
-        'is_deleted'
+        "sale_order_id",
+        "invoice_date",
+        "invoice_no",
+        "client_name",
+        "balance",
+        "is_deleted",
       ];
 
       for (const key of keys) {
@@ -1612,7 +1668,7 @@ class O2dService {
 
       const query = `
         UPDATE public.overdue_summary_report
-        SET ${setClauses.join(', ')}
+        SET ${setClauses.join(", ")}
         WHERE id = $${paramIndex}
         RETURNING *;
       `;
@@ -1620,11 +1676,10 @@ class O2dService {
       // Executing the query matching your reference style
       const { rows } = await pool.query(query, values);
       return rows[0]; // Returning the single updated row
-
     } catch (error) {
       console.error(
-        "Error in updating overdue summary report information: ", 
-        error
+        "Error in updating overdue summary report information: ",
+        error,
       );
       throw error;
     }
