@@ -2080,7 +2080,7 @@ class O2dService {
       const {
         actual_delivery_timestamp,
         delivery_status,
-        weight_difference,
+        weight_difference_in_kg,
         settlement,
         cn_or_dn_issue_status,
         cn_or_dn_issue_timestamp,
@@ -2098,9 +2098,9 @@ class O2dService {
       if (delivery_status !== undefined) {
         deliveryPayload.delivery_status = delivery_status;
       }
-      if (weight_difference !== undefined) {
+      if (weight_difference_in_kg !== undefined) {
         // Map the input variable to the specific DB column key and ensure it's a float
-        deliveryPayload.weight_difference_in_kg = parseFloat(weight_difference);
+        deliveryPayload.weight_difference_in_kg = parseFloat(weight_difference_in_kg);
       }
       if (settlement !== undefined) {
         deliveryPayload.settlement = settlement;
