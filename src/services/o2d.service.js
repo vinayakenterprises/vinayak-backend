@@ -216,9 +216,9 @@ class O2dService {
 
   async retrieveAllCustomersList(userId) {
     try {
-      let whereCondition = "WHERE c.sales_person = $1";
+      let whereCondition = "WHERE c.sales_person = $1 or c.crm = $1";
       let inputArray = [userId];
-      if (userId === 15) {
+      if (userId === 15 || userId === 9) {
         whereCondition = "";
         inputArray = [];
       }
@@ -244,7 +244,35 @@ class O2dService {
             c.id DESC;`;
 
       const { rows } = await pool.query(query, inputArray);
-      return rows;
+
+
+      // const crmIds = rows.map((item) => {
+      //   const {crm} = item;
+      //   if(crm === null){
+      //     continue;
+      //   }
+      //   return crm;
+      // });
+
+
+      const userIdsSet = new Set();
+      for(const item of rows){
+        const {crm, sales_person} = item;
+        if(crm === null || sales_person === null){
+          continue;
+        }
+        userIdsSet.add(crm);
+        userIdsSet.add(sales_person);
+      }
+
+      const userIds = [...userIdsSet];
+
+      
+      const userDetails = await pool.query(`select id, username from users where id in (${userIds.join(",")})`);
+
+
+
+      return [rows, userDetails?.rows];
     } catch (error) {
       console.log("error in retrieving customer list: ", error);
       throw error;

@@ -63,7 +63,8 @@ class O2dController {
       return res.status(200).json({
         status: "success",
         message: "All customers retrieved successfully",
-        data: customersList,
+        data: customersList[0],
+        userDetails: customersList[1],
       });
     } catch (error) {
       next(error);
