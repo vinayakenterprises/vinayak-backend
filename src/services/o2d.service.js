@@ -1705,11 +1705,23 @@ class O2dService {
 
       const vehicleArrangeMentStage = ORDER_STAGES.vehicle_arrangement_stage;
 
+
+      // get order details
+      const orderDetails = await pool.query(
+        `select client_name, quantity_mt from sales_orders where id = $1`,
+        [id],
+      );
+
+      if (!orderDetails.rows.length) {
+        throw new Error("Order not found");
+      }
+
+
       const sendNotificationToVehicleExecutive = async (order_id) => {
         try {
           const notif = await createNotification(
             vehicleExecutiveId,
-            `Please Arrange Vehicle for Order ID: ${order_id}.`,
+            `Please arrange a vehicle for Order #${order_id} (${orderDetails?.rows?.[0]?.client_name}) - Quantity: ${orderDetails?.rows?.[0]?.quantity_mt} MT.`,
             "vehicle_arrangement_request_notification",
           );
           emitToUser(vehicleExecutiveId, "new_notification", notif);
