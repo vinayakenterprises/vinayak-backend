@@ -31,6 +31,7 @@ class O2dService {
     if (getCrm.rows[0].crm === null) {
       const error = new Error("Please Assign CRM First");
       error.statusCode = 400;
+      error.isOperational = true;
       throw error;
     }
 
