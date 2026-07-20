@@ -18,7 +18,13 @@ class O2dController {
 
   getAllClientNamesList = async (req, res, next) => {
     try {
-      const clientName = await o2dService.getAllClientNamesList();
+      const userId = req.user?.id || null;
+
+      let clientName = await o2dService.getAllClientNamesList(userId);
+
+      if (!clientName) {
+        clientName = [];
+      }
 
       const staticClientNameList = [];
 
@@ -50,12 +56,15 @@ class O2dController {
 
   retrieveAllCustomersList = async (req, res, next) => {
     try {
-      const customersList = await o2dService.retrieveAllCustomersList();
+      const userId = req.user?.id || null;
+
+      const customersList = await o2dService.retrieveAllCustomersList(userId);
 
       return res.status(200).json({
         status: "success",
         message: "All customers retrieved successfully",
-        data: customersList,
+        data: customersList[0],
+        userDetails: customersList[1],
       });
     } catch (error) {
       next(error);
@@ -95,6 +104,65 @@ class O2dController {
         return res.status(404).json({
           status: "error",
           message: "Customer record not found or could not be updated",
+        });
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: "Customer details updated successfully",
+        data: updatedCustomerDetails,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+
+  getCrmAndSalesPerson = async (req, res, next) => {
+    try {
+      const { crm, sales_person } = req.body;
+
+      if(!crm && !sales_person){
+        return res.status(400).json({
+          status: "error",
+          message: "Please Provide CRM or Sales Person",
+        });
+      }
+
+      const customerDetails = await o2dService.getCrmAndSalesPerson(crm, sales_person);
+
+      if (!customerDetails) {
+        return res.status(404).json({
+          status: "error",
+          message: "Customer record not found",
+        });
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: "Customer details retrieved successfully",
+        data: customerDetails,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+
+  
+
+
+  updateCrmAndSalesPerson = async (req, res, next) => {
+    try {
+      const { id, crm, sales_person } = req.body;
+
+      const updatedCustomerDetails =
+        await o2dService.updateCrmAndSalesPerson(id, crm, sales_person);
+
+      if (!updatedCustomerDetails) {
+        return res.status(404).json({
+          status: "error",
+          message: "Customer record not found or already deleted",
         });
       }
 
@@ -429,6 +497,321 @@ class O2dController {
     }
   };
 
+  createComplaintForSaleOrder = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+      const saleOrderId = req.params.id;
+
+      const complaint = await o2dService.createComplaintForSaleOrder(
+        saleOrderId,
+        req.body,
+        userId,
+      );
+
+      return res.status(201).json({
+        status: "success",
+        message: "Complaint created successfully",
+        data: complaint,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getAllComplaintsForSaleOrder = async (req, res, next) => {
+    try {
+      const saleOrderId = req.params.id;
+
+      const complaints =
+        await o2dService.getAllComplaintsForSaleOrder(saleOrderId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Complaints fetched successfully",
+        data: complaints,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getComplaintDetailsForSaleOrder = async (req, res, next) => {
+    try {
+      const { id, complaintId } = req.params;
+
+      const complaint = await o2dService.getComplaintDetailsForSaleOrder(
+        id,
+        complaintId,
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Complaint details fetched successfully",
+        data: complaint,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateComplaintDetailsForSaleOrder = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      const { id, complaintId } = req.params;
+
+      const complaint = await o2dService.updateComplaintDetailsForSaleOrder(
+        id,
+        complaintId,
+        req.body,
+        userId,
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Complaint updated successfully",
+        data: complaint,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  deleteComplaintForSaleOrder = async (req, res, next) => {
+    try {
+      const { id, complaintId } = req.params;
+
+      await o2dService.deleteComplaintForSaleOrder(id, complaintId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Complaint deleted successfully",
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateCallActionInformation = async (req, res, next) => {
+    try {
+      const { id } = req.body;
+      const userId = req.user?.id || null;
+
+      const updatedOrder = await o2dService.updateCallActionInformation(
+        id,
+        userId,
+        req.body,
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Call Action Information updated successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getCallComplaintData = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      const complaint = await o2dService.getCallComplaintData(userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Call Complaint Data retrieved successfully",
+        data: complaint,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updatePlantVisitInformation = async (req, res, next) => {
+    try {
+      const { id } = req.body;
+      const userId = req.user?.id || null;
+      const updatedOrder = await o2dService.updatePlantVisitInformation(
+        id,
+        userId,
+        req.body,
+      );
+      return res.status(200).json({
+        status: "success",
+        message: "Plant Visit Information updated successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateComplaintClosureInformation = async (req, res, next) => {
+    try {
+      const { complaint_id } = req.body;
+      const userId = req.user?.id || null;
+
+      const updatedOrder = await o2dService.updateComplaintClosureInformation(
+        complaint_id,
+        userId,
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Complaint Closure Information updated successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+
+  getCnDnIssueData = async (req, res, next) => {
+    try{
+      const userId = req.user?.id || null;
+
+      const order = await o2dService.getCnDnIssueData(userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "CN/DN Issue Data retrieved successfully",
+        data: order,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+  getCnDnWorkHistory = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      const order = await o2dService.getCnDnWorkHistory(userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "CN/DN Work History retrieved successfully",
+        data: order,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+  getInterestNoteIssueData = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      const order = await o2dService.getInterestNoteIssueData(userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Interest Note Issue Data retrieved successfully",
+        data: order,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+  getInterestNoteIssueWorkHistory = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      const order = await o2dService.getInterestNoteIssueWorkHistory(userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Interest Note Issue Work History retrieved successfully",
+        data: order,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+  getAdminDashboardCardsData = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      const order = await o2dService.getAdminDashboardCardsData(userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Admin Dashboard Cards Data retrieved successfully",
+        data: order,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+  getActiveSaleOrdersAdminDashboard = async (req, res, next) => {
+    try{
+      const userId = req.user?.id || null;
+
+      const { start_date, end_date } = req.body;
+      const order = await o2dService.getActiveSaleOrdersAdminDashboard(userId, start_date, end_date);
+      return res.status(200).json({
+        status: "success",
+        message: "Active Sale Orders Admin Dashboard Data retrieved successfully",
+        data: order,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+  getOverdueReportData = async (req, res, next) => {
+    try {
+      const { id } = req.body;
+      const userId = req.user?.id || null;
+
+      const updatedOrder = await o2dService.getOverdueReportData(
+        id,
+        userId,
+      );
+
+      res.status(200).json({
+        status: "success",
+        message: "Overdue Report Data retrieved successfully",
+        data: updatedOrder,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+  updateOverdueSummaryReportInformation = async (req, res, next) => {
+    try {
+      const { id } = req.body;
+      const userId = req.user?.id || null;
+
+      const updatedOrder = await o2dService.updateOverdueSummaryReportInformation(
+        id,
+        userId,
+        req.body,
+      );
+
+      res.status(200).json({
+        status: "success",
+        message: "Overdue Summary Report Information updated successfully",
+        data: updatedOrder,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+  
+
   assignToVehicleExecutive = async (req, res, next) => {
     try {
       const { id } = req.body;
@@ -484,6 +867,7 @@ class O2dController {
       const updatedOrder = await o2dService.markAsDeliveredByTransportExecutive(
         id,
         userId,
+        req.body,
       );
       return res.status(200).json({
         status: "success",
@@ -552,6 +936,125 @@ class O2dController {
         status: "success",
         message: "Intimation and thank you data saved successfully",
         data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updatePaymentInformation = async (req, res, next) => {
+    try {
+      const { id } = req.body;
+      const userId = req.user?.id || null;
+
+      const updatedOrder = await o2dService.updatePaymentInformation(
+        id,
+        userId,
+        req.body,
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Payment information updated successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateDeliveryAndWeightInformation = async (req, res, next) => {
+    try {
+      const { id } = req.body;
+      const userId = req.user?.id || null;
+
+      const updatedOrder = await o2dService.updateDeliveryAndWeightInformation(
+        id,
+        userId,
+        req.body,
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Delivery and weight information updated successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  addRemarksToOrder = async (req, res, next) => {
+    try {
+      const userId = req.user?.id;
+      const orderId = req.params.id;
+
+      const result = await o2dService.addRemarksToOrder(
+        orderId,
+        req.body,
+        userId,
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Remark added successfully",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getRemarksForOrder = async (req, res, next) => {
+    try {
+      const orderId = req.params.id;
+
+      const remarks = await o2dService.getRemarksForOrder(orderId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Remarks fetched successfully",
+        data: remarks,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateRemarksForOrder = async (req, res, next) => {
+    try {
+      const userId = req.user?.id;
+
+      const { id, remarkId } = req.params;
+
+      const result = await o2dService.updateRemarksForOrder(
+        id,
+        remarkId,
+        req.body,
+        userId,
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Remark updated successfully",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  deleteRemarksForOrder = async (req, res, next) => {
+    try {
+      const userId = req.user?.id;
+
+      const { id, remarkId } = req.params;
+
+      await o2dService.deleteRemarksForOrder(id, remarkId, userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Remark deleted successfully",
       });
     } catch (error) {
       next(error);

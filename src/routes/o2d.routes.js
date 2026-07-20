@@ -11,7 +11,9 @@ router.post('/create-new-customer', authMiddleware, o2dController.createNewCusto
 router.get('/retrieve-all-customers', authMiddleware, o2dController.retrieveAllCustomersList);
 router.get('/retrieve-customer-by-id/:id', authMiddleware, o2dController.retrieveCustomerDetailsById);
 router.put('/update-existing-customer/:id', authMiddleware, o2dController.updateExistingCustomerDetails);
-router.delete('/remove-customer-record/:id', authMiddleware, o2dController.removeCustomerRecordById);
+router.post('/get-crm-and-sales-person', authMiddleware, o2dController.getCrmAndSalesPerson);
+router.post('/update-crm-and-sales-person', authMiddleware, o2dController.updateCrmAndSalesPerson);
+// router.delete('/remove-customer-record/:id', authMiddleware, o2dController.removeCustomerRecordById); - todo
 
 
 // sale order related
@@ -43,6 +45,12 @@ router.post('/update-dispatch-information', authMiddleware, o2dController.update
 router.post('/assign-to-vehicle-executive', authMiddleware, o2dController.assignToVehicleExecutive);
 router.post('/assign-order-to-invoice-executive', authMiddleware, o2dController.assignOrderToInvoiceExecutive);
 router.post('/intimation-and-thank-you-data-update', authMiddleware, o2dController.intimationAndThankYouData);
+router.post('/update-payment-information', authMiddleware, o2dController.updatePaymentInformation);
+router.post('/update-delivery-and-weight-information', authMiddleware, o2dController.updateDeliveryAndWeightInformation);
+router.post("/sale-orders/:id/remarks", authMiddleware, o2dController.addRemarksToOrder);
+router.get("/sale-orders/:id/remarks", authMiddleware, o2dController.getRemarksForOrder);
+router.put("/sale-orders/:id/remarks/:remarkId", authMiddleware, o2dController.updateRemarksForOrder);
+router.delete("/sale-orders/:id/remarks/:remarkId", authMiddleware, o2dController.deleteRemarksForOrder);
 
 
 // vehicle arrange phase
@@ -54,6 +62,60 @@ router.post('/mark-as-delivered-by-transport-executive', authMiddleware, o2dCont
 router.get('/get-invoice-generation-request-data', authMiddleware, o2dController.getInvoiceGenerationRequestData);
 router.post('/update-invoice-and-dispatch-info', authMiddleware, o2dController.updateInvoiceAndDispatchInfo);
 router.get('/get-invoice-executive-completed-data', authMiddleware, o2dController.getInvoiceExecutiveCompletedData);
+
+
+// complaints related 
+router.post(
+  "/sale-orders/:id/complaints",
+  authMiddleware,
+  o2dController.createComplaintForSaleOrder
+);
+
+router.get(
+  "/sale-orders/:id/complaints",
+  authMiddleware,
+  o2dController.getAllComplaintsForSaleOrder
+);
+
+router.get(
+  "/sale-orders/:id/complaints/:complaintId",
+  authMiddleware,
+  o2dController.getComplaintDetailsForSaleOrder
+);
+
+router.put(
+  "/sale-orders/:id/complaints/:complaintId",
+  authMiddleware,
+  o2dController.updateComplaintDetailsForSaleOrder
+);
+
+router.delete(
+  "/sale-orders/:id/complaints/:complaintId",
+  authMiddleware,
+  o2dController.deleteComplaintForSaleOrder
+);
+
+router.post("/update-callaction-information", authMiddleware, o2dController.updateCallActionInformation);
+router.get("/get-call-complaint-data", authMiddleware, o2dController.getCallComplaintData);
+router.post("/plant-visit-info-update", authMiddleware, o2dController.updatePlantVisitInformation);
+router.post("/complaint-closure-info-update", authMiddleware, o2dController.updateComplaintClosureInformation);
+
+// jatin dashboard related apis
+router.get("/get-cn-dn-issue-data", authMiddleware, o2dController.getCnDnIssueData);
+router.get("/get-cn-dn-work-history", authMiddleware, o2dController.getCnDnWorkHistory);
+router.get("/get-interest-note-issue-data", authMiddleware, o2dController.getInterestNoteIssueData);
+router.get("/get-interest-note-issue-work-history", authMiddleware, o2dController.getInterestNoteIssueWorkHistory);
+
+
+// admin dashboard related apis
+router.get("/get-admin-dashboard-cards-data", authMiddleware, o2dController.getAdminDashboardCardsData);
+router.post("/get-all-sale-orders-admin-dashboard", authMiddleware, o2dController.getActiveSaleOrdersAdminDashboard);
+
+
+
+// overdue summary 
+router.get('/get-overdue-report-data', authMiddleware, o2dController.getOverdueReportData);
+router.post('/update-overdue-summary-report-information', authMiddleware, o2dController.updateOverdueSummaryReportInformation);
 
 
 export default router;
