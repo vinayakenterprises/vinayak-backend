@@ -12,6 +12,7 @@ export const initSocket = (httpServer) => {
         "https://vinayak-frontend-seven.vercel.app",
         "https://tender.mittalu.com",
         "https://d1ysllr1medks8.cloudfront.net",
+        "https://erp.vinayak-enterprises.com"
       ],
       methods: ["GET", "POST"],
       credentials: true,
