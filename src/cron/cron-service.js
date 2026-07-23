@@ -3,6 +3,7 @@ import { createNotification } from "../services/notification.service.js";
 import { emitToUser } from "../utils/socket.js";
 import pool from "../config/database.js";
 import { sendMail } from "../services/mail.service.js";
+import imsService from "../services/ims.service.js";
 
 export const initCronJobs = () => {
   // "0 */6 * * *" → every 6 hours
@@ -92,6 +93,16 @@ export const initCronJobs = () => {
       );
     } catch (error) {
       console.error("CRON Error checking missing POs:", error.message);
+    }
+  });
+
+  // Stock level alerts for Purchase Executive at 4:00 PM (16:00) every day
+  cron.schedule("0 18 * * *", async () => {
+    console.log("CRON: Checking stock levels for Purchase Executive at 4:00 PM...");
+    try {
+      await imsService.checkCategoryStockLevelsAndNotify();
+    } catch (error) {
+      console.error("CRON Error during stock status check:", error.message);
     }
   });
 };
