@@ -1061,6 +1061,22 @@ class O2dController {
     }
   };
 
+
+  getSpecificSaleOrderInformation = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+      const { id } = req.body;
+      const order = await o2dService.getSpecificSaleOrderInformation(userId, id);
+      return res.status(200).json({
+        status: "success",
+        message: "Sale order information retrieved successfully",
+        data: order,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   getInvoiceGenerationRequestData = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;

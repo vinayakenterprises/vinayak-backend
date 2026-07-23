@@ -2386,6 +2386,23 @@ class O2dService {
     }
   }
 
+
+  async getSpecificSaleOrderInformation(userId, id) {
+    try {
+      const query = `
+        SELECT * FROM public.sales_orders
+        WHERE id = $1
+      `;
+
+      const { rows } = await pool.query(query, [id]);
+
+      return rows;
+    } catch (error) {
+      console.error("Error in getSpecificSaleOrderInformation:", error);
+      throw error;
+    }
+  }
+
   async getInvoiceGenerationRequestData(userId) {
     try {
       const query = `
