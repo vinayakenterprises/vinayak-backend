@@ -965,6 +965,73 @@ class ImsService {
             console.error("Error checking stock status and notifying:", error);
         }
     }
+
+    async importPurchaseData(purchase) {
+
+        const {
+            poid,
+            material_name,
+            purchased_qty,
+            purity,
+            purchased_date,
+            json
+        } = purchase;
+
+        // Validation
+        if (
+            !poid ||
+            !material_name ||
+            purchased_qty === undefined ||
+            isNaN(Number(purchased_qty)) ||
+            !purity ||
+            !purchased_date ||
+            !json
+        ) {
+            throw new Error("Please provide all the required data.");
+        }
+
+        const query = `
+        INSERT INTO ims_purchase_history
+        (
+            poid,
+            material_name,
+            purchased_qty,
+            purity,
+            purchased_date,
+            json_data
+        )
+        VALUES
+        (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6
+        )
+        RETURNING *;
+    `;
+
+        try {
+
+            const { rows } = await pool.query(query, [
+                poid,
+                material_name,
+                Number(purchased_qty),
+                purity,
+                purchased_date,
+                json
+            ]);
+
+            return rows[0];
+
+        } catch (error) {
+
+            console.error("Error while importing purchase data:", error);
+
+            throw error;
+        }
+    }
 }
 
 export default new ImsService();

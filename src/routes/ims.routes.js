@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import imsController from '../controllers/ims.controller.js'; 
+import imsController from '../controllers/ims.controller.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
 
 const router = Router();
@@ -38,5 +38,12 @@ router.get('/get-filtered-inventory', authMiddleware, imsController.getFilteredI
 
 // LOG PAST DATA
 router.post('/log-past-data', authMiddleware, imsController.logPastData);
+
+// GET DATA FROM TALLY
+router.post(
+    "/import-purchase-data",
+    imsController.importPurchaseData
+);
+
 
 export default router;
