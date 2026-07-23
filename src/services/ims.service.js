@@ -1032,6 +1032,38 @@ class ImsService {
             throw error;
         }
     }
+
+    async getPurchaseHistory() {
+
+        const query = `
+        SELECT
+            id,
+            poid,
+            material_name,
+            purchased_qty,
+            purity,
+            purchased_date,
+            json_data,
+            created_at,
+            updated_at
+        FROM ims_purchase_history
+        WHERE is_deleted = FALSE
+        ORDER BY purchased_date DESC, created_at DESC;
+    `;
+
+        try {
+
+            const { rows } = await pool.query(query);
+
+            return rows;
+
+        } catch (error) {
+
+            console.error("Error while fetching purchase history:", error);
+
+            throw error;
+        }
+    }
 }
 
 export default new ImsService();

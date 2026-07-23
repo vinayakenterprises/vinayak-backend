@@ -350,6 +350,23 @@ class ImsController {
             next(error);
         }
     };
+
+    getPurchaseHistory = async (req, res, next) => {
+        try {
+
+            const data = await imsService.getPurchaseHistory();
+            `   `
+            return res.status(200).json({
+                status: "success",
+                message: "Purchase history retrieved successfully.",
+                data: data
+            });
+
+        } catch (error) {
+
+            next(error);
+        }
+    };
 }
 
 export default new ImsController();

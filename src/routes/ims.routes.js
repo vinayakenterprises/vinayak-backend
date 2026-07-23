@@ -45,5 +45,11 @@ router.post(
     imsController.importPurchaseData
 );
 
+router.get(
+    "/get-purchase-history",
+    authMiddleware,
+    imsController.getPurchaseHistory
+);
+
 
 export default router;
