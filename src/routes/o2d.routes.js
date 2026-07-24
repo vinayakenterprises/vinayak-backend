@@ -52,6 +52,7 @@ router.get("/sale-orders/:id/remarks", authMiddleware, o2dController.getRemarksF
 router.put("/sale-orders/:id/remarks/:remarkId", authMiddleware, o2dController.updateRemarksForOrder);
 router.delete("/sale-orders/:id/remarks/:remarkId", authMiddleware, o2dController.deleteRemarksForOrder);
 router.post('/get-specific-sale-order-information', authMiddleware, o2dController.getSpecificSaleOrderInformation);
+router.post('/split-order-into-multiple-orders', authMiddleware, o2dController.splitOrderIntoMultipleOrders);
 
 
 // vehicle arrange phase
