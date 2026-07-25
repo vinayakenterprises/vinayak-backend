@@ -1634,7 +1634,12 @@ class O2dService {
 
   async getOverdueReportData(id, userId) {
     try {
-      const query = `select * from overdue_summary_report where is_deleted = false order by id desc`;
+      const query = `SELECT osr.*, ci.complaint_status, ci.updated_at
+      FROM overdue_summary_report osr 
+      LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
+      WHERE osr.is_deleted = false 
+        AND (ci.sale_order_id IS NULL OR ci.complaint_status = 'Closed')
+      ORDER BY osr.id DESC`;
 
       const { rows } = await pool.query(query, []);
 
