@@ -1074,6 +1074,27 @@ class O2dController {
       next(error);
     }
   };
+
+  updatePoRelated = async (req, res, next) => {
+    try {
+      const { id, ...po_data } = req.body;
+      const userId = req.user?.id || null;
+
+      const updatedOrder = await o2dService.updatePoRelated(
+        id,
+        po_data,
+        userId
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "PO information updated successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 }
 
 export default new O2dController();

@@ -766,6 +766,15 @@ class O2dService {
         sanitizedSlipData.so_order_completed_at = so_order_completed_at;
       }
 
+      // Add PO document dispatch metadata
+      sanitizedSlipData.sent_for_po_document = true;
+      sanitizedSlipData.sent_for_po_at_timestamp = sent_for_so_at ? new Date(sent_for_so_at).toISOString() : new Date().toISOString();
+
+      const poRelatedData = {
+        sent_for_po_document: true,
+        sent_for_po_at_timestamp: sanitizedSlipData.sent_for_po_at_timestamp
+      };
+
       // If no valid fields were provided, you might want to stop the update to save DB calls
       if (Object.keys(sanitizedSlipData).length === 0) {
         throw new Error(
@@ -787,6 +796,7 @@ class O2dService {
         UPDATE public.sales_orders
         SET 
           sale_order_generation = COALESCE(sale_order_generation, '{}'::jsonb) || $1::jsonb,
+          po_related = COALESCE(po_related, '{}'::jsonb) || $5::jsonb,
           updated_at = now(),
           updated_by = $2,
           assigned_to = $4
@@ -800,12 +810,42 @@ class O2dService {
         userId,
         order_id,
         salesOrdersExecutiveId,
+        JSON.stringify(poRelatedData)
       ];
 
       const { rows } = await pool.query(query, values);
       return rows[0] || null;
     } catch (error) {
       console.error("Error in generating sale order slip: ", error);
+      throw error;
+    }
+  }
+
+  async updatePoRelated(id, po_data, userId) {
+    try {
+      if (!id) {
+        throw new Error("Order ID is required");
+      }
+
+      const query = `
+        UPDATE public.sales_orders
+        SET po_related = COALESCE(po_related, '{}'::jsonb) || jsonb_build_object(
+              'sent_for_po_document', COALESCE(po_related->'sent_for_po_document', 'true'::jsonb),
+              'sent_for_po_at_timestamp', COALESCE(po_related->'sent_for_po_at_timestamp', COALESCE(sale_order_generation->'sent_for_so_at', to_jsonb(now()::text)))
+            ) || $2::jsonb,
+            updated_at = now(),
+            updated_by = $3
+        WHERE id = $1
+        RETURNING *;
+      `;
+      const { rows } = await pool.query(query, [
+        id,
+        JSON.stringify(po_data),
+        userId,
+      ]);
+      return rows[0] || null;
+    } catch (error) {
+      console.error("Error in updatePoRelated: ", error);
       throw error;
     }
   }
