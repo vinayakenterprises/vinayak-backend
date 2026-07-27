@@ -962,8 +962,9 @@ class O2dService {
       const query = `
         SELECT so.* FROM public.sales_orders so
         INNER JOIN public.customers c ON so.client_name = c.company_name
+        or so.client_name = any(c.child_companies)
         WHERE c.crm = $1 
-          AND so.sale_order_generation->>'sent_for_so' = 'true' 
+          AND so.sale_order_generation->>'sent_for_so' = 'true'
           -- AND so.sale_order_generation->>'so_order_completed_at' IS NOT NULL 
         ORDER BY so.id DESC;
       `;
