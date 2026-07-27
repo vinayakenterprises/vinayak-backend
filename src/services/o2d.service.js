@@ -818,12 +818,11 @@ class O2dService {
       }
 
       // Add PO document dispatch metadata
-      sanitizedSlipData.sent_for_po_document = true;
-      sanitizedSlipData.sent_for_po_at_timestamp = sent_for_so_at ? new Date(sent_for_so_at).toISOString() : new Date().toISOString();
+      const sent_for_po_at_timestamp = sent_for_so_at ? new Date(sent_for_so_at).toISOString() : new Date().toISOString();
 
       const poRelatedData = {
         sent_for_po_document: true,
-        sent_for_po_at_timestamp: sanitizedSlipData.sent_for_po_at_timestamp
+        sent_for_po_at_timestamp
       };
 
       // If no valid fields were provided, you might want to stop the update to save DB calls
