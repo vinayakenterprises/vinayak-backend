@@ -40,6 +40,7 @@ router.get('/get-completed-so-generation-request-data', authMiddleware, o2dContr
 
 
 // crm phase
+// this api is used to get data for the crm dashbaord
 router.get('/get-assigned-so-by-crm', authMiddleware, o2dController.getAssignedSOByCRM);
 router.post('/update-dispatch-information', authMiddleware, o2dController.updateDispatchInformation);
 router.post('/assign-to-vehicle-executive', authMiddleware, o2dController.assignToVehicleExecutive);
@@ -47,10 +48,13 @@ router.post('/assign-order-to-invoice-executive', authMiddleware, o2dController.
 router.post('/intimation-and-thank-you-data-update', authMiddleware, o2dController.intimationAndThankYouData);
 router.post('/update-payment-information', authMiddleware, o2dController.updatePaymentInformation);
 router.post('/update-delivery-and-weight-information', authMiddleware, o2dController.updateDeliveryAndWeightInformation);
+router.post('/update-po-related', authMiddleware, o2dController.updatePoRelated);
 router.post("/sale-orders/:id/remarks", authMiddleware, o2dController.addRemarksToOrder);
 router.get("/sale-orders/:id/remarks", authMiddleware, o2dController.getRemarksForOrder);
 router.put("/sale-orders/:id/remarks/:remarkId", authMiddleware, o2dController.updateRemarksForOrder);
 router.delete("/sale-orders/:id/remarks/:remarkId", authMiddleware, o2dController.deleteRemarksForOrder);
+router.post('/get-specific-sale-order-information', authMiddleware, o2dController.getSpecificSaleOrderInformation);
+router.post('/split-order-into-multiple-orders', authMiddleware, o2dController.splitOrderIntoMultipleOrders);
 
 
 // vehicle arrange phase

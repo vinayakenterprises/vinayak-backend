@@ -21,6 +21,7 @@ class O2dService {
       assigned_to,
       credit_limit_info,
       vehicle_type,
+      splitted_from
     } = data;
 
     const getCrm = await pool.query(
@@ -118,13 +119,30 @@ class O2dService {
       }
     }
 
+
+    let originalCreatorId;
+    const orderSplitRelatedData = splitted_from ? JSON.stringify({ splitted_from }) : null;
+    if(splitted_from){
+      const originalCreatedBy = await pool.query(`select created_by from sales_orders where id = $1`, [splitted_from]);
+  
+      if(originalCreatedBy.rows.length === 0){
+        throw new Error("Original order not found");
+      }
+
+      originalCreatorId = originalCreatedBy.rows[0].created_by;
+
+    }
+
+
+
+
     const query = `
       INSERT INTO public.sales_orders (
         client_name, rate, ex_works_rate, freight, quantity_mt, rod_size,
         delivery_date, bill_to, ship_to, dispatch_type, sales_person_name,
-        assigned_to, created_by, updated_by, credit_limit_info, order_status, vehicle_type
+        assigned_to, created_by, updated_by, credit_limit_info, order_status, vehicle_type, order_split_related
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
       ) RETURNING *;
     `;
 
@@ -140,12 +158,13 @@ class O2dService {
       ship_to,
       dispatch_type,
       sales_person_name,
-      userId,
-      userId,
-      userId,
+      originalCreatorId || userId,
+      originalCreatorId || userId,
+      originalCreatorId || userId,
       credit_limit_info,
       orderStatus,
       vehicle_type,
+      orderSplitRelatedData
     ];
 
     const { rows } = await pool.query(query, values);
@@ -766,6 +785,15 @@ class O2dService {
         sanitizedSlipData.so_order_completed_at = so_order_completed_at;
       }
 
+      // Add PO document dispatch metadata
+      sanitizedSlipData.sent_for_po_document = true;
+      sanitizedSlipData.sent_for_po_at_timestamp = sent_for_so_at ? new Date(sent_for_so_at).toISOString() : new Date().toISOString();
+
+      const poRelatedData = {
+        sent_for_po_document: true,
+        sent_for_po_at_timestamp: sanitizedSlipData.sent_for_po_at_timestamp
+      };
+
       // If no valid fields were provided, you might want to stop the update to save DB calls
       if (Object.keys(sanitizedSlipData).length === 0) {
         throw new Error(
@@ -787,6 +815,7 @@ class O2dService {
         UPDATE public.sales_orders
         SET 
           sale_order_generation = COALESCE(sale_order_generation, '{}'::jsonb) || $1::jsonb,
+          po_related = COALESCE(po_related, '{}'::jsonb) || $5::jsonb,
           updated_at = now(),
           updated_by = $2,
           assigned_to = $4
@@ -800,12 +829,42 @@ class O2dService {
         userId,
         order_id,
         salesOrdersExecutiveId,
+        JSON.stringify(poRelatedData)
       ];
 
       const { rows } = await pool.query(query, values);
       return rows[0] || null;
     } catch (error) {
       console.error("Error in generating sale order slip: ", error);
+      throw error;
+    }
+  }
+
+  async updatePoRelated(id, po_data, userId) {
+    try {
+      if (!id) {
+        throw new Error("Order ID is required");
+      }
+
+      const query = `
+        UPDATE public.sales_orders
+        SET po_related = COALESCE(po_related, '{}'::jsonb) || jsonb_build_object(
+              'sent_for_po_document', COALESCE(po_related->'sent_for_po_document', 'true'::jsonb),
+              'sent_for_po_at_timestamp', COALESCE(po_related->'sent_for_po_at_timestamp', COALESCE(sale_order_generation->'sent_for_so_at', to_jsonb(now()::text)))
+            ) || $2::jsonb,
+            updated_at = now(),
+            updated_by = $3
+        WHERE id = $1
+        RETURNING *;
+      `;
+      const { rows } = await pool.query(query, [
+        id,
+        JSON.stringify(po_data),
+        userId,
+      ]);
+      return rows[0] || null;
+    } catch (error) {
+      console.error("Error in updatePoRelated: ", error);
       throw error;
     }
   }
@@ -903,8 +962,9 @@ class O2dService {
       const query = `
         SELECT so.* FROM public.sales_orders so
         INNER JOIN public.customers c ON so.client_name = c.company_name
+        or so.client_name = any(c.child_companies)
         WHERE c.crm = $1 
-          AND so.sale_order_generation->>'sent_for_so' = 'true' 
+          AND so.sale_order_generation->>'sent_for_so' = 'true'
           -- AND so.sale_order_generation->>'so_order_completed_at' IS NOT NULL 
         ORDER BY so.id DESC;
       `;
@@ -1615,7 +1675,12 @@ class O2dService {
 
   async getOverdueReportData(id, userId) {
     try {
-      const query = `select * from overdue_summary_report where is_deleted = false order by id desc`;
+      const query = `SELECT osr.*, ci.complaint_status, ci.updated_at
+      FROM overdue_summary_report osr 
+      LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
+      WHERE osr.is_deleted = false 
+        AND (ci.sale_order_id IS NULL OR ci.complaint_status = 'Closed')
+      ORDER BY osr.id DESC`;
 
       const { rows } = await pool.query(query, []);
 
@@ -2385,6 +2450,66 @@ class O2dService {
       throw error;
     }
   }
+
+
+  async getSpecificSaleOrderInformation(userId, id) {
+    try {
+      const query = `
+        SELECT * FROM public.sales_orders
+        WHERE id = $1
+      `;
+
+      const { rows } = await pool.query(query, [id]);
+
+      return rows;
+    } catch (error) {
+      console.error("Error in getSpecificSaleOrderInformation:", error);
+      throw error;
+    }
+  }
+
+
+
+  async splitOrderIntoMultipleOrders(order_id, previous_information, userId) {
+    try {
+      // Construct the JSON object for the order_split_related column
+      const orderSplitRelatedData = {
+        is_slitted: true,
+        splitted_at: new Date().toISOString() // Standardizes 'now()' to an ISO string for JSON
+        // previous_information: previous_information
+      };
+
+      const orderStatus = ORDER_STAGES.order_splitted;
+
+      const query = `
+        UPDATE public.sales_orders
+        SET order_split_related = $1,
+            updated_by = $2,
+            updated_at = NOW(),
+            order_status = $3
+        WHERE id = $4
+        RETURNING *;
+      `;
+
+      // JSON.stringify is used to safely map the JS object to the JSONB column
+      const { rows } = await pool.query(query, [
+        JSON.stringify(orderSplitRelatedData),
+        userId,
+        orderStatus,
+        order_id
+      ]);
+
+      if (!rows.length) {
+        throw new Error("Sales order not found");
+      }
+
+      return rows[0];
+    } catch (error) {
+      console.error("Error in splitOrderIntoMultipleOrders:", error);
+      throw error;
+    }
+  }
+
 
   async getInvoiceGenerationRequestData(userId) {
     try {

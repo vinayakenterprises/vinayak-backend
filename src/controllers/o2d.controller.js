@@ -1061,6 +1061,50 @@ class O2dController {
     }
   };
 
+
+  getSpecificSaleOrderInformation = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+      const { id } = req.body;
+      const order = await o2dService.getSpecificSaleOrderInformation(userId, id);
+      return res.status(200).json({
+        status: "success",
+        message: "Sale order information retrieved successfully",
+        data: order,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+
+
+  splitOrderIntoMultipleOrders = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+      const { order_id } = req.body;
+
+      if(!order_id){
+        return res.status(400).json({
+          status: "error",
+          message: "order_id is required",
+        });
+      }
+
+      const order = await o2dService.splitOrderIntoMultipleOrders(order_id, userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Sale order information retrieved successfully",
+        data: order,
+      });
+
+    }catch(error){
+      next(error);
+    }
+  }
+
+
   getInvoiceGenerationRequestData = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
@@ -1069,6 +1113,27 @@ class O2dController {
         status: "success",
         message: "Invoice generation request data retrieved successfully",
         data: order,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updatePoRelated = async (req, res, next) => {
+    try {
+      const { id, ...po_data } = req.body;
+      const userId = req.user?.id || null;
+
+      const updatedOrder = await o2dService.updatePoRelated(
+        id,
+        po_data,
+        userId
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "PO information updated successfully",
+        data: updatedOrder,
       });
     } catch (error) {
       next(error);

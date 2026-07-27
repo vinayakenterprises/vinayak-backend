@@ -19,4 +19,5 @@ export const ORDER_STAGES = {
     invoice_generation_stage: "Invoice Generation Stage",
     invoice_generation_completed_stage: "Invoice Generation Completed",
     thank_you_and_intimation_stage: "Thank You and Intimation Stage",
+    order_splitted: "Order Splitted!"
 }
