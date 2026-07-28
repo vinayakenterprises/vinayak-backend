@@ -40,6 +40,7 @@ router.get('/get-completed-so-generation-request-data', authMiddleware, o2dContr
 
 
 // crm phase
+// this api is used to get data for the crm dashbaord
 router.get('/get-assigned-so-by-crm', authMiddleware, o2dController.getAssignedSOByCRM);
 router.post('/update-dispatch-information', authMiddleware, o2dController.updateDispatchInformation);
 router.post('/assign-to-vehicle-executive', authMiddleware, o2dController.assignToVehicleExecutive);
@@ -52,6 +53,8 @@ router.post("/sale-orders/:id/remarks", authMiddleware, o2dController.addRemarks
 router.get("/sale-orders/:id/remarks", authMiddleware, o2dController.getRemarksForOrder);
 router.put("/sale-orders/:id/remarks/:remarkId", authMiddleware, o2dController.updateRemarksForOrder);
 router.delete("/sale-orders/:id/remarks/:remarkId", authMiddleware, o2dController.deleteRemarksForOrder);
+router.post('/get-specific-sale-order-information', authMiddleware, o2dController.getSpecificSaleOrderInformation);
+router.post('/split-order-into-multiple-orders', authMiddleware, o2dController.splitOrderIntoMultipleOrders);
 
 
 // vehicle arrange phase
