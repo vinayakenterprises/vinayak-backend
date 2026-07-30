@@ -168,6 +168,31 @@ class O2dService {
     ];
 
     const { rows } = await pool.query(query, values);
+
+    const createdOrder = rows[0];
+
+    // Send notification to CRM for PO upload
+    if (!createdOrder.credit_limit_info?.credit_limit_approval_request) {
+      try {
+        const crmId = getCrm.rows[0].crm;
+
+        const notif = await createNotification(
+          crmId,
+          `Please upload the PO for Order ID: ${createdOrder.id}. Client: ${createdOrder.client_name} Quantity: ${createdOrder.quantity_mt} MT`,
+          "po_upload_notification_to_crm",
+          {
+            order_id: createdOrder.id,
+            client_name: createdOrder.client_name,
+            quantity_mt: createdOrder.quantity_mt,
+          }
+        );
+
+        emitToUser(crmId, "new_notification", notif);
+      } catch (error) {
+        console.log("Error sending PO upload notification to CRM:", error);
+      }
+    }
+
     return rows[0];
   }
 
@@ -719,6 +744,32 @@ class O2dService {
         sendNotificationToSoExecutive(order_id);
         sendNotificationSaleExecutive(order_id);
 
+        const order = rows[0];
+
+        // Send notification to crm after approval for po pdf upload
+        const crmIdResult = await pool.query(
+          `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+          [order_id],
+        );
+
+        if (
+          crmIdResult.rows.length === 0 ||
+          crmIdResult.rows[0].crm === null
+        ) {
+          throw new Error("Please Assign CRM First");
+        }
+        const crmId = crmIdResult.rows[0].crm;
+        if (crmId) {
+          const notif = await createNotification(
+            crmId,
+            `Please upload the PO for Order ID: ${order.id}. Client: ${order.client_name}. Qty: ${order.quantity_mt} MT.`,
+            "po_upload_notification_to_crm_after_credit_limit_approval"
+          );
+
+          emitToUser(crmId, "new_notification", notif);
+        }
+
         return rows[0] || null;
       } else {
         soGenerationStage = ORDER_STAGES.order_completed_stage;
@@ -786,12 +837,11 @@ class O2dService {
       }
 
       // Add PO document dispatch metadata
-      sanitizedSlipData.sent_for_po_document = true;
-      sanitizedSlipData.sent_for_po_at_timestamp = sent_for_so_at ? new Date(sent_for_so_at).toISOString() : new Date().toISOString();
+      const sent_for_po_at_timestamp = sent_for_so_at ? new Date(sent_for_so_at).toISOString() : new Date().toISOString();
 
       const poRelatedData = {
         sent_for_po_document: true,
-        sent_for_po_at_timestamp: sanitizedSlipData.sent_for_po_at_timestamp
+        sent_for_po_at_timestamp
       };
 
       // If no valid fields were provided, you might want to stop the update to save DB calls

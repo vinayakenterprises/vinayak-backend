@@ -897,10 +897,10 @@ class ImsService {
                 c.id AS category_id,
                 c.name AS category_name,
                 c.max_level,
-                COALESCE(SUM(CASE WHEN i.status = 'AVAILABLE' THEN i.quantity ELSE 0 END), 0) AS category_available_stock
+                COALESCE(SUM(CASE WHEN t.transaction_type = 'QA_APPROVED' THEN t.quantity ELSE 0 END), 0) AS category_available_stock
             FROM ims_material_categories c
             LEFT JOIN ims_materials m ON m.category_id = c.id AND m.is_deleted = FALSE
-            LEFT JOIN ims_inventory i ON i.material_id = m.id AND i.is_deleted = FALSE
+            LEFT JOIN ims_inventory_transactions t ON t.material_id = m.id AND t.transaction_date::date = CURRENT_DATE AND t.is_deleted = FALSE
             WHERE c.is_deleted = FALSE
               AND TRIM(LOWER(c.name)) <> 'total bundle'
             GROUP BY c.id, c.name, c.max_level
@@ -916,7 +916,7 @@ class ImsService {
                 const max = parseInt(cat.max_level) || 0;
                 const val = parseInt(cat.category_available_stock) || 0;
 
-                if (max > 0) {
+                if (max > 0 && val > 0) {
                     if (val <= max * 0.33) {
                         alerts.push({
                             name: cat.category_name,
