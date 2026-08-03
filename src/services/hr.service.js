@@ -1,20 +1,37 @@
 
 import pool from "../config/database.js";
 
-const getMonthCode = (dateInput) => {
+// Ensure final_closed_date column exists in hiring_information table
+(async () => {
+    try {
+        await pool.query(`ALTER TABLE hiring_information ADD COLUMN IF NOT EXISTS final_closed_date DATE;`);
+    } catch (err) {
+        console.error("Migration error (final_closed_date):", err.message);
+    }
+})();
+
+const formatToYYYYMMDD = (dateInput) => {
     if (!dateInput) return null;
     if (dateInput instanceof Date) {
         if (isNaN(dateInput.getTime())) return null;
-        return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dateInput).substring(0, 7);
+        return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dateInput);
     }
     const str = String(dateInput).trim();
-    if (/^\d{4}-\d{2}/.test(str)) {
-        return str.substring(0, 7);
+    if (!str || str === 'null' || str === 'undefined' || str === '—') return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.substring(0, 10);
+    const dmy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+    const dt = new Date(str);
+    if (!isNaN(dt.getTime())) {
+        return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dt);
     }
-    const d = new Date(dateInput);
-    if (!isNaN(d.getTime())) {
-        return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d).substring(0, 7);
-    }
+    return null;
+};
+
+const getMonthCode = (dateInput) => {
+    const formatted = formatToYYYYMMDD(dateInput);
+    if (formatted) return formatted.substring(0, 7);
     return null;
 };
 
@@ -29,19 +46,30 @@ class HrService {
             offers_given = 0,
             onboarded_candidates = 0,
             hiring_status = "Open",
+            selected_month,
             created_at,
+            final_closed_date: inputFinalClosedDate,
         } = recordData;
 
-        const dateObj = created_at ? new Date(created_at) : new Date();
-        const monthCode = getMonthCode(dateObj); // YYYY-MM
-        const monthName = dateObj.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
+        const cleanClosingDate = formatToYYYYMMDD(closing_date);
 
-        const closingMonthCode = getMonthCode(closing_date);
+        const dateObj = created_at ? new Date(created_at) : new Date();
+        const monthCode = (selected_month && selected_month !== 'All') ? selected_month : getMonthCode(dateObj); // YYYY-MM
+        const [yearStr, monthStr] = monthCode.split('-');
+        const targetDate = new Date(parseInt(yearStr, 10), parseInt(monthStr, 10) - 1, 1, 12, 0, 0);
+        const monthName = targetDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+        const closingMonthCode = getMonthCode(cleanClosingDate);
 
         // If the position closes in a future month, creation month status MUST be 'Open'
         let creationStatus = hiring_status;
         if (closingMonthCode && monthCode < closingMonthCode && hiring_status === "Closed") {
             creationStatus = "Open";
+        }
+
+        let final_closed_date = null;
+        if (hiring_status === "Closed") {
+            final_closed_date = formatToYYYYMMDD(new Date());
         }
 
         const initialHistory = [{
@@ -55,8 +83,8 @@ class HrService {
 
         if (closingMonthCode && closingMonthCode > monthCode) {
             const [yStr, mStr] = closingMonthCode.split('-');
-            const targetDate = new Date(parseInt(yStr, 10), parseInt(mStr, 10) - 1, 1, 12, 0, 0);
-            const closingMonthName = targetDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            const targetClosingDate = new Date(parseInt(yStr, 10), parseInt(mStr, 10) - 1, 1, 12, 0, 0);
+            const closingMonthName = targetClosingDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
             initialHistory.push({
                 id: closingMonthCode,
                 month: closingMonthName,
@@ -73,37 +101,39 @@ class HrService {
         if (created_at) {
             query = `
           INSERT INTO hiring_information 
-            (position_name, closing_date, interviewees_appeared, offers_given, onboarded_candidates, hiring_status, created_at, history) 
+            (position_name, closing_date, interviewees_appeared, offers_given, onboarded_candidates, hiring_status, created_at, history, final_closed_date) 
           VALUES 
-            ($1, $2, $3, $4, $5, $6, $7, $8)
+            ($1, $2, $3, $4, $5, $6, $7, $8, $9)
           RETURNING *;
         `;
             params = [
                 position_name?.trim(),
-                closing_date,
+                cleanClosingDate,
                 interviewees_appeared,
                 offers_given,
                 onboarded_candidates,
                 hiring_status,
                 created_at,
                 JSON.stringify(initialHistory),
+                final_closed_date,
             ];
         } else {
             query = `
           INSERT INTO hiring_information 
-            (position_name, closing_date, interviewees_appeared, offers_given, onboarded_candidates, hiring_status, history) 
+            (position_name, closing_date, interviewees_appeared, offers_given, onboarded_candidates, hiring_status, history, final_closed_date) 
           VALUES 
-            ($1, $2, $3, $4, $5, $6, $7)
+            ($1, $2, $3, $4, $5, $6, $7, $8)
           RETURNING *;
         `;
             params = [
                 position_name?.trim(),
-                closing_date,
+                cleanClosingDate,
                 interviewees_appeared,
                 offers_given,
                 onboarded_candidates,
                 hiring_status,
                 JSON.stringify(initialHistory),
+                final_closed_date,
             ];
         }
 
@@ -174,7 +204,8 @@ class HrService {
                 hiring_status,
                 created_at,
                 updated_at,
-                history
+                history,
+                final_closed_date
             FROM hiring_information
         `;
 
@@ -183,28 +214,11 @@ class HrService {
 
         // Apply filtering logic if a date range is selected
         if (cleanStart && cleanEnd) {
-            params.push(cleanStart); // $1
-            params.push(cleanEnd);   // $2
-            
-            // 1. The job was created on or before the selected endDate
-            conditions.push(`created_at::date <= $2::date`);
-            
-            // 2. The job is either not closed, has no closing date, or closing date is on or after startDate
-            conditions.push(`(
-                hiring_status <> 'Closed'
-                OR closing_date IS NULL
-                OR closing_date >= $1::date
-            )`);
+            params.push(cleanEnd); // $1
+
+            // Include all jobs created on or before the selected endDate so monthly history snapshots determine metrics
+            conditions.push(`created_at::date <= $1::date`);
         } else {
-            // Fallback for single date filters if any
-            if (cleanStart) {
-                params.push(cleanStart);
-                conditions.push(`(
-                    hiring_status <> 'Closed'
-                    OR closing_date IS NULL
-                    OR closing_date >= $${params.length}::date
-                )`);
-            }
             if (cleanEnd) {
                 params.push(cleanEnd);
                 conditions.push(`created_at::date <= $${params.length}::date`);
@@ -282,10 +296,16 @@ class HrService {
                     }
                 }
 
+                let finalClosedDate = formatToYYYYMMDD(row.final_closed_date);
+                if (status === 'Closed' && !finalClosedDate) {
+                    finalClosedDate = formatToYYYYMMDD(row.updated_at) || formatToYYYYMMDD(new Date());
+                }
+
                 return {
                     id: row.id,
                     position_name: row.position_name,
-                    closing_date: row.closing_date,
+                    closing_date: formatToYYYYMMDD(row.closing_date),
+                    final_closed_date: finalClosedDate,
                     interviewees_appeared: interviewees,
                     offers_given: offers,
                     onboarded_candidates: onboarded,
@@ -320,10 +340,15 @@ class HrService {
             }
             history.sort((a, b) => a.id.localeCompare(b.id));
 
-
+            let finalClosedDate = formatToYYYYMMDD(row.final_closed_date);
+            if (row.hiring_status === 'Closed' && !finalClosedDate) {
+                finalClosedDate = formatToYYYYMMDD(row.updated_at) || formatToYYYYMMDD(new Date());
+            }
 
             return {
                 ...row,
+                closing_date: formatToYYYYMMDD(row.closing_date),
+                final_closed_date: finalClosedDate,
                 history
             };
         } catch (error) {
@@ -341,7 +366,8 @@ class HrService {
             offers_given,
             onboarded_candidates,
             hiring_status,
-            selected_month
+            selected_month,
+            final_closed_date: inputFinalClosedDate,
         } = recordData;
 
         // Fetch existing record
@@ -350,18 +376,46 @@ class HrService {
         // Parse history safely
         let history = existingRecord.history || [];
         if (typeof history === 'string') {
-            try { history = JSON.parse(history); } catch (e) { history = []; }
+            try {
+                history = JSON.parse(history);
+            } catch (e) {
+                history = [];
+            }
         }
 
-        const createdMonthCode = getMonthCode(existingRecord.created_at) || getMonthCode(new Date());
+        const createdMonthCode =
+            getMonthCode(existingRecord.created_at) || getMonthCode(new Date());
 
         const newStatus = hiring_status || existingRecord.hiring_status;
-        const newClosingDate = closing_date || existingRecord.closing_date;
+        const newClosingDate = formatToYYYYMMDD(closing_date) || formatToYYYYMMDD(existingRecord.closing_date);
 
-        // Determine effective closing month code if record is Closed
+        // -----------------------------
+        // Final Closed Date Logic
+        // -----------------------------
+        let newFinalClosedDate = null;
+
+        if (newStatus === 'Closed') {
+            if (existingRecord.hiring_status !== 'Closed') {
+                // Status changed to Closed: set final_closed_date to current day's date
+                newFinalClosedDate = formatToYYYYMMDD(new Date());
+            } else {
+                // Status was already Closed: retain existing or input final closed date
+                newFinalClosedDate = formatToYYYYMMDD(inputFinalClosedDate) 
+                    || formatToYYYYMMDD(existingRecord.final_closed_date) 
+                    || formatToYYYYMMDD(new Date());
+            }
+        } else {
+            // Clear when status is not Closed
+            newFinalClosedDate = null;
+        }
+
+        console.log('DEBUG final_closed_date:', newFinalClosedDate);
+        // Determine effective closing month code if Closed
         let closedMonthCode = null;
+
         if (newStatus === 'Closed') {
             closedMonthCode = getMonthCode(newClosingDate);
+
             if (!closedMonthCode) {
                 if (selected_month && selected_month !== 'All') {
                     closedMonthCode = selected_month;
@@ -371,8 +425,9 @@ class HrService {
             }
         }
 
-        // Determine target month code for snapshot update
+        // Determine target month code
         let targetMonthCode;
+
         if (selected_month && selected_month !== 'All') {
             targetMonthCode = selected_month;
         } else if (closedMonthCode) {
@@ -381,57 +436,103 @@ class HrService {
             targetMonthCode = getMonthCode(new Date());
         }
 
-        // Ensure creation month history entry exists
+        // Ensure creation month history exists
         const creationIdx = history.findIndex(h => h.id === createdMonthCode);
+
         if (creationIdx === -1) {
-            const createdDate = existingRecord.created_at ? new Date(existingRecord.created_at) : new Date();
-            const createdMonthName = createdDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
+            const createdDate = existingRecord.created_at
+                ? new Date(existingRecord.created_at)
+                : new Date();
+
+            const createdMonthName = createdDate.toLocaleDateString('en-US', {
+                month: 'long',
+                year: 'numeric',
+                timeZone: 'Asia/Kolkata'
+            });
+
             history.push({
                 id: createdMonthCode,
                 month: createdMonthName,
                 status: 'Open',
-                interviewees_appeared: Number(existingRecord.interviewees_appeared || 0),
-                offers_given: Number(existingRecord.offers_given || 0),
-                onboarded_candidates: Number(existingRecord.onboarded_candidates || 0)
+                interviewees_appeared: 0,
+                offers_given: 0,
+                onboarded_candidates: 0
             });
         }
 
         // Target month snapshot
         const [yearStr, monthStr] = targetMonthCode.split('-');
-        const targetDate = new Date(parseInt(yearStr, 10), parseInt(monthStr, 10) - 1, 1, 12, 0, 0);
-        const monthName = targetDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+        const targetDate = new Date(
+            parseInt(yearStr, 10),
+            parseInt(monthStr, 10) - 1,
+            1,
+            12,
+            0,
+            0
+        );
+
+        const monthName = targetDate.toLocaleDateString('en-US', {
+            month: 'long',
+            year: 'numeric'
+        });
 
         const idx = history.findIndex(h => h.id === targetMonthCode);
+
         if (idx !== -1) {
             history[idx] = {
                 ...history[idx],
                 status: newStatus,
-                interviewees_appeared: interviewees_appeared !== undefined ? Number(interviewees_appeared) : history[idx].interviewees_appeared,
-                offers_given: offers_given !== undefined ? Number(offers_given) : history[idx].offers_given,
-                onboarded_candidates: onboarded_candidates !== undefined ? Number(onboarded_candidates) : history[idx].onboarded_candidates,
+                interviewees_appeared:
+                    interviewees_appeared !== undefined
+                        ? Number(interviewees_appeared)
+                        : history[idx].interviewees_appeared,
+                offers_given:
+                    offers_given !== undefined
+                        ? Number(offers_given)
+                        : history[idx].offers_given,
+                onboarded_candidates:
+                    onboarded_candidates !== undefined
+                        ? Number(onboarded_candidates)
+                        : history[idx].onboarded_candidates
             };
         } else {
-            // Inherit metrics from latest previous snapshot if available
             const prevLogs = history.filter(h => h.id < targetMonthCode);
+
             prevLogs.sort((a, b) => a.id.localeCompare(b.id));
-            const lastPrev = prevLogs.length > 0 ? prevLogs[prevLogs.length - 1] : null;
+
+            const lastPrev =
+                prevLogs.length > 0 ? prevLogs[prevLogs.length - 1] : null;
 
             history.push({
                 id: targetMonthCode,
                 month: monthName,
                 status: newStatus,
-                interviewees_appeared: interviewees_appeared !== undefined ? Number(interviewees_appeared) : (lastPrev ? lastPrev.interviewees_appeared : 0),
-                offers_given: offers_given !== undefined ? Number(offers_given) : (lastPrev ? lastPrev.offers_given : 0),
-                onboarded_candidates: onboarded_candidates !== undefined ? Number(onboarded_candidates) : (lastPrev ? lastPrev.onboarded_candidates : 0),
+                interviewees_appeared:
+                    interviewees_appeared !== undefined
+                        ? Number(interviewees_appeared)
+                        : lastPrev
+                            ? lastPrev.interviewees_appeared
+                            : 0,
+                offers_given:
+                    offers_given !== undefined
+                        ? Number(offers_given)
+                        : lastPrev
+                            ? lastPrev.offers_given
+                            : 0,
+                onboarded_candidates:
+                    onboarded_candidates !== undefined
+                        ? Number(onboarded_candidates)
+                        : lastPrev
+                            ? lastPrev.onboarded_candidates
+                            : 0
             });
         }
 
-        // Sort history by month ascending
+        // Sort history
         history.sort((a, b) => a.id.localeCompare(b.id));
 
-        // Enforce status integrity for future months:
-        // Months at or after targetMonthCode MUST match the newStatus
-        // Previous months remain untouched to preserve their historical state
+        // Update future months status
         for (const h of history) {
             if (h.id >= targetMonthCode) {
                 h.status = newStatus;
@@ -450,21 +551,35 @@ class HrService {
             onboarded_candidates = $6,
             hiring_status = $7,
             history = $8::jsonb,
+            final_closed_date = $9::date,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = $1
         RETURNING *;
     `;
 
         try {
+            console.log({
+                id,
+                newStatus,
+                newFinalClosedDate
+            });
+
             const { rows } = await pool.query(query, [
                 id,
                 position_name || existingRecord.position_name,
                 newClosingDate,
-                lastEntry ? lastEntry.interviewees_appeared : Number(interviewees_appeared || 0),
-                lastEntry ? lastEntry.offers_given : Number(offers_given || 0),
-                lastEntry ? lastEntry.onboarded_candidates : Number(onboarded_candidates || 0),
+                lastEntry
+                    ? lastEntry.interviewees_appeared
+                    : Number(interviewees_appeared || 0),
+                lastEntry
+                    ? lastEntry.offers_given
+                    : Number(offers_given || 0),
+                lastEntry
+                    ? lastEntry.onboarded_candidates
+                    : Number(onboarded_candidates || 0),
                 lastEntry ? lastEntry.status : newStatus,
-                JSON.stringify(history)
+                JSON.stringify(history),
+                newFinalClosedDate
             ]);
 
             if (rows.length === 0) {
@@ -472,6 +587,7 @@ class HrService {
             }
 
             return await this.getHiringRecordById(rows[0].id);
+
         } catch (error) {
             console.error('Error while updating the hiring record:', error);
             throw error;

@@ -4,8 +4,8 @@ class HrController {
 
     createHiringRecord = async (req, res, next) => {
         try {
-            const { position_name, closing_date, interviewees_appeared, offers_given, onboarded_candidates, hiring_status, selected_month } = req.body;
-            
+            const { position_name, closing_date, interviewees_appeared, offers_given, onboarded_candidates, hiring_status, selected_month, final_closed_date } = req.body;
+
             // Determine created_at if selected_month is specified and not 'All'
             let created_at = null;
             if (selected_month && selected_month !== 'All') {
@@ -22,6 +22,8 @@ class HrController {
                 offers_given,
                 onboarded_candidates,
                 hiring_status,
+                selected_month,
+                final_closed_date,
                 created_at,
             }
             const hiringRecord = await hrService.createHiringRecord(payload);
@@ -87,7 +89,7 @@ class HrController {
     updateHiringRecord = async (req, res, next) => {
         try {
             const id = req.params.id || req.body.id;
-            const { position_name, closing_date, interviewees_appeared, offers_given, onboarded_candidates, hiring_status, selected_month } = req.body;
+            const { position_name, closing_date, interviewees_appeared, offers_given, onboarded_candidates, hiring_status, selected_month, final_closed_date } = req.body;
             const payload = {
                 id,
                 position_name: position_name?.trim(),
@@ -97,10 +99,11 @@ class HrController {
                 onboarded_candidates,
                 hiring_status,
                 selected_month,
+                final_closed_date,
             }
             const hiringRecord = await hrService.updateHiringRecord(payload);
 
-            return res.status(201).json({
+            return res.status(200).json({
                 status: "success",
                 message: "Hiring record updated successfully",
                 data: hiringRecord,
