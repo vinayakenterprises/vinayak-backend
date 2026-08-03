@@ -1,14 +1,6 @@
 
 import pool from "../config/database.js";
 
-// Ensure final_closed_date column exists in hiring_information table
-(async () => {
-    try {
-        await pool.query(`ALTER TABLE hiring_information ADD COLUMN IF NOT EXISTS final_closed_date DATE;`);
-    } catch (err) {
-        console.error("Migration error (final_closed_date):", err.message);
-    }
-})();
 
 const formatToYYYYMMDD = (dateInput) => {
     if (!dateInput) return null;
@@ -36,7 +28,6 @@ const getMonthCode = (dateInput) => {
 };
 
 class HrService {
-    // HIRING INFORMATION SERVICES
 
     async createHiringRecord(recordData) {
         const {
@@ -400,8 +391,8 @@ class HrService {
                 newFinalClosedDate = formatToYYYYMMDD(new Date());
             } else {
                 // Status was already Closed: retain existing or input final closed date
-                newFinalClosedDate = formatToYYYYMMDD(inputFinalClosedDate) 
-                    || formatToYYYYMMDD(existingRecord.final_closed_date) 
+                newFinalClosedDate = formatToYYYYMMDD(inputFinalClosedDate)
+                    || formatToYYYYMMDD(existingRecord.final_closed_date)
                     || formatToYYYYMMDD(new Date());
             }
         } else {
@@ -409,7 +400,6 @@ class HrService {
             newFinalClosedDate = null;
         }
 
-        console.log('DEBUG final_closed_date:', newFinalClosedDate);
         // Determine effective closing month code if Closed
         let closedMonthCode = null;
 
@@ -632,10 +622,10 @@ class HrService {
             for (const rec of records) {
                 if (rec.hiring_status === 'Open') {
                     total_positions += 1;
+                    total_interviewees += Number(rec.interviewees_appeared || 0);
+                    total_offers += Number(rec.offers_given || 0);
+                    total_onboarded += Number(rec.onboarded_candidates || 0);
                 }
-                total_interviewees += Number(rec.interviewees_appeared || 0);
-                total_offers += Number(rec.offers_given || 0);
-                total_onboarded += Number(rec.onboarded_candidates || 0);
             }
 
             return {
@@ -649,9 +639,8 @@ class HrService {
             throw error;
         }
     }
-    // ==========================================
+
     // HIRING TASK SERVICES
-    // ==========================================
 
     async createHiringTask(taskData) {
         const {
@@ -730,7 +719,7 @@ class HrService {
         }
     };
 
-    updateTask = async (id, taskData) => {
+    async updateTask(id, taskData) {
         // Check if task exists first
         await this.getTaskById(id);
 
