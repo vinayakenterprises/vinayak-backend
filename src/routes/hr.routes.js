@@ -8,6 +8,7 @@ const router = Router();
 // ==========================================
 router.post("/create-hiring-record", hrController.createHiringRecord);
 router.get("/hiring-records", hrController.getAllHiringRecords);
+router.get("/hiring-records-by-range", hrController.getAllHiringRecords);
 router.get("/hiring-records/summary", hrController.getHiringSummary);
 router.get("/hiring-records/:id", hrController.getHiringRecordById);
 router.put("/hiring-records/:id", hrController.updateHiringRecord);
@@ -20,7 +21,6 @@ router.post("/create-hiring-task", hrController.createHiringTask);
 router.get("/hiring-tasks", hrController.getAllHiringTasks);
 router.get("/hiring-tasks-by-range", hrController.getTasksByRange);
 router.get("/hiring-tasks/summary", hrController.getTaskSummary);
-router.get("/tasks/summary", hrController.getTaskSummary);
 router.get("/hiring-tasks/:id", hrController.getTaskById);
 router.put("/hiring-tasks/:id", hrController.updateTask);
 router.patch("/hiring-tasks/:id/status", hrController.updateTaskStatus);

@@ -39,8 +39,8 @@ class HrController {
 
     getAllHiringRecords = async (req, res, next) => {
         try {
-            const { month } = req.query;
-            const hiringRecords = await hrService.getAllHiringRecords(month);
+            const { startDate, endDate } = req.query;
+            const hiringRecords = await hrService.getAllHiringRecords({ startDate, endDate });
 
             return res.status(200).json({
                 status: "success",
@@ -71,8 +71,8 @@ class HrController {
 
     getHiringSummary = async (req, res, next) => {
         try {
-            const { month } = req.query;
-            const summary = await hrService.getHiringSummary(month);
+            const { startDate, endDate } = req.query;
+            const summary = await hrService.getHiringSummary({ startDate, endDate });
 
             return res.status(200).json({
                 status: "success",
