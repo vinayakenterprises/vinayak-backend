@@ -810,6 +810,20 @@ class O2dController {
     }
   }
 
+
+  testApiForTallyIntegration = async (req, res, next) => {
+    try {
+      console.log("req.body", req.body);
+      return res.status(200).json({
+        status: "success",
+        message: "Tally integration test API called successfully",
+        data: req.body,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
   
 
   assignToVehicleExecutive = async (req, res, next) => {
