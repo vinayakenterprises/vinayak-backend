@@ -122,4 +122,9 @@ router.get('/get-overdue-report-data', authMiddleware, o2dController.getOverdueR
 router.post('/update-overdue-summary-report-information', authMiddleware, o2dController.updateOverdueSummaryReportInformation);
 
 
+
+// for tally integration
+router.post('/test-api-for-tally-integration', o2dController.testApiForTallyIntegration);
+
+
 export default router;

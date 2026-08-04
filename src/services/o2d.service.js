@@ -21,7 +21,7 @@ class O2dService {
       assigned_to,
       credit_limit_info,
       vehicle_type,
-      splitted_from
+      splitted_from,
     } = data;
 
     const getCrm = await pool.query(
@@ -119,22 +119,22 @@ class O2dService {
       }
     }
 
-
     let originalCreatorId;
-    const orderSplitRelatedData = splitted_from ? JSON.stringify({ splitted_from }) : null;
-    if(splitted_from){
-      const originalCreatedBy = await pool.query(`select created_by from sales_orders where id = $1`, [splitted_from]);
-  
-      if(originalCreatedBy.rows.length === 0){
+    const orderSplitRelatedData = splitted_from
+      ? JSON.stringify({ splitted_from })
+      : null;
+    if (splitted_from) {
+      const originalCreatedBy = await pool.query(
+        `select created_by from sales_orders where id = $1`,
+        [splitted_from],
+      );
+
+      if (originalCreatedBy.rows.length === 0) {
         throw new Error("Original order not found");
       }
 
       originalCreatorId = originalCreatedBy.rows[0].created_by;
-
     }
-
-
-
 
     const query = `
       INSERT INTO public.sales_orders (
@@ -164,7 +164,7 @@ class O2dService {
       credit_limit_info,
       orderStatus,
       vehicle_type,
-      orderSplitRelatedData
+      orderSplitRelatedData,
     ];
 
     const { rows } = await pool.query(query, values);
@@ -837,11 +837,14 @@ class O2dService {
       }
 
       // Add PO document dispatch metadata
-      const sent_for_po_at_timestamp = sent_for_so_at ? new Date(sent_for_so_at).toISOString() : new Date().toISOString();
+      sanitizedSlipData.sent_for_po_document = true;
+      sanitizedSlipData.sent_for_po_at_timestamp = sent_for_so_at
+        ? new Date(sent_for_so_at).toISOString()
+        : new Date().toISOString();
 
       const poRelatedData = {
         sent_for_po_document: true,
-        sent_for_po_at_timestamp
+        sent_for_po_at_timestamp: sanitizedSlipData.sent_for_po_at_timestamp,
       };
 
       // If no valid fields were provided, you might want to stop the update to save DB calls
@@ -879,7 +882,7 @@ class O2dService {
         userId,
         order_id,
         salesOrdersExecutiveId,
-        JSON.stringify(poRelatedData)
+        JSON.stringify(poRelatedData),
       ];
 
       const { rows } = await pool.query(query, values);
@@ -1823,7 +1826,6 @@ class O2dService {
 
       const vehicleArrangeMentStage = ORDER_STAGES.vehicle_arrangement_stage;
 
-
       // get order details
       const orderDetails = await pool.query(
         `select client_name, quantity_mt from sales_orders where id = $1`,
@@ -1833,7 +1835,6 @@ class O2dService {
       if (!orderDetails.rows.length) {
         throw new Error("Order not found");
       }
-
 
       const sendNotificationToVehicleExecutive = async (order_id) => {
         try {
@@ -2089,11 +2090,86 @@ class O2dService {
         // cn_or_dn_issue_timestamp,
       } = body;
 
+      const saleOrderInformation = await pool.query(
+        `select invoice_and_dispatch, payment_status from sales_orders where id = $1`,
+        [id],
+      );
+
+      if (saleOrderInformation.rows.length === 0) {
+        throw new Error("Sales order not found");
+      }
+
+      const saleOrder = saleOrderInformation.rows[0];
+
       // Dynamically build the payload so we only update provided fields.
       const paymentPayload = {};
 
       if (payment_status !== undefined) {
         paymentPayload.payment_status = payment_status;
+
+
+        const interestNoteAssignStatus = saleOrder?.payment_status?.is_interest_note_issue;
+        
+        if (payment_status === true && interestNoteAssignStatus === undefined) {
+          const invoiceDate =
+            saleOrder.invoice_and_dispatch?.actual_dispatch_date;
+
+          if (!invoiceDate) {
+            const error = new Error("Invoice Date is required");
+            error.statusCode = 400;
+            error.isOperational = true;
+            throw error;
+          }
+
+
+          let dueDate = new Date(invoiceDate);
+          dueDate.setDate(dueDate.getDate() + 10);
+          const complaintInformation = await pool.query(
+            `select * from complaint_info where sale_order_id = $1`,
+            [id],
+          );
+
+          const complaintStatus =
+            complaintInformation.rows[0]?.complaint_status;
+          if (complaintStatus === "Closed") {
+            dueDate = new Date(complaintInformation.rows[0]?.updated_at);
+            dueDate.setDate(dueDate.getDate() + 10);
+          }
+
+
+          if (dueDate < new Date()) {
+            paymentPayload.is_interest_note_issue = true;
+            paymentPayload.is_interest_note_issue_at = new Date().toISOString();
+
+            const sendNotificationToJuniorAccountant = async (order_id) => {
+              try {
+                const juniorAccountantIdResult = await pool.query(
+                  `select id from users where role = 'Junior Accountant' and department = 'Accounts'`,
+                );
+
+                const juniorAccountantId = juniorAccountantIdResult.rows[0].id;
+
+                if (!juniorAccountantId) {
+                  throw new Error("Junior Accountant not found");
+                }
+
+                const notif = await createNotification(
+                  juniorAccountantId,
+                  `Please Issue Interest Note for Order ID: ${order_id}.`,
+                  "interest_note_issue_notification_to_junior_accountant",
+                );
+                emitToUser(juniorAccountantId, "new_notification", notif);
+              } catch (error) {
+                console.log(
+                  "error while sending notification to junior accountant: ",
+                  error,
+                );
+              }
+            };
+
+            sendNotificationToJuniorAccountant(id);
+          }
+        }
       }
       if (payment_status_marked_at !== undefined) {
         paymentPayload.payment_status_marked_at = payment_status_marked_at;
@@ -2105,37 +2181,32 @@ class O2dService {
         paymentPayload.under_one_lakh = under_one_lakh;
       }
       if (is_interest_note_issue !== undefined) {
-        paymentPayload.is_interest_note_issue = is_interest_note_issue;
-
-        const sendNotificationToJuniorAccountant = async (order_id) => {
-          try {
-            const juniorAccountantIdResult = await pool.query(
-              `select id from users where role = 'Junior Accountant' and department = 'Accounts'`,
-            );
-
-            const juniorAccountantId = juniorAccountantIdResult.rows[0].id;
-
-            if (!juniorAccountantId) {
-              throw new Error("Junior Accountant not found");
-            }
-
-            const notif = await createNotification(
-              juniorAccountantId,
-              `Please Issue Interest Note for Order ID: ${order_id}.`,
-              "interest_note_issue_notification_to_junior_accountant",
-            );
-            emitToUser(juniorAccountantId, "new_notification", notif);
-          } catch (error) {
-            console.log(
-              "error while sending notification to junior accountant: ",
-              error,
-            );
-          }
-        };
-
-        if (is_interest_note_issue === true) {
-          sendNotificationToJuniorAccountant(id);
-        }
+        // paymentPayload.is_interest_note_issue = is_interest_note_issue;
+        // const sendNotificationToJuniorAccountant = async (order_id) => {
+        //   try {
+        //     const juniorAccountantIdResult = await pool.query(
+        //       `select id from users where role = 'Junior Accountant' and department = 'Accounts'`,
+        //     );
+        //     const juniorAccountantId = juniorAccountantIdResult.rows[0].id;
+        //     if (!juniorAccountantId) {
+        //       throw new Error("Junior Accountant not found");
+        //     }
+        //     const notif = await createNotification(
+        //       juniorAccountantId,
+        //       `Please Issue Interest Note for Order ID: ${order_id}.`,
+        //       "interest_note_issue_notification_to_junior_accountant",
+        //     );
+        //     emitToUser(juniorAccountantId, "new_notification", notif);
+        //   } catch (error) {
+        //     console.log(
+        //       "error while sending notification to junior accountant: ",
+        //       error,
+        //     );
+        //   }
+        // };
+        // if (is_interest_note_issue === true) {
+        //   sendNotificationToJuniorAccountant(id);
+        // }
       }
       if (interest_note_issued_on_timestamp !== undefined) {
         paymentPayload.interest_note_issued_on_timestamp =
@@ -2230,7 +2301,9 @@ class O2dService {
       }
       if (weight_difference_in_kg !== undefined) {
         // Map the input variable to the specific DB column key and ensure it's a float
-        deliveryPayload.weight_difference_in_kg = parseFloat(weight_difference_in_kg);
+        deliveryPayload.weight_difference_in_kg = parseFloat(
+          weight_difference_in_kg,
+        );
       }
       if (settlement !== undefined) {
         deliveryPayload.settlement = settlement;
@@ -2501,7 +2574,6 @@ class O2dService {
     }
   }
 
-
   async getSpecificSaleOrderInformation(userId, id) {
     try {
       const query = `
@@ -2518,14 +2590,12 @@ class O2dService {
     }
   }
 
-
-
   async splitOrderIntoMultipleOrders(order_id, previous_information, userId) {
     try {
       // Construct the JSON object for the order_split_related column
       const orderSplitRelatedData = {
         is_slitted: true,
-        splitted_at: new Date().toISOString() // Standardizes 'now()' to an ISO string for JSON
+        splitted_at: new Date().toISOString(), // Standardizes 'now()' to an ISO string for JSON
         // previous_information: previous_information
       };
 
@@ -2546,7 +2616,7 @@ class O2dService {
         JSON.stringify(orderSplitRelatedData),
         userId,
         orderStatus,
-        order_id
+        order_id,
       ]);
 
       if (!rows.length) {
@@ -2559,7 +2629,6 @@ class O2dService {
       throw error;
     }
   }
-
 
   async getInvoiceGenerationRequestData(userId) {
     try {
