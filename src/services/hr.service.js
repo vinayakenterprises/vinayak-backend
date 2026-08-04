@@ -225,7 +225,7 @@ class HrService {
         try {
             const { rows } = await pool.query(query, params);
 
-            return rows.map(row => {
+            const allRecords = rows.map(row => {
                 // Parse history safely if it is a string or already an array
                 let history = Array.isArray(row.history)
                     ? row.history
@@ -306,6 +306,34 @@ class HrService {
                     history
                 };
             });
+
+            // Filter out positions whose status changed to Closed in prior months
+            if (startMonth && endMonth) {
+                return allRecords.filter(rec => {
+                    if (rec.hiring_status === 'Closed') {
+                        // Find the contiguous Closed block ending at endMonth
+                        const historyUpToEnd = rec.history
+                            .filter(h => h.id <= endMonth)
+                            .sort((a, b) => b.id.localeCompare(a.id));
+
+                        const nonClosedIndex = historyUpToEnd.findIndex(h => h.status !== 'Closed');
+                        let closedMonth = null;
+                        if (nonClosedIndex > 0) {
+                            closedMonth = historyUpToEnd[nonClosedIndex - 1].id;
+                        } else if (nonClosedIndex === -1 && historyUpToEnd.length > 0) {
+                            closedMonth = historyUpToEnd[historyUpToEnd.length - 1].id;
+                        }
+
+                        // If the job became Closed in a month strictly before startMonth, filter it out
+                        if (closedMonth && closedMonth < startMonth) {
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+            }
+
+            return allRecords;
 
         } catch (error) {
             console.error('Error in getting hiring records:', error);
