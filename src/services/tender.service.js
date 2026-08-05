@@ -305,7 +305,7 @@ class TenderService {
         const isApproved = approveStatus === true;
 
         sendMail({
-          to: "rinkusingh805764@gmail.com",
+          to: "tender@mitt-alu.com",
           subject: isApproved
             ? `✅ Tender Approved - ${tenderInformationFromDB.rows[0].tender_ref_no}`
             : `❌ Tender Rejected - ${tenderInformationFromDB.rows[0].tender_ref_no}`,
@@ -385,7 +385,7 @@ class TenderService {
         });
 
         sendMail({
-          to: "rinkusingh805764@gmail.com",
+          to: "tender@mitt-alu.com",
           subject: isApproved
             ? `✅ Counter Offer Approved - ${tenderData.tender_ref_no || "N/A"}`
             : `❌ Counter Offer Rejected - ${tenderData.tender_ref_no || "N/A"}`,
@@ -654,9 +654,10 @@ class TenderService {
       }
 
       const mdUserData = await pool.query(
-        `SELECT id FROM users WHERE role = 'MD'`,
+        `SELECT id, email_id FROM users WHERE role = 'MD'`,
       );
       const mdId = mdUserData.rows[0].id;
+      const emailId = mdUserData.rows[0].email_id;
 
       const updateQuery = `
         UPDATE tender_information
@@ -675,7 +676,7 @@ class TenderService {
 
       try {
         sendMail({
-          to: "rinkusingh805764@gmail.com",
+          to: emailId,
           subject: `⏳ Action Required: Tender Approval - ${tenderData.tender_ref_no}`,
           templateName: "send-for-approval-mail", // The HTML file created above
           replacements: {
