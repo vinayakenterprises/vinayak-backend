@@ -334,6 +334,20 @@ class HrController {
     }
   };
 
+  deleteHRVisitTrackerEntry = async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const visitEntry = await hrService.deleteVisitEntry(id);
+      return res.status(200).json({
+        status: "success",
+        message: "Visit entry deleted successfully",
+        data: visitEntry,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
 
   updateActualDate = async (req, res, next) => {
     try {
