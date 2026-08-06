@@ -927,6 +927,17 @@ class HrService {
     }
   }
 
+  async deleteVisitEntry(id) {
+    try {
+      const deleteQuery = `delete from hr_visit_tracker where id = $1 returning *`;
+      const { rows } = await pool.query(deleteQuery, [id]);
+      return rows[0];
+    } catch (error) {
+      console.error("Error in deleting visit entry: ", error);
+      throw error;
+    }
+  }
+
   async updateActualDate(id, actual) {
     try {
       const updateQuery = `update hr_visit_tracker set actual = $1 where id = $2 returning *`;
