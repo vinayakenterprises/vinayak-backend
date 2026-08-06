@@ -21,5 +21,10 @@ router.put("/hiring-tasks/:id", hrController.updateTask);
 router.patch("/hiring-tasks/:id/status", hrController.updateTaskStatus);
 router.delete("/hiring-tasks/:id", hrController.deleteTask);
 
+// visit tracker
+router.post("/create-visit-entry", hrController.createVisitEntry);
+router.post("/update-actual-date", hrController.updateActualDate);
+router.get("/get-hr-visit-tracker-entries", hrController.getHRVisitTrackerEntries);
+
 export default router;
 
