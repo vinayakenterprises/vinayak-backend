@@ -1177,7 +1177,7 @@ class TenderService {
 
         try {
           sendMail({
-            to: "rinkusingh805764@gmail.com",
+            to: "shreyans@vinayak-enterprises.com",
             subject: `⏳ Action Required: Tender Approval - ${tenderData.tender_ref_no}`,
             templateName: "counter-offer-approval-request-mail",
             replacements: {
