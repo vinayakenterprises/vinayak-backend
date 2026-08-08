@@ -1,4 +1,5 @@
 import o2dService from "../services/o2d.service.js";
+import uploadPdfToS3 from "../utils/helpers/uploadSOTOs3.js";
 
 class O2dController {
   createSaleOrder = async (req, res, next) => {
@@ -117,19 +118,21 @@ class O2dController {
     }
   };
 
-
   getCrmAndSalesPerson = async (req, res, next) => {
     try {
       const { crm, sales_person } = req.body;
 
-      if(!crm && !sales_person){
+      if (!crm && !sales_person) {
         return res.status(400).json({
           status: "error",
           message: "Please Provide CRM or Sales Person",
         });
       }
 
-      const customerDetails = await o2dService.getCrmAndSalesPerson(crm, sales_person);
+      const customerDetails = await o2dService.getCrmAndSalesPerson(
+        crm,
+        sales_person,
+      );
 
       if (!customerDetails) {
         return res.status(404).json({
@@ -148,16 +151,15 @@ class O2dController {
     }
   };
 
-
-  
-
-
   updateCrmAndSalesPerson = async (req, res, next) => {
     try {
       const { id, crm, sales_person } = req.body;
 
-      const updatedCustomerDetails =
-        await o2dService.updateCrmAndSalesPerson(id, crm, sales_person);
+      const updatedCustomerDetails = await o2dService.updateCrmAndSalesPerson(
+        id,
+        crm,
+        sales_person,
+      );
 
       if (!updatedCustomerDetails) {
         return res.status(404).json({
@@ -668,9 +670,8 @@ class O2dController {
     }
   };
 
-
   getCnDnIssueData = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id || null;
 
       const order = await o2dService.getCnDnIssueData(userId);
@@ -680,10 +681,10 @@ class O2dController {
         message: "CN/DN Issue Data retrieved successfully",
         data: order,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
 
   getCnDnWorkHistory = async (req, res, next) => {
     try {
@@ -696,10 +697,10 @@ class O2dController {
         message: "CN/DN Work History retrieved successfully",
         data: order,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
 
   getInterestNoteIssueData = async (req, res, next) => {
     try {
@@ -712,10 +713,10 @@ class O2dController {
         message: "Interest Note Issue Data retrieved successfully",
         data: order,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
 
   getInterestNoteIssueWorkHistory = async (req, res, next) => {
     try {
@@ -728,11 +729,10 @@ class O2dController {
         message: "Interest Note Issue Work History retrieved successfully",
         data: order,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getAdminDashboardCardsData = async (req, res, next) => {
     try {
@@ -745,71 +745,70 @@ class O2dController {
         message: "Admin Dashboard Cards Data retrieved successfully",
         data: order,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getActiveSaleOrdersAdminDashboard = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id || null;
 
       const { start_date, end_date } = req.body;
-      const order = await o2dService.getActiveSaleOrdersAdminDashboard(userId, start_date, end_date);
+      const order = await o2dService.getActiveSaleOrdersAdminDashboard(
+        userId,
+        start_date,
+        end_date,
+      );
       return res.status(200).json({
         status: "success",
-        message: "Active Sale Orders Admin Dashboard Data retrieved successfully",
+        message:
+          "Active Sale Orders Admin Dashboard Data retrieved successfully",
         data: order,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getOverdueReportData = async (req, res, next) => {
     try {
       const { id } = req.body;
       const userId = req.user?.id || null;
 
-      const updatedOrder = await o2dService.getOverdueReportData(
-        id,
-        userId,
-      );
+      const updatedOrder = await o2dService.getOverdueReportData(id, userId);
 
       res.status(200).json({
         status: "success",
         message: "Overdue Report Data retrieved successfully",
         data: updatedOrder,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   updateOverdueSummaryReportInformation = async (req, res, next) => {
     try {
       const { id } = req.body;
       const userId = req.user?.id || null;
 
-      const updatedOrder = await o2dService.updateOverdueSummaryReportInformation(
-        id,
-        userId,
-        req.body,
-      );
+      const updatedOrder =
+        await o2dService.updateOverdueSummaryReportInformation(
+          id,
+          userId,
+          req.body,
+        );
 
       res.status(200).json({
         status: "success",
         message: "Overdue Summary Report Information updated successfully",
         data: updatedOrder,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   testApiForTallyIntegration = async (req, res, next) => {
     try {
@@ -819,12 +818,31 @@ class O2dController {
         message: "Tally integration test API called successfully",
         data: req.body,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
 
-  
+  receiveSoOrdersFromTally = async (req, res, next) => {
+    try {
+      const so_orders = req.body;
+
+      console.log("Received SO orders from Tally:", so_orders);
+
+      const updatedOrder = await o2dService.receiveSoOrdersFromTally(
+        so_orders,
+      );
+
+
+      return res.status(200).json({
+        status: "success",
+        message: "SO orders received from Tally successfully",
+        // data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
   assignToVehicleExecutive = async (req, res, next) => {
     try {
@@ -1075,12 +1093,14 @@ class O2dController {
     }
   };
 
-
   getSpecificSaleOrderInformation = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
       const { id } = req.body;
-      const order = await o2dService.getSpecificSaleOrderInformation(userId, id);
+      const order = await o2dService.getSpecificSaleOrderInformation(
+        userId,
+        id,
+      );
       return res.status(200).json({
         status: "success",
         message: "Sale order information retrieved successfully",
@@ -1091,33 +1111,32 @@ class O2dController {
     }
   };
 
-
-
   splitOrderIntoMultipleOrders = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
       const { order_id } = req.body;
 
-      if(!order_id){
+      if (!order_id) {
         return res.status(400).json({
           status: "error",
           message: "order_id is required",
         });
       }
 
-      const order = await o2dService.splitOrderIntoMultipleOrders(order_id, userId);
+      const order = await o2dService.splitOrderIntoMultipleOrders(
+        order_id,
+        userId,
+      );
 
       return res.status(200).json({
         status: "success",
         message: "Sale order information retrieved successfully",
         data: order,
       });
-
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getInvoiceGenerationRequestData = async (req, res, next) => {
     try {
@@ -1141,7 +1160,7 @@ class O2dController {
       const updatedOrder = await o2dService.updatePoRelated(
         id,
         po_data,
-        userId
+        userId,
       );
 
       return res.status(200).json({
