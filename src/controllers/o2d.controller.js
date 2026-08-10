@@ -1,5 +1,5 @@
 import o2dService from "../services/o2d.service.js";
-import uploadPdfToS3 from "../utils/helpers/uploadSOTOs3.js";
+// import uploadPdfToS3 from "../utils/helpers/uploadSOTOs3.js";
 
 class O2dController {
   createSaleOrder = async (req, res, next) => {
@@ -825,12 +825,12 @@ class O2dController {
 
   receiveSoOrdersFromTally = async (req, res, next) => {
     try {
-      const so_orders = req.body;
 
-      console.log("Received SO orders from Tally:", so_orders);
+      console.log("req.body", req.body);
+      
 
       const updatedOrder = await o2dService.receiveSoOrdersFromTally(
-        so_orders,
+        req.body,
       );
 
 
