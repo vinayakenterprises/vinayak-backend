@@ -1806,6 +1806,22 @@ class O2dService {
     }
   }
 
+
+
+  async receiveSoOrdersFromTally(so_orders) {
+    try{
+      console.log("Received SO orders from Tally: ", so_orders);
+      return {
+        status: "success",
+        message: "SO orders received from Tally successfully",
+      }
+    }catch(error){
+      console.error("Error in processing SO orders from Tally: ", error);
+      throw error;
+    }
+  }
+
+
   async assignToVehicleExecutive(id, userId) {
     try {
       // Get vehicle executive id

@@ -880,7 +880,15 @@ class TenderController {
       if (!file) {
         throw new BadRequestError('File is required');
       }
-      const s3Url = await uploadToS3(file, config.s3.bucketName, 'tenders/documents');
+      const folder = req.body.folder;
+
+      console.log("folder: ", req.body.folder);
+
+      let path = `documents/path_not_provided`;
+      if(folder){
+        path = `documents/${folder}`;
+      }
+      const s3Url = await uploadToS3(file, config.s3.bucketName, path);
       return res.status(200).json({
         status: 'success',
         message: 'File uploaded successfully',
