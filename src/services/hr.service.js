@@ -758,7 +758,18 @@ class HrService {
     const query = "SELECT * FROM hiring_tasks ORDER BY id DESC;";
     try {
       const { rows } = await pool.query(query);
-      return rows;
+      return rows.map((row) => {
+        let delay_days = 0;
+        const targetDate = row.end_date ? new Date(row.end_date) : null;
+        const compDate = row.completed ? (row.updated_at ? new Date(row.updated_at) : new Date()) : new Date();
+        if (targetDate && !isNaN(targetDate.getTime())) {
+          targetDate.setHours(0, 0, 0, 0);
+          compDate.setHours(0, 0, 0, 0);
+          const diff = Math.ceil((compDate.getTime() - targetDate.getTime()) / (1000 * 60 * 60 * 24));
+          if (diff > 0) delay_days = diff;
+        }
+        return { ...row, delay_days };
+      });
     } catch (error) {
       console.error("Error while fetching hiring tasks");
       throw error;
@@ -774,7 +785,18 @@ class HrService {
 
     try {
       const { rows } = await pool.query(query, [startDate, endDate]);
-      return rows;
+      return rows.map((row) => {
+        let delay_days = 0;
+        const targetDate = row.end_date ? new Date(row.end_date) : null;
+        const compDate = row.completed ? (row.updated_at ? new Date(row.updated_at) : new Date()) : new Date();
+        if (targetDate && !isNaN(targetDate.getTime())) {
+          targetDate.setHours(0, 0, 0, 0);
+          compDate.setHours(0, 0, 0, 0);
+          const diff = Math.ceil((compDate.getTime() - targetDate.getTime()) / (1000 * 60 * 60 * 24));
+          if (diff > 0) delay_days = diff;
+        }
+        return { ...row, delay_days };
+      });
     } catch (error) {
       console.error("Error while fetching tasks by range");
       throw error;
@@ -920,7 +942,18 @@ class HrService {
 
       const { rows } = await pool.query(query, params);
 
-      return rows;
+      return rows.map((row) => {
+        let delay_days = 0;
+        const plannedDate = row.planned ? new Date(row.planned) : null;
+        const actualDate = row.actual ? new Date(row.actual) : new Date();
+        if (plannedDate && !isNaN(plannedDate.getTime())) {
+          plannedDate.setHours(0, 0, 0, 0);
+          actualDate.setHours(0, 0, 0, 0);
+          const diff = Math.ceil((actualDate.getTime() - plannedDate.getTime()) / (1000 * 60 * 60 * 24));
+          if (diff > 0) delay_days = diff;
+        }
+        return { ...row, delay_days };
+      });
     } catch (error) {
       console.error("Error in getting visit entries:", error);
       throw error;
