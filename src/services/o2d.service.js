@@ -1807,10 +1807,85 @@ class O2dService {
   }
 
 
+  async completeSOGenerationRequestFromTally (id, userId, document_url, sale_order) {
+    try {
+      const crmQuery = `
+      SELECT c.crm 
+      FROM sales_orders so 
+      INNER JOIN customers c ON so.client_name = c.company_name OR so.client_name::text = ANY(c.child_companies)
+      WHERE so.id = $1
+    `;
+      const crmResult = await pool.query(crmQuery, [parseInt(id)]);
+
+      console.log("crmResult: type ", typeof id);
+      console.log("crmResult: ", id);
+
+      if (crmResult.rows.length === 0) {
+        throw new Error("Please Assign CRM First");
+      }
+
+      // Extract the crmId (defaulting to null if the record isn't found)
+      const crmId = crmResult.rows[0].crm;
+
+      const soGenerationComplete = ORDER_STAGES.so_generation_completed_stage;
+
+      const query = `
+        UPDATE public.sales_orders
+        SET sale_order_generation = COALESCE(sale_order_generation, '{}'::jsonb) || jsonb_build_object(
+            'so_order_completed_at', now(),
+            'document_url', $3::text,
+            'sale_order_details', $6::jsonb
+        ),
+        order_status = $5,
+        assigned_to = $4,
+        updated_at = now(),
+        updated_by = $2
+        WHERE id = $1
+        RETURNING *;
+      `;
+
+      try {
+        const notif = await createNotification(
+          crmId,
+          `Sale Order for Order ID: ${id} is created from Accounts Team!`,
+          "so_generation_completion_notification",
+        );
+        emitToUser(crmId, "new_notification", notif);
+      } catch (error) {
+        console.log("error while sending notification: ", error);
+      }
+
+      const { rows } = await pool.query(query, [
+        id,
+        userId,
+        document_url,
+        crmId,
+        soGenerationComplete,
+        JSON.stringify(sale_order),
+      ]);
+      return rows[0];
+    } catch (error) {
+      console.log("error in completing so generation request from tally: ", error);
+      throw error;
+    }
+  }
+
 
   async receiveSoOrdersFromTally(so_orders) {
     try{
-      console.log("Received SO orders from Tally: ", so_orders);
+      
+      const soOrders = so_orders.salesOrders;
+      // console.log("Received SO orders from Tally: ", soOrders);
+
+      soOrders.forEach(async (sale_order) => {
+        const lastNumber = sale_order?.orderno?.split("/").pop();
+
+        console.log("lastNumber: ", lastNumber);
+
+        this.completeSOGenerationRequestFromTally(lastNumber, 5, '', sale_order);
+
+      })
+
       return {
         status: "success",
         message: "SO orders received from Tally successfully",
