@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import o2dController from '../controllers/o2d.controller.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
+import { documentUpload } from '../middlewares/upload.middleware.js';
 
 const router = Router();
 
@@ -125,6 +126,9 @@ router.post('/update-overdue-summary-report-information', authMiddleware, o2dCon
 
 // for tally integration
 router.post('/test-api-for-tally-integration', o2dController.testApiForTallyIntegration);
+router.post('/so-orders-from-tally', documentUpload, o2dController.receiveSoOrdersFromTally);
+router.post('/invoice-details-from-tally', documentUpload, o2dController.receiveInvoiceDetailsFromTally);
+
 
 
 export default router;

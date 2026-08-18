@@ -184,7 +184,7 @@ class O2dService {
             order_id: createdOrder.id,
             client_name: createdOrder.client_name,
             quantity_mt: createdOrder.quantity_mt,
-          }
+          },
         );
 
         emitToUser(crmId, "new_notification", notif);
@@ -753,10 +753,7 @@ class O2dService {
           [order_id],
         );
 
-        if (
-          crmIdResult.rows.length === 0 ||
-          crmIdResult.rows[0].crm === null
-        ) {
+        if (crmIdResult.rows.length === 0 || crmIdResult.rows[0].crm === null) {
           throw new Error("Please Assign CRM First");
         }
         const crmId = crmIdResult.rows[0].crm;
@@ -764,7 +761,7 @@ class O2dService {
           const notif = await createNotification(
             crmId,
             `Please upload the PO for Order ID: ${order.id}. Client: ${order.client_name}. Qty: ${order.quantity_mt} MT.`,
-            "po_upload_notification_to_crm_after_credit_limit_approval"
+            "po_upload_notification_to_crm_after_credit_limit_approval",
           );
 
           emitToUser(crmId, "new_notification", notif);
@@ -1806,6 +1803,112 @@ class O2dService {
     }
   }
 
+  async completeSOGenerationRequestFromTally(
+    id,
+    userId,
+    document_url,
+    sale_order,
+  ) {
+    try {
+      const crmQuery = `
+      SELECT c.crm 
+      FROM sales_orders so 
+      INNER JOIN customers c ON so.client_name = c.company_name OR so.client_name::text = ANY(c.child_companies)
+      WHERE so.id = $1
+    `;
+      const crmResult = await pool.query(crmQuery, [parseInt(id)]);
+
+      console.log("crmResult: type ", typeof id);
+      console.log("crmResult: ", id);
+
+      if (crmResult.rows.length === 0) {
+        throw new Error("Please Assign CRM First");
+      }
+
+      // Extract the crmId (defaulting to null if the record isn't found)
+      const crmId = crmResult.rows[0].crm;
+
+      const soGenerationComplete = ORDER_STAGES.so_generation_completed_stage;
+
+      const query = `
+        UPDATE public.sales_orders
+        SET sale_order_generation = COALESCE(sale_order_generation, '{}'::jsonb) || jsonb_build_object(
+            'so_order_completed_at', now(),
+            'document_url', $3::text,
+            'sale_order_details', $6::jsonb
+        ),
+        order_status = $5,
+        assigned_to = $4,
+        updated_at = now(),
+        updated_by = $2
+        WHERE id = $1
+        RETURNING *;
+      `;
+
+      try {
+        const notif = await createNotification(
+          crmId,
+          `Sale Order for Order ID: ${id} is created from Accounts Team!`,
+          "so_generation_completion_notification",
+        );
+        emitToUser(crmId, "new_notification", notif);
+      } catch (error) {
+        console.log("error while sending notification: ", error);
+      }
+
+      const { rows } = await pool.query(query, [
+        id,
+        userId,
+        document_url,
+        crmId,
+        soGenerationComplete,
+        JSON.stringify(sale_order),
+      ]);
+      return rows[0];
+    } catch (error) {
+      console.log(
+        "error in completing so generation request from tally: ",
+        error,
+      );
+      throw error;
+    }
+  }
+
+  async receiveSoOrdersFromTally(so_orders, pdfUrl) {
+    try {
+      const soOrders = so_orders.salesOrders;
+
+
+      // console.log("Received SO Orders from Tally: ", soOrders);
+      // console.log("Received PDF URL from Tally: ", pdfUrl);
+
+      // Use Promise.all and map to ensure all async operations finish
+      // before returning the success response
+      await Promise.all(
+        soOrders.map(async (sale_order) => {
+          const lastNumber = sale_order?.orderno?.split("/").pop();
+          // console.log("lastNumber: ", lastNumber);
+
+          // Pass the pdfUrl to your generation function so it can be saved in the DB
+          await this.completeSOGenerationRequestFromTally(
+            lastNumber,
+            5,
+            pdfUrl, // <-- Pass the S3 URL here
+            sale_order,
+          );
+        }),
+      );
+
+      return {
+        status: "success",
+        message: "SO orders received from Tally successfully",
+      };
+    } catch (error) {
+      console.error("Error in processing SO orders from Tally: ", error);
+      throw error;
+    }
+  }
+
   async assignToVehicleExecutive(id, userId) {
     try {
       // Get vehicle executive id
@@ -2107,9 +2210,9 @@ class O2dService {
       if (payment_status !== undefined) {
         paymentPayload.payment_status = payment_status;
 
+        const interestNoteAssignStatus =
+          saleOrder?.payment_status?.is_interest_note_issue;
 
-        const interestNoteAssignStatus = saleOrder?.payment_status?.is_interest_note_issue;
-        
         if (payment_status === true && interestNoteAssignStatus === undefined) {
           const invoiceDate =
             saleOrder.invoice_and_dispatch?.actual_dispatch_date;
@@ -2120,7 +2223,6 @@ class O2dService {
             error.isOperational = true;
             throw error;
           }
-
 
           let dueDate = new Date(invoiceDate);
           dueDate.setDate(dueDate.getDate() + 10);
@@ -2135,7 +2237,6 @@ class O2dService {
             dueDate = new Date(complaintInformation.rows[0]?.updated_at);
             dueDate.setDate(dueDate.getDate() + 10);
           }
-
 
           if (dueDate < new Date()) {
             paymentPayload.is_interest_note_issue = true;

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import tenderController from '../controllers/tender.controller.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
-import { tenderUpload } from '../middlewares/upload.middleware.js';
+import { documentUpload } from '../middlewares/upload.middleware.js';
 
 const router = Router();
 
@@ -61,7 +61,7 @@ router.put('/approve-tender/:id', authMiddleware, tenderController.approveTender
 // this api is used to approve/reject counter offer tender request by tender executive
 router.put('/approve-counter-offer-tender/:id', authMiddleware, tenderController.approveCounterOfferTender);
 router.post('/create-tender', authMiddleware, tenderController.createTender);
-router.put('/:id', authMiddleware, tenderUpload, tenderController.update);
+router.put('/:id', authMiddleware, documentUpload, tenderController.update);
 
 
 // this api is used when tender agent send his tender for approval to md
@@ -69,6 +69,6 @@ router.put('/send-for-approval/:id', authMiddleware, tenderController.sendForApp
 
 
 
-router.post('/upload-document', authMiddleware, tenderUpload, tenderController.uploadFileToS3);
+router.post('/upload-document', authMiddleware, documentUpload, tenderController.uploadFileToS3);
 
 export default router;
