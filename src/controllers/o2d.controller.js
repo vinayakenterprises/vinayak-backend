@@ -1,5 +1,5 @@
 import o2dService from "../services/o2d.service.js";
-// import uploadPdfToS3 from "../utils/helpers/uploadSOTOs3.js";
+import uploadPdfToS3 from "../utils/helpers/uploadSOTOs3.js";
 
 class O2dController {
   createSaleOrder = async (req, res, next) => {
@@ -825,18 +825,47 @@ class O2dController {
 
   receiveSoOrdersFromTally = async (req, res, next) => {
     try {
+      console.log("req.body:", req.body);
 
-      console.log("req.body", req.body);
-      
+      let pdfUrl = null;
 
+      // 1. Upload PDF to S3 if attached
+      if (req.files?.["pdf-file"]?.[0]) {
+        const pdfFile = req.files["pdf-file"][0];
+        const year = new Date().getFullYear();
+        const s3Path = `sales-orders/${year}/tally_batch_${Date.now()}`;
+
+        pdfUrl = await uploadPdfToS3(pdfFile, s3Path);
+        console.log("PDF uploaded to S3: ", pdfUrl);
+      }
+
+      // 2. Flexibly parse the JSON payload
+      let salesOrdersData = req.body;
+
+      if (typeof req.body.so_orders_data === "string") {
+        salesOrdersData = JSON.parse(req.body.so_orders_data);
+      } else if (typeof req.body.salesOrders === "string") {
+        salesOrdersData = { salesOrders: JSON.parse(req.body.salesOrders) };
+      }
+
+      // 3. Validation Guard
+      if (!salesOrdersData || !Array.isArray(salesOrdersData.salesOrders)) {
+        return res.status(400).json({
+          status: "fail",
+          message:
+            "Invalid payload: 'salesOrders' array is missing or invalid.",
+        });
+      }
+
+      // 4. Pass parsed data and S3 PDF URL to the service
       const updatedOrder = await o2dService.receiveSoOrdersFromTally(
-        req.body,
+        salesOrdersData,
+        pdfUrl,
       );
-
 
       return res.status(200).json({
         status: "success",
-        message: "SO orders received from Tally successfully",
+        message: "SO orders and PDF received from Tally successfully",
         // data: updatedOrder,
       });
     } catch (error) {

@@ -8,13 +8,14 @@ const uploadSOPdfToS3 = async (file, path = "documents/path_not_provided") => {
 
   const year = new Date().getFullYear();
 
-//   const path = `sales-orders/${year}/${orderNo.replace(/\//g, "_")}`;
+  //   const path = `sales-orders/${year}/${orderNo.replace(/\//g, "_")}`;
 
-  const url = await uploadToS3(
-    file,
-    config.s3.bucketName,
-    path
-  );
+  const pdfFile = {
+    ...file,
+    mimetype: "application/pdf",
+  };
+
+  const url = await uploadToS3(pdfFile, config.s3.bucketName, path);
 
   return url;
 };
