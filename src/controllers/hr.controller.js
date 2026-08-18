@@ -12,6 +12,8 @@ class HrController {
         hiring_status,
         selected_month,
         final_closed_date,
+        priority,
+        job_id,
       } = req.body;
 
       // Determine created_at if selected_month is specified and not 'All'
@@ -37,6 +39,8 @@ class HrController {
         selected_month,
         final_closed_date,
         created_at,
+        priority: priority !== undefined ? Number(priority) : 3,
+        job_id,
       };
       const hiringRecord = await hrService.createHiringRecord(payload);
 
@@ -111,6 +115,8 @@ class HrController {
         hiring_status,
         selected_month,
         final_closed_date,
+        priority,
+        job_id,
       } = req.body;
       const payload = {
         id,
@@ -122,6 +128,8 @@ class HrController {
         hiring_status,
         selected_month,
         final_closed_date,
+        priority: priority !== undefined ? Number(priority) : undefined,
+        job_id,
       };
       const hiringRecord = await hrService.updateHiringRecord(payload);
 
