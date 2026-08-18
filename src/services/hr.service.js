@@ -30,6 +30,7 @@ const getMonthCode = (dateInput) => {
   return null;
 };
 
+
 class HrService {
   async createHiringRecord(recordData) {
     const {
@@ -42,7 +43,29 @@ class HrService {
       selected_month,
       created_at,
       final_closed_date: inputFinalClosedDate,
+      priority,
+      job_id,
     } = recordData;
+
+    let finalJobId = job_id?.trim();
+    if (!finalJobId) {
+      const { rows } = await pool.query(`SELECT job_id FROM hiring_information`);
+      let maxNum = 0;
+      for (const r of rows) {
+        if (r.job_id) {
+          const match = r.job_id.match(/#(\d+)/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (num > maxNum) maxNum = num;
+          }
+        }
+      }
+      finalJobId = `#${maxNum + 1}`;
+    }
+
+    const finalPriority = priority !== undefined && priority !== null && priority !== ""
+      ? parseInt(priority, 10)
+      : 3;
 
     const cleanClosingDate = formatToYYYYMMDD(closing_date);
 
@@ -123,9 +146,9 @@ class HrService {
     if (created_at) {
       query = `
           INSERT INTO hiring_information 
-            (position_name, closing_date, interviewees_appeared, offers_given, onboarded_candidates, hiring_status, created_at, history, final_closed_date) 
+            (position_name, closing_date, interviewees_appeared, offers_given, onboarded_candidates, hiring_status, created_at, history, final_closed_date, job_id, priority) 
           VALUES 
-            ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
           RETURNING *;
         `;
       params = [
@@ -138,13 +161,15 @@ class HrService {
         created_at,
         JSON.stringify(initialHistory),
         final_closed_date,
+        finalJobId,
+        finalPriority,
       ];
     } else {
       query = `
           INSERT INTO hiring_information 
-            (position_name, closing_date, interviewees_appeared, offers_given, onboarded_candidates, hiring_status, history, final_closed_date) 
+            (position_name, closing_date, interviewees_appeared, offers_given, onboarded_candidates, hiring_status, history, final_closed_date, job_id, priority) 
           VALUES 
-            ($1, $2, $3, $4, $5, $6, $7, $8)
+            ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
           RETURNING *;
         `;
       params = [
@@ -156,6 +181,8 @@ class HrService {
         hiring_status,
         JSON.stringify(initialHistory),
         final_closed_date,
+        finalJobId,
+        finalPriority,
       ];
     }
 
@@ -170,19 +197,6 @@ class HrService {
 
   /**
    * Retrieves all hiring records based on date range filtering.
-   *
-   * Visibility rules:
-   * A job is returned only if both conditions are true:
-   * 1. The job was created on or before the selected endDate (created_at::date <= endDate::date).
-   * 2. The job is either:
-   *    - Not closed (hiring_status != 'Closed'), OR
-   *    - Has closing_date IS NULL, OR
-   *    - Has closing_date >= startDate.
-   *
-   * History rules:
-   * - If a date range is selected, history entries are filtered/summed between startMonth and endMonth,
-   *   and the latest status up to endMonth is determined.
-   * - If no date range is provided, all-time totals are returned.
    */
   async getAllHiringRecords(startDateParam, endDateParam) {
     let startDate = startDateParam;
@@ -225,6 +239,8 @@ class HrService {
     let query = `
             SELECT 
                 id,
+                job_id,
+                priority,
                 position_name,
                 closing_date,
                 interviewees_appeared,
@@ -337,6 +353,8 @@ class HrService {
 
         return {
           id: row.id,
+          job_id: row.job_id,
+          priority: row.priority !== null && row.priority !== undefined ? Number(row.priority) : 3,
           position_name: row.position_name,
           closing_date: formatToYYYYMMDD(row.closing_date),
           final_closed_date: finalClosedDate,
@@ -437,10 +455,17 @@ class HrService {
       hiring_status,
       selected_month,
       final_closed_date: inputFinalClosedDate,
+      priority,
+      job_id,
     } = recordData;
 
     // Fetch existing record
     const existingRecord = await this.getHiringRecordById(id);
+
+    const finalPriority = priority !== undefined && priority !== null && priority !== ""
+      ? parseInt(priority, 10)
+      : (existingRecord.priority !== undefined && existingRecord.priority !== null ? Number(existingRecord.priority) : 3);
+    const finalJobId = job_id?.trim() || existingRecord.job_id;
 
     // Parse history safely
     let history = existingRecord.history || [];
@@ -623,6 +648,8 @@ class HrService {
             hiring_status = $7,
             history = $8::jsonb,
             final_closed_date = $9::date,
+            priority = $10,
+            job_id = $11,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = $1
         RETURNING *;
@@ -633,6 +660,8 @@ class HrService {
         id,
         newStatus,
         newFinalClosedDate,
+        finalPriority,
+        finalJobId,
       });
 
       const { rows } = await pool.query(query, [
@@ -649,6 +678,8 @@ class HrService {
         lastEntry ? lastEntry.status : newStatus,
         JSON.stringify(history),
         newFinalClosedDate,
+        finalPriority,
+        finalJobId,
       ]);
 
       if (rows.length === 0) {
