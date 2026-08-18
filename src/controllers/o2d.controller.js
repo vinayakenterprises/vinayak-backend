@@ -1,5 +1,5 @@
 import o2dService from "../services/o2d.service.js";
-import uploadPdfToS3 from "../utils/helpers/uploadSOTOs3.js";
+import uploadPdfToS3 from "../utils/helpers/uploadSOToS3.js";
 
 class O2dController {
   createSaleOrder = async (req, res, next) => {
