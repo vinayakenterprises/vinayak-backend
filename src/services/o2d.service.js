@@ -184,7 +184,7 @@ class O2dService {
             order_id: createdOrder.id,
             client_name: createdOrder.client_name,
             quantity_mt: createdOrder.quantity_mt,
-          }
+          },
         );
 
         emitToUser(crmId, "new_notification", notif);
@@ -753,10 +753,7 @@ class O2dService {
           [order_id],
         );
 
-        if (
-          crmIdResult.rows.length === 0 ||
-          crmIdResult.rows[0].crm === null
-        ) {
+        if (crmIdResult.rows.length === 0 || crmIdResult.rows[0].crm === null) {
           throw new Error("Please Assign CRM First");
         }
         const crmId = crmIdResult.rows[0].crm;
@@ -764,7 +761,7 @@ class O2dService {
           const notif = await createNotification(
             crmId,
             `Please upload the PO for Order ID: ${order.id}. Client: ${order.client_name}. Qty: ${order.quantity_mt} MT.`,
-            "po_upload_notification_to_crm_after_credit_limit_approval"
+            "po_upload_notification_to_crm_after_credit_limit_approval",
           );
 
           emitToUser(crmId, "new_notification", notif);
@@ -1806,8 +1803,12 @@ class O2dService {
     }
   }
 
-
-  async completeSOGenerationRequestFromTally (id, userId, document_url, sale_order) {
+  async completeSOGenerationRequestFromTally(
+    id,
+    userId,
+    document_url,
+    sale_order,
+  ) {
     try {
       const crmQuery = `
       SELECT c.crm 
@@ -1865,37 +1866,48 @@ class O2dService {
       ]);
       return rows[0];
     } catch (error) {
-      console.log("error in completing so generation request from tally: ", error);
+      console.log(
+        "error in completing so generation request from tally: ",
+        error,
+      );
       throw error;
     }
   }
 
-
-  async receiveSoOrdersFromTally(so_orders) {
-    try{
-      
+  async receiveSoOrdersFromTally(so_orders, pdfUrl) {
+    try {
       const soOrders = so_orders.salesOrders;
-      // console.log("Received SO orders from Tally: ", soOrders);
 
-      soOrders.forEach(async (sale_order) => {
-        const lastNumber = sale_order?.orderno?.split("/").pop();
 
-        console.log("lastNumber: ", lastNumber);
+      // console.log("Received SO Orders from Tally: ", soOrders);
+      // console.log("Received PDF URL from Tally: ", pdfUrl);
 
-        this.completeSOGenerationRequestFromTally(lastNumber, 5, '', sale_order);
+      // Use Promise.all and map to ensure all async operations finish
+      // before returning the success response
+      await Promise.all(
+        soOrders.map(async (sale_order) => {
+          const lastNumber = sale_order?.orderno?.split("/").pop();
+          // console.log("lastNumber: ", lastNumber);
 
-      })
+          // Pass the pdfUrl to your generation function so it can be saved in the DB
+          await this.completeSOGenerationRequestFromTally(
+            lastNumber,
+            5,
+            pdfUrl, // <-- Pass the S3 URL here
+            sale_order,
+          );
+        }),
+      );
 
       return {
         status: "success",
         message: "SO orders received from Tally successfully",
-      }
-    }catch(error){
+      };
+    } catch (error) {
       console.error("Error in processing SO orders from Tally: ", error);
       throw error;
     }
   }
-
 
   async assignToVehicleExecutive(id, userId) {
     try {
@@ -2198,9 +2210,9 @@ class O2dService {
       if (payment_status !== undefined) {
         paymentPayload.payment_status = payment_status;
 
+        const interestNoteAssignStatus =
+          saleOrder?.payment_status?.is_interest_note_issue;
 
-        const interestNoteAssignStatus = saleOrder?.payment_status?.is_interest_note_issue;
-        
         if (payment_status === true && interestNoteAssignStatus === undefined) {
           const invoiceDate =
             saleOrder.invoice_and_dispatch?.actual_dispatch_date;
@@ -2211,7 +2223,6 @@ class O2dService {
             error.isOperational = true;
             throw error;
           }
-
 
           let dueDate = new Date(invoiceDate);
           dueDate.setDate(dueDate.getDate() + 10);
@@ -2226,7 +2237,6 @@ class O2dService {
             dueDate = new Date(complaintInformation.rows[0]?.updated_at);
             dueDate.setDate(dueDate.getDate() + 10);
           }
-
 
           if (dueDate < new Date()) {
             paymentPayload.is_interest_note_issue = true;
