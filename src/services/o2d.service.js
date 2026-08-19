@@ -1909,6 +1909,200 @@ class O2dService {
     }
   }
 
+
+  async updateInvoiceAndDispatchInfoFromTally(orderId, dispatchData, userId, total_invoice_amount) {
+  try {
+    const { actual_dispatch_date, invoices, invoice_completed_at } =
+      dispatchData;
+
+    // 1. Fetch current invoice_and_dispatch from the database
+    const fetchQuery = `SELECT invoice_and_dispatch, client_name FROM public.sales_orders WHERE id = $1`;
+    const { rows } = await pool.query(fetchQuery, [orderId]);
+
+    if (rows.length === 0) {
+      throw new Error("Sales order not found");
+    }
+
+    // 2. Parse existing data or initialize an empty structure
+    let currentDispatchInfo = rows[0].invoice_and_dispatch || {};
+
+    if (!currentDispatchInfo.invoices) {
+      currentDispatchInfo.invoices = [];
+    }
+
+    // 3. Check for existing invoice and RETURN EARLY if found
+    if (invoices && invoices.length > 0) {
+      const incomingInvoiceNo = invoices[0].invoice;
+      const invoiceExists = currentDispatchInfo.invoices.some(
+        (inv) => inv.invoice === incomingInvoiceNo
+      );
+
+      if (invoiceExists) {
+        console.log(
+          `Invoice ${incomingInvoiceNo} already exists for Order ID: ${orderId}. Aborting update to maintain single invoice rule.`
+        );
+        // Return immediately. No data is changed, no notifications sent.
+        return rows[0]; 
+      }
+    }
+
+    // 4. Incrementally update fields based on what was passed in the request
+    if (actual_dispatch_date) {
+      currentDispatchInfo.actual_dispatch_date = actual_dispatch_date;
+    }
+
+    let assignToStr = ``;
+
+    if (invoice_completed_at) {
+      const thankYouAndIntimationStage =
+        ORDER_STAGES.thank_you_and_intimation_stage;
+      currentDispatchInfo.invoice_completed_at = invoice_completed_at;
+      assignToStr = `,assigned_to = (SELECT crm FROM public.customers WHERE company_name = public.sales_orders.client_name OR public.sales_orders.client_name::text = ANY(child_companies) LIMIT 1), order_status = '${thankYouAndIntimationStage}'`;
+
+      const sendNotificationToCrm = async (order_id) => {
+        try {
+          const crmIdResult = await pool.query(
+            `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+            [order_id]
+          );
+
+          if (
+            crmIdResult.rows.length === 0 ||
+            crmIdResult.rows[0].crm === null
+          ) {
+            throw new Error("Please Assign CRM First");
+          }
+          const crmId = crmIdResult.rows[0].crm;
+
+          const notif = await createNotification(
+            crmId,
+            `Invoice & Dispatch Phase Completed for Order ID: ${orderId}.`,
+            "invoice_and_dispatch_completed_notification_to_crm"
+          );
+          emitToUser(crmId, "new_notification", notif);
+        } catch (error) {
+          console.log("error while sending notification to crm: ", error);
+        }
+      };
+
+      sendNotificationToCrm(orderId);
+    }
+
+    // 5. Append new invoice and save to overdue summary report
+    if (invoices && Array.isArray(invoices) && invoices.length > 0) {
+      console.log("Processing new invoice -> ", invoices);
+
+      const clientName = rows[0].client_name || null;
+      const invoiceDate = invoices[0].dispatch_timestamp || null;
+      const invoiceNo = invoices[0].invoice || null;
+      const invoiceUrl = invoices[0].invoice_url || null;
+
+      const insertQuery = `INSERT INTO public.overdue_summary_report (
+            sale_order_id, 
+            invoice_date, 
+            invoice_no, 
+            client_name,
+            balance,
+            invoice_url
+        ) 
+        VALUES (
+            $1,                   
+            $2,            
+            $3, 
+            $4, 
+            $6,
+            $5
+        )`;
+
+      await pool.query(insertQuery, [
+        orderId,
+        invoiceDate,
+        invoiceNo,
+        clientName,
+        invoiceUrl,
+        total_invoice_amount
+      ]);
+
+      currentDispatchInfo.invoices = [
+        ...currentDispatchInfo.invoices,
+        ...invoices,
+      ];
+    }
+
+    // 6. Save the merged data back to the database
+    const updateQuery = `
+      UPDATE public.sales_orders
+      SET 
+        invoice_and_dispatch = $1::jsonb,
+        updated_at = now(),
+        updated_by = $2
+        ${assignToStr}
+      WHERE id = $3
+      RETURNING *;
+    `;
+
+    const updateResult = await pool.query(updateQuery, [
+      JSON.stringify(currentDispatchInfo),
+      userId,
+      orderId,
+    ]);
+
+    return updateResult.rows[0];
+  } catch (error) {
+    console.error("Error in updateDispatchInfo: ", error);
+    throw error;
+  }
+}
+
+
+  async receiveInvoiceDetailsFromTally(actual_dispatch_date, invoice_number, quantity, total_invoice_amount, userId = 10) {
+    try {
+      console.log("Received Invoice Details from Tally: ", {
+        actual_dispatch_date,
+        invoice_number,
+        quantity,
+        total_invoice_amount,
+      });
+
+      // 1. Extract orderId from invoice_number
+      // e.g., "2026-27/071" -> "071" -> 71
+      const invoiceParts = invoice_number.split('/');
+      const orderIdString = invoiceParts[invoiceParts.length - 1];
+      const orderId = parseInt(orderIdString, 10);
+
+      // 2. Format the dispatch data
+      const dispatchData = {
+        actual_dispatch_date: actual_dispatch_date,
+        invoices: [
+          {
+            invoice: invoice_number,
+            quantity_dispatched: quantity,
+            invoice_url: null,
+            dispatch_timestamp: new Date().toISOString() // Creates timestamp like "2026-08-18T10:22:59.557Z"
+          }
+        ],
+        invoice_completed_at: new Date().toISOString()
+      };
+
+      // 3. Call the update function
+      // (Using `this.` assuming both functions belong to the same class/service)
+      const updateResult = await this.updateInvoiceAndDispatchInfoFromTally(
+        orderId, 
+        dispatchData, 
+        userId,
+        total_invoice_amount
+      );
+
+      console.log(`Successfully updated invoice & dispatch info for Order ID: ${orderId}`);
+      return updateResult;
+
+    } catch (error) {
+      console.error("Error in processing invoice details from Tally: ", error);
+      throw error;
+    }
+  }
+
   async assignToVehicleExecutive(id, userId) {
     try {
       // Get vehicle executive id

@@ -876,29 +876,30 @@ class O2dController {
   
   receiveInvoiceDetailsFromTally = async (req, res, next) => {
     try{
-      console.log("req.body:", req.body);
+      // console.log("req.body:", req.body);
 
-      const { actual_dispatch_date, invoice_number, quantity } = req.body;
+      const { actual_dispatch_date, invoice_number, quantity, total_invoice_amount } = req.body;
 
-      if (!actual_dispatch_date || !invoice_number || !quantity) {
+      if (!actual_dispatch_date || !invoice_number || !quantity || !total_invoice_amount) {
         return res.status(400).json({
           status: "fail",
           message:
-            "Invalid payload: 'actual_dispatch_date', 'invoice_number', or 'quantity' is missing or invalid.",
+            "Invalid payload: 'actual_dispatch_date', 'invoice_number', 'quantity', or 'total_invoice_amount' is missing or invalid.",
         });
       }
 
       // 4. Pass parsed data and S3 PDF URL to the service
-      // const updatedOrder = await o2dService.receiveInvoiceDetailsFromTally(
-      //   actual_dispatch_date,
-      //   invoice_number,
-      //   quantity,
-      // );
+      const updatedOrder = await o2dService.receiveInvoiceDetailsFromTally(
+        actual_dispatch_date,
+        invoice_number,
+        quantity,
+        total_invoice_amount
+      );
 
       return res.status(200).json({
         status: "success",
         message: "Invoice details received from Tally successfully",
-        // data: updatedOrder,
+        data: updatedOrder,
       });
 
     }catch(error){
