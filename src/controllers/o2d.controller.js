@@ -873,14 +873,23 @@ class O2dController {
     }
   };
 
-  
   receiveInvoiceDetailsFromTally = async (req, res, next) => {
-    try{
+    try {
       // console.log("req.body:", req.body);
 
-      const { actual_dispatch_date, invoice_number, quantity, total_invoice_amount } = req.body;
+      const {
+        actual_dispatch_date,
+        invoice_number,
+        quantity,
+        total_invoice_amount,
+      } = req.body;
 
-      if (!actual_dispatch_date || !invoice_number || !quantity || !total_invoice_amount) {
+      if (
+        !actual_dispatch_date ||
+        !invoice_number ||
+        !quantity ||
+        !total_invoice_amount
+      ) {
         return res.status(400).json({
           status: "fail",
           message:
@@ -893,7 +902,7 @@ class O2dController {
         actual_dispatch_date,
         invoice_number,
         quantity,
-        total_invoice_amount
+        total_invoice_amount,
       );
 
       return res.status(200).json({
@@ -901,12 +910,41 @@ class O2dController {
         message: "Invoice details received from Tally successfully",
         data: updatedOrder,
       });
-
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-  
+  };
+
+  updateInvoicePdfUrl = async (req, res, next) => {
+    try {
+      const { order_id, invoice_number, invoice_url } = req.body;
+      const userId = req.user?.id || null;
+
+      // Validate request body
+      if (!order_id || !invoice_number || !invoice_url) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "order_id, invoice_number, and invoice_url are required fields.",
+        });
+      }
+
+      const updatedOrder = await o2dService.updateInvoicePdfUrl(
+        order_id,
+        invoice_number,
+        invoice_url,
+        userId,
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Invoice PDF URL updated successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
   assignToVehicleExecutive = async (req, res, next) => {
     try {
