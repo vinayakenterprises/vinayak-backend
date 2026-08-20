@@ -873,31 +873,125 @@ class O2dController {
     }
   };
 
-  
   receiveInvoiceDetailsFromTally = async (req, res, next) => {
-    try{
-      console.log("req.body:", req.body);
+    try {
+      // console.log("req.body:", req.body);
 
-      const { actual_dispatch_date, invoice_number, quantity } = req.body;
+      const {
+        actual_dispatch_date,
+        invoice_number,
+        quantity,
+        total_invoice_amount,
+      } = req.body;
 
-      if (!actual_dispatch_date || !invoice_number || !quantity) {
+      if (
+        !actual_dispatch_date ||
+        !invoice_number ||
+        !quantity ||
+        !total_invoice_amount
+      ) {
         return res.status(400).json({
           status: "fail",
           message:
-            "Invalid payload: 'actual_dispatch_date', 'invoice_number', or 'quantity' is missing or invalid.",
+            "Invalid payload: 'actual_dispatch_date', 'invoice_number', 'quantity', or 'total_invoice_amount' is missing or invalid.",
         });
       }
 
       // 4. Pass parsed data and S3 PDF URL to the service
-      // const updatedOrder = await o2dService.receiveInvoiceDetailsFromTally(
-      //   actual_dispatch_date,
-      //   invoice_number,
-      //   quantity,
-      // );
+      const updatedOrder = await o2dService.receiveInvoiceDetailsFromTally(
+        actual_dispatch_date,
+        invoice_number,
+        quantity,
+        total_invoice_amount,
+      );
 
       return res.status(200).json({
         status: "success",
         message: "Invoice details received from Tally successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateInvoicePdfUrl = async (req, res, next) => {
+    try {
+      const { order_id, invoice_number, invoice_url } = req.body;
+      const userId = req.user?.id || null;
+
+      // Validate request body
+      if (!order_id || !invoice_number || !invoice_url) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "order_id, invoice_number, and invoice_url are required fields.",
+        });
+      }
+
+      const updatedOrder = await o2dService.updateInvoicePdfUrl(
+        order_id,
+        invoice_number,
+        invoice_url,
+        userId,
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Invoice PDF URL updated successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+
+  getCreditDebitNoteFromTally = async (req, res, next) => {
+    try{
+      const { document_type, credit_debit_note_number, credit_debit_note_amount, credit_debit_note_quantity } = req.body;
+
+      
+
+      if(!document_type || !credit_debit_note_number || !credit_debit_note_amount || !credit_debit_note_quantity){
+        return res.status(400).json({
+          status: "fail",
+          message: "Invalid payload: 'document_type', 'credit_debit_note_number', 'credit_debit_note_amount', or 'credit_debit_note_quantity' is missing or invalid."
+        });
+      }
+
+      console.log("payload: ", req.body);
+
+      let pdfUrl = null;
+
+      // 1. Upload PDF to S3 if attached
+      if (req.files?.["pdf-file"]?.[0]) {
+        const pdfFile = req.files["pdf-file"][0];
+        const year = new Date().getFullYear();
+        const s3Path = `credit-notes/${year}/tally_batch_${Date.now()}`;
+
+        pdfUrl = await uploadPdfToS3(pdfFile, s3Path);
+        console.log("PDF uploaded to S3: ", pdfUrl);
+      }
+
+      if(!pdfUrl){
+        return res.status(400).json({
+          status: "fail",
+          message: "PDF file is required."
+        });
+      }
+
+      const updatedOrder = await o2dService.getCreditDebitNoteFromTally(
+        document_type,
+        credit_debit_note_number,
+        credit_debit_note_amount,
+        credit_debit_note_quantity,
+        pdfUrl
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Credit Note details retrieved successfully",
         // data: updatedOrder,
       });
 
@@ -905,7 +999,6 @@ class O2dController {
       next(error);
     }
   }
-  
 
   assignToVehicleExecutive = async (req, res, next) => {
     try {

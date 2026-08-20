@@ -1878,7 +1878,6 @@ class O2dService {
     try {
       const soOrders = so_orders.salesOrders;
 
-
       // console.log("Received SO Orders from Tally: ", soOrders);
       // console.log("Received PDF URL from Tally: ", pdfUrl);
 
@@ -1908,6 +1907,458 @@ class O2dService {
       throw error;
     }
   }
+
+  async updateInvoiceAndDispatchInfoFromTally(
+    orderId,
+    dispatchData,
+    userId,
+    total_invoice_amount,
+  ) {
+    try {
+      const { actual_dispatch_date, invoices, invoice_completed_at } =
+        dispatchData;
+
+      // 1. Fetch current invoice_and_dispatch from the database
+      const fetchQuery = `SELECT invoice_and_dispatch, client_name FROM public.sales_orders WHERE id = $1`;
+      const { rows } = await pool.query(fetchQuery, [orderId]);
+
+      if (rows.length === 0) {
+        throw new Error("Sales order not found");
+      }
+
+      // 2. Parse existing data or initialize an empty structure
+      let currentDispatchInfo = rows[0].invoice_and_dispatch || {};
+
+      if (!currentDispatchInfo.invoices) {
+        currentDispatchInfo.invoices = [];
+      }
+
+      // 3. Check for existing invoice and RETURN EARLY if found
+      if (invoices && invoices.length > 0) {
+        const incomingInvoiceNo = invoices[0].invoice;
+        const invoiceExists = currentDispatchInfo.invoices.some(
+          (inv) => inv.invoice === incomingInvoiceNo,
+        );
+
+        if (invoiceExists) {
+          console.log(
+            `Invoice ${incomingInvoiceNo} already exists for Order ID: ${orderId}. Aborting update to maintain single invoice rule.`,
+          );
+          // Return immediately. No data is changed, no notifications sent.
+          return rows[0];
+        }
+      }
+
+      // 4. Incrementally update fields based on what was passed in the request
+      if (actual_dispatch_date) {
+        currentDispatchInfo.actual_dispatch_date = actual_dispatch_date;
+      }
+
+      let assignToStr = ``;
+
+      if (invoice_completed_at) {
+        const thankYouAndIntimationStage =
+          ORDER_STAGES.thank_you_and_intimation_stage;
+        currentDispatchInfo.invoice_completed_at = invoice_completed_at;
+        assignToStr = `,assigned_to = (SELECT crm FROM public.customers WHERE company_name = public.sales_orders.client_name OR public.sales_orders.client_name::text = ANY(child_companies) LIMIT 1), order_status = '${thankYouAndIntimationStage}'`;
+
+        const sendNotificationToCrm = async (order_id) => {
+          try {
+            const crmIdResult = await pool.query(
+              `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+              [order_id],
+            );
+
+            if (
+              crmIdResult.rows.length === 0 ||
+              crmIdResult.rows[0].crm === null
+            ) {
+              throw new Error("Please Assign CRM First");
+            }
+            const crmId = crmIdResult.rows[0].crm;
+
+            const notif = await createNotification(
+              crmId,
+              `Invoice & Dispatch Phase Completed for Order ID: ${orderId}.`,
+              "invoice_and_dispatch_completed_notification_to_crm",
+            );
+            emitToUser(crmId, "new_notification", notif);
+          } catch (error) {
+            console.log("error while sending notification to crm: ", error);
+          }
+        };
+
+        sendNotificationToCrm(orderId);
+      }
+
+      // 5. Append new invoice and save to overdue summary report
+      if (invoices && Array.isArray(invoices) && invoices.length > 0) {
+        console.log("Processing new invoice -> ", invoices);
+
+        const clientName = rows[0].client_name || null;
+        const invoiceDate = invoices[0].dispatch_timestamp || null;
+        const invoiceNo = invoices[0].invoice || null;
+        const invoiceUrl = invoices[0].invoice_url || null;
+
+        const insertQuery = `INSERT INTO public.overdue_summary_report (
+            sale_order_id, 
+            invoice_date, 
+            invoice_no, 
+            client_name,
+            balance,
+            invoice_url
+        ) 
+        VALUES (
+            $1,                   
+            $2,            
+            $3, 
+            $4, 
+            $6,
+            $5
+        )`;
+
+        await pool.query(insertQuery, [
+          orderId,
+          invoiceDate,
+          invoiceNo,
+          clientName,
+          invoiceUrl,
+          total_invoice_amount,
+        ]);
+
+        currentDispatchInfo.invoices = [
+          ...currentDispatchInfo.invoices,
+          ...invoices,
+        ];
+      }
+
+      // 6. Save the merged data back to the database
+      const updateQuery = `
+      UPDATE public.sales_orders
+      SET 
+        invoice_and_dispatch = $1::jsonb,
+        updated_at = now(),
+        updated_by = $2
+        ${assignToStr}
+      WHERE id = $3
+      RETURNING *;
+    `;
+
+      const updateResult = await pool.query(updateQuery, [
+        JSON.stringify(currentDispatchInfo),
+        userId,
+        orderId,
+      ]);
+
+      return updateResult.rows[0];
+    } catch (error) {
+      console.error("Error in updateDispatchInfo: ", error);
+      throw error;
+    }
+  }
+
+  async receiveInvoiceDetailsFromTally(
+    actual_dispatch_date,
+    invoice_number,
+    quantity,
+    total_invoice_amount,
+    userId = 10,
+  ) {
+    try {
+      console.log("Received Invoice Details from Tally: ", {
+        actual_dispatch_date,
+        invoice_number,
+        quantity,
+        total_invoice_amount,
+      });
+
+      // 1. Extract orderId from invoice_number
+      // e.g., "2026-27/071" -> "071" -> 71
+      const invoiceParts = invoice_number.split("/");
+      const orderIdString = invoiceParts[invoiceParts.length - 1];
+      const orderId = parseInt(orderIdString, 10);
+
+      // 2. Format the dispatch data
+      const dispatchData = {
+        actual_dispatch_date: actual_dispatch_date,
+        invoices: [
+          {
+            invoice: invoice_number,
+            quantity_dispatched: quantity,
+            invoice_url: null,
+            dispatch_timestamp: new Date().toISOString(), // Creates timestamp like "2026-08-18T10:22:59.557Z"
+          },
+        ],
+        invoice_completed_at: new Date().toISOString(),
+      };
+
+      // 3. Call the update function
+      // (Using `this.` assuming both functions belong to the same class/service)
+      const updateResult = await this.updateInvoiceAndDispatchInfoFromTally(
+        orderId,
+        dispatchData,
+        userId,
+        total_invoice_amount,
+      );
+
+      console.log(
+        `Successfully updated invoice & dispatch info for Order ID: ${orderId}`,
+      );
+      return updateResult;
+    } catch (error) {
+      console.error("Error in processing invoice details from Tally: ", error);
+      throw error;
+    }
+  }
+
+  async updateInvoicePdfUrl(orderId, invoiceNumber, invoiceUrl, userId) {
+    try {
+      // 1. Fetch current invoice_and_dispatch JSON from sales_orders
+      const fetchQuery = `SELECT invoice_and_dispatch FROM public.sales_orders WHERE id = $1`;
+      const { rows } = await pool.query(fetchQuery, [orderId]);
+
+      if (rows.length === 0) {
+        throw new Error(`Sales order with ID ${orderId} not found`);
+      }
+
+      let currentDispatchInfo = rows[0].invoice_and_dispatch || {};
+
+      // 2. Find the specific invoice in the JSON array and update the URL
+      let invoiceFound = false;
+      if (
+        currentDispatchInfo.invoices &&
+        Array.isArray(currentDispatchInfo.invoices)
+      ) {
+        currentDispatchInfo.invoices = currentDispatchInfo.invoices.map(
+          (inv) => {
+            if (inv.invoice === invoiceNumber) {
+              invoiceFound = true;
+              // Append the new invoice_url to this specific invoice object
+              return { ...inv, invoice_url: invoiceUrl };
+            }
+            return inv;
+          },
+        );
+      }
+
+      if (!invoiceFound) {
+        throw new Error(
+          `Invoice number ${invoiceNumber} not found in Order ID ${orderId}.`,
+        );
+      }
+
+      // 3. Update the sales_orders table with the modified JSON array
+      const updateSalesOrderQuery = `
+      UPDATE public.sales_orders
+      SET 
+        invoice_and_dispatch = $1::jsonb,
+        updated_at = now(),
+        updated_by = $2
+      WHERE id = $3
+      RETURNING *;
+    `;
+
+      const updateResult = await pool.query(updateSalesOrderQuery, [
+        JSON.stringify(currentDispatchInfo),
+        userId,
+        orderId,
+      ]);
+
+      // 4. Update the overdue_summary_report table corresponding row
+      const updateOverdueQuery = `
+      UPDATE public.overdue_summary_report
+      SET invoice_url = $1
+      WHERE sale_order_id = $2 AND invoice_no = $3
+    `;
+
+      await pool.query(updateOverdueQuery, [
+        invoiceUrl,
+        orderId,
+        invoiceNumber,
+      ]);
+
+      // Return the updated sales order record
+      return updateResult.rows[0];
+    } catch (error) {
+      console.error("Error in updating invoice URL: ", error);
+      throw error;
+    }
+  }
+
+
+  async updateDeliveryAndWeightInformationFromTally(id, userId, body) {
+    try {
+      const {
+        actual_delivery_timestamp,
+        delivery_status,
+        weight_difference_in_kg,
+        settlement,
+        cn_or_dn_issue_status,
+        cn_or_dn_issue_timestamp,
+        quality_confirmation_status,
+        quality_confirmation_timestamp,
+        cn_dn_document_url,
+      } = body;
+
+      // Dynamically build the payload so we only update provided fields.
+      // This prevents overwriting existing data with nulls during partial updates.
+      const deliveryPayload = {};
+
+      if (actual_delivery_timestamp !== undefined) {
+        deliveryPayload.actual_delivery_timestamp = actual_delivery_timestamp;
+      }
+      if (delivery_status !== undefined) {
+        deliveryPayload.delivery_status = delivery_status;
+      }
+      if (weight_difference_in_kg !== undefined) {
+        // Map the input variable to the specific DB column key and ensure it's a float
+        deliveryPayload.weight_difference_in_kg = parseFloat(
+          weight_difference_in_kg,
+        );
+      }
+      if (settlement !== undefined) {
+        deliveryPayload.settlement = settlement;
+
+        const sendNotificationToJuniorAccountant = async (order_id) => {
+          try {
+            const juniorAccountantIdResult = await pool.query(
+              `select id from users where role = 'Junior Accountant' and department = 'Accounts'`,
+            );
+
+            const juniorAccountantId = juniorAccountantIdResult.rows[0].id;
+
+            if (!juniorAccountantId) {
+              throw new Error("Junior Accountant not found");
+            }
+
+            const notif = await createNotification(
+              juniorAccountantId,
+              `Please Create ${settlement === "CN Issue" ? "Credit" : "Debit"} Note for Order ID: ${order_id}.`,
+              "cn_dn_issue_notification_to_junior_accountant",
+            );
+            emitToUser(juniorAccountantId, "new_notification", notif);
+          } catch (error) {
+            console.log(
+              "error while sending notification to junior accountant: ",
+              error,
+            );
+          }
+        };
+
+        if (settlement === "CN Issue" || settlement === "DN Issue") {
+          sendNotificationToJuniorAccountant(id);
+        }
+      }
+      if (cn_or_dn_issue_status !== undefined) {
+        deliveryPayload.cn_or_dn_issue_status = cn_or_dn_issue_status;
+
+        const sendNotificationToCrm = async (order_id) => {
+          try {
+            const crmIdResult = await pool.query(
+              `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+              [order_id],
+            );
+
+            if (
+              crmIdResult.rows.length === 0 ||
+              crmIdResult.rows[0].crm === null
+            ) {
+              throw new Error("Please Assign CRM First");
+            }
+            const crmId = crmIdResult.rows[0].crm;
+
+            const notif = await createNotification(
+              crmId,
+              `CN/DN has been issued for Order ID: ${order_id}.`,
+              "cn_dn_issue_completed_notification_to_crm",
+            );
+            emitToUser(crmId, "new_notification", notif);
+          } catch (error) {
+            console.log("error while sending notification to crm: ", error);
+          }
+        };
+
+        if (cn_or_dn_issue_status === true) {
+          sendNotificationToCrm(id);
+        }
+      }
+      if (cn_or_dn_issue_timestamp !== undefined) {
+        deliveryPayload.cn_or_dn_issue_timestamp = cn_or_dn_issue_timestamp;
+      }
+      if (quality_confirmation_status !== undefined) {
+        deliveryPayload.quality_confirmation_status =
+          quality_confirmation_status;
+      }
+      if (quality_confirmation_timestamp !== undefined) {
+        deliveryPayload.quality_confirmation_timestamp =
+          quality_confirmation_timestamp;
+      }
+      if (cn_dn_document_url !== undefined) {
+        deliveryPayload.cn_dn_document_url = cn_dn_document_url;
+      }
+      const query = `
+        UPDATE public.sales_orders
+        SET delivery_and_weight = COALESCE(delivery_and_weight, '{}'::jsonb) || $2::jsonb,
+            updated_at = now(),
+            updated_by = $1
+        WHERE id = $3
+        RETURNING *;
+      `;
+
+      const values = [userId, JSON.stringify(deliveryPayload), id];
+
+      const { rows } = await pool.query(query, values);
+
+      return rows.length ? rows[0] : null;
+    } catch (error) {
+      console.error(
+        "error in updating delivery and weight information: ",
+        error,
+      );
+      throw error;
+    }
+  }
+
+
+  async getCreditDebitNoteFromTally(document_type, credit_debit_note_number, credit_debit_note_amount, credit_debit_note_quantity, pdfUrl) {
+    try {
+      // 1. Extract Order ID from the credit note number (e.g., 'CN/666' -> 666)
+      const orderIdParts = credit_debit_note_number.split('/');
+      const orderId = orderIdParts.length > 1 ? parseInt(orderIdParts[1], 10) : null;
+
+      if (!orderId || isNaN(orderId)) {
+        throw new Error(`Invalid credit_debit_note_number format. Could not extract Order ID from: ${credit_debit_note_number}`);
+      }
+
+      // 2. Static User ID as requested
+      const userId = 14; 
+
+      // 3. Construct the body for the update function
+      const body = {
+        document_type: document_type,
+        credit_debit_note_number: credit_debit_note_number,
+        credit_debit_note_amount: credit_debit_note_amount,
+        credit_debit_note_quantity: credit_debit_note_quantity,
+        cn_dn_document_url: pdfUrl,
+        cn_or_dn_issue_status: true,
+        // actual_delivery_timestamp: new Date().toISOString(), // e.g., "2026-07-23T06:07:55.526Z"
+        cn_or_dn_issue_timestamp: new Date().toISOString(),  // Included for consistency
+      };
+
+      console.log("bodyyyyyy: ", body);
+
+      // 4. Call the update function
+      const updatedOrder = await this.updateDeliveryAndWeightInformationFromTally(orderId, userId, body);
+      
+      return updatedOrder;
+    } catch (error) {
+      console.log("error in getting credit note from tally: ", error);
+      throw error;
+    }
+  }
+
 
   async assignToVehicleExecutive(id, userId) {
     try {
