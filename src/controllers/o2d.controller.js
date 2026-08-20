@@ -946,6 +946,60 @@ class O2dController {
     }
   };
 
+
+  getCreditDebitNoteFromTally = async (req, res, next) => {
+    try{
+      const { document_type, credit_note_number, credit_note_amount, credit_note_quantity } = req.body;
+
+      
+
+      if(!document_type || !credit_note_number || !credit_note_amount || !credit_note_quantity){
+        return res.status(400).json({
+          status: "fail",
+          message: "Invalid payload: 'document_type', 'credit_note_number', 'credit_note_amount', or 'credit_note_quantity' is missing or invalid."
+        });
+      }
+
+      console.log("payload: ", req.body);
+
+      let pdfUrl = null;
+
+      // 1. Upload PDF to S3 if attached
+      if (req.files?.["pdf-file"]?.[0]) {
+        const pdfFile = req.files["pdf-file"][0];
+        const year = new Date().getFullYear();
+        const s3Path = `credit-notes/${year}/tally_batch_${Date.now()}`;
+
+        pdfUrl = await uploadPdfToS3(pdfFile, s3Path);
+        console.log("PDF uploaded to S3: ", pdfUrl);
+      }
+
+      if(!pdfUrl){
+        return res.status(400).json({
+          status: "fail",
+          message: "PDF file is required."
+        });
+      }
+
+      const updatedOrder = await o2dService.getCreditDebitNoteFromTally(
+        document_type,
+        credit_note_number,
+        credit_note_amount,
+        credit_note_quantity,
+        pdfUrl
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Credit Note details retrieved successfully",
+        // data: updatedOrder,
+      });
+
+    }catch(error){
+      next(error);
+    }
+  }
+
   assignToVehicleExecutive = async (req, res, next) => {
     try {
       const { id } = req.body;

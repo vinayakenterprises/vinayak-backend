@@ -137,5 +137,9 @@ router.post(
 );
 
 
+router.post('/get-credit-debit-note-from-tally', documentUpload, o2dController.getCreditDebitNoteFromTally);
+
+
+
 
 export default router;

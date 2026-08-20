@@ -2186,6 +2186,180 @@ class O2dService {
     }
   }
 
+
+  async updateDeliveryAndWeightInformationFromTally(id, userId, body) {
+    try {
+      const {
+        actual_delivery_timestamp,
+        delivery_status,
+        weight_difference_in_kg,
+        settlement,
+        cn_or_dn_issue_status,
+        cn_or_dn_issue_timestamp,
+        quality_confirmation_status,
+        quality_confirmation_timestamp,
+        cn_dn_document_url,
+      } = body;
+
+      // Dynamically build the payload so we only update provided fields.
+      // This prevents overwriting existing data with nulls during partial updates.
+      const deliveryPayload = {};
+
+      if (actual_delivery_timestamp !== undefined) {
+        deliveryPayload.actual_delivery_timestamp = actual_delivery_timestamp;
+      }
+      if (delivery_status !== undefined) {
+        deliveryPayload.delivery_status = delivery_status;
+      }
+      if (weight_difference_in_kg !== undefined) {
+        // Map the input variable to the specific DB column key and ensure it's a float
+        deliveryPayload.weight_difference_in_kg = parseFloat(
+          weight_difference_in_kg,
+        );
+      }
+      if (settlement !== undefined) {
+        deliveryPayload.settlement = settlement;
+
+        const sendNotificationToJuniorAccountant = async (order_id) => {
+          try {
+            const juniorAccountantIdResult = await pool.query(
+              `select id from users where role = 'Junior Accountant' and department = 'Accounts'`,
+            );
+
+            const juniorAccountantId = juniorAccountantIdResult.rows[0].id;
+
+            if (!juniorAccountantId) {
+              throw new Error("Junior Accountant not found");
+            }
+
+            const notif = await createNotification(
+              juniorAccountantId,
+              `Please Create ${settlement === "CN Issue" ? "Credit" : "Debit"} Note for Order ID: ${order_id}.`,
+              "cn_dn_issue_notification_to_junior_accountant",
+            );
+            emitToUser(juniorAccountantId, "new_notification", notif);
+          } catch (error) {
+            console.log(
+              "error while sending notification to junior accountant: ",
+              error,
+            );
+          }
+        };
+
+        if (settlement === "CN Issue" || settlement === "DN Issue") {
+          sendNotificationToJuniorAccountant(id);
+        }
+      }
+      if (cn_or_dn_issue_status !== undefined) {
+        deliveryPayload.cn_or_dn_issue_status = cn_or_dn_issue_status;
+
+        const sendNotificationToCrm = async (order_id) => {
+          try {
+            const crmIdResult = await pool.query(
+              `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+              [order_id],
+            );
+
+            if (
+              crmIdResult.rows.length === 0 ||
+              crmIdResult.rows[0].crm === null
+            ) {
+              throw new Error("Please Assign CRM First");
+            }
+            const crmId = crmIdResult.rows[0].crm;
+
+            const notif = await createNotification(
+              crmId,
+              `CN/DN has been issued for Order ID: ${order_id}.`,
+              "cn_dn_issue_completed_notification_to_crm",
+            );
+            emitToUser(crmId, "new_notification", notif);
+          } catch (error) {
+            console.log("error while sending notification to crm: ", error);
+          }
+        };
+
+        if (cn_or_dn_issue_status === true) {
+          sendNotificationToCrm(id);
+        }
+      }
+      if (cn_or_dn_issue_timestamp !== undefined) {
+        deliveryPayload.cn_or_dn_issue_timestamp = cn_or_dn_issue_timestamp;
+      }
+      if (quality_confirmation_status !== undefined) {
+        deliveryPayload.quality_confirmation_status =
+          quality_confirmation_status;
+      }
+      if (quality_confirmation_timestamp !== undefined) {
+        deliveryPayload.quality_confirmation_timestamp =
+          quality_confirmation_timestamp;
+      }
+      if (cn_dn_document_url !== undefined) {
+        deliveryPayload.cn_dn_document_url = cn_dn_document_url;
+      }
+      const query = `
+        UPDATE public.sales_orders
+        SET delivery_and_weight = COALESCE(delivery_and_weight, '{}'::jsonb) || $2::jsonb,
+            updated_at = now(),
+            updated_by = $1
+        WHERE id = $3
+        RETURNING *;
+      `;
+
+      const values = [userId, JSON.stringify(deliveryPayload), id];
+
+      const { rows } = await pool.query(query, values);
+
+      return rows.length ? rows[0] : null;
+    } catch (error) {
+      console.error(
+        "error in updating delivery and weight information: ",
+        error,
+      );
+      throw error;
+    }
+  }
+
+
+  async getCreditDebitNoteFromTally(document_type, credit_note_number, credit_note_amount, credit_note_quantity, pdfUrl) {
+    try {
+      // 1. Extract Order ID from the credit note number (e.g., 'CN/666' -> 666)
+      const orderIdParts = credit_note_number.split('/');
+      const orderId = orderIdParts.length > 1 ? parseInt(orderIdParts[1], 10) : null;
+
+      if (!orderId || isNaN(orderId)) {
+        throw new Error(`Invalid credit_note_number format. Could not extract Order ID from: ${credit_note_number}`);
+      }
+
+      // 2. Static User ID as requested
+      const userId = 14; 
+
+      // 3. Construct the body for the update function
+      const body = {
+        document_type: document_type,
+        credit_note_number: credit_note_number,
+        credit_note_amount: credit_note_amount,
+        credit_note_quantity: credit_note_quantity,
+        cn_dn_document_url: pdfUrl,
+        cn_or_dn_issue_status: true,
+        // actual_delivery_timestamp: new Date().toISOString(), // e.g., "2026-07-23T06:07:55.526Z"
+        cn_or_dn_issue_timestamp: new Date().toISOString(),  // Included for consistency
+      };
+
+      console.log("bodyyyyyy: ", body);
+
+      // 4. Call the update function
+      const updatedOrder = await this.updateDeliveryAndWeightInformationFromTally(orderId, userId, body);
+      
+      return updatedOrder;
+    } catch (error) {
+      console.log("error in getting credit note from tally: ", error);
+      throw error;
+    }
+  }
+
+
   async assignToVehicleExecutive(id, userId) {
     try {
       // Get vehicle executive id
