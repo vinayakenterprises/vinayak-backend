@@ -103,7 +103,6 @@ class TenderService {
 
       const { rows } = await pool.query(getActiveTendersQuery);
 
-      console.log(rows);
       return rows;
     } catch (error) {
       throw error;
