@@ -949,14 +949,14 @@ class O2dController {
 
   getCreditDebitNoteFromTally = async (req, res, next) => {
     try{
-      const { document_type, credit_note_number, credit_note_amount, credit_note_quantity } = req.body;
+      const { document_type, credit_debit_note_number, credit_debit_note_amount, credit_debit_note_quantity } = req.body;
 
       
 
-      if(!document_type || !credit_note_number || !credit_note_amount || !credit_note_quantity){
+      if(!document_type || !credit_debit_note_number || !credit_debit_note_amount || !credit_debit_note_quantity){
         return res.status(400).json({
           status: "fail",
-          message: "Invalid payload: 'document_type', 'credit_note_number', 'credit_note_amount', or 'credit_note_quantity' is missing or invalid."
+          message: "Invalid payload: 'document_type', 'credit_debit_note_number', 'credit_debit_note_amount', or 'credit_debit_note_quantity' is missing or invalid."
         });
       }
 
@@ -983,9 +983,9 @@ class O2dController {
 
       const updatedOrder = await o2dService.getCreditDebitNoteFromTally(
         document_type,
-        credit_note_number,
-        credit_note_amount,
-        credit_note_quantity,
+        credit_debit_note_number,
+        credit_debit_note_amount,
+        credit_debit_note_quantity,
         pdfUrl
       );
 

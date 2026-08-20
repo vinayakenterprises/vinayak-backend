@@ -90,8 +90,20 @@ class TenderService {
 
   async getActiveTenders() {
     try {
-      const getActiveTendersQuery = `select * from tender_information where approved is null and send_for_approval = false order by id desc`;
+      const getActiveTendersQuery = `
+      SELECT 
+        *,
+        publish_date::text AS publish_date,
+        closing_date::text AS closing_date
+      FROM tender_information
+      WHERE approved IS NULL
+        AND send_for_approval = false
+      ORDER BY id DESC
+    `;
+
       const { rows } = await pool.query(getActiveTendersQuery);
+
+      console.log(rows);
       return rows;
     } catch (error) {
       throw error;
@@ -126,7 +138,7 @@ class TenderService {
     try {
       const getShortfallTendersQuery = `select * from tender_information where shortfall = true and createdBy = $1 and tender_completed_at is not null order by id desc`;
       const { rows } = await pool.query(getShortfallTendersQuery, [userId]);
-      
+
       return rows;
     } catch (error) {
       throw error;
@@ -184,8 +196,7 @@ class TenderService {
 
       const { rows } = await pool.query(updateQuery, [userId, id]);
 
-
-      try{
+      try {
         const mdIdQuery = `SELECT id FROM users WHERE role = 'MD'`;
         const mdId = await pool.query(mdIdQuery);
         const mdIdResult = mdId.rows[0].id;
@@ -196,7 +207,7 @@ class TenderService {
           "tender_completed_notification",
         );
         emitToUser(mdIdResult, "new_notification", notif);
-      }catch(error){
+      } catch (error) {
         console.log("error in sending notification: ", error);
       }
 
@@ -205,9 +216,6 @@ class TenderService {
       throw error;
     }
   }
-
-
-
 
   async getTendersForMD(userId) {
     try {
@@ -224,7 +232,6 @@ class TenderService {
       throw error;
     }
   }
-
 
   async deleteTender(id) {
     try {
@@ -452,19 +459,14 @@ class TenderService {
           },
         });
 
-
-
         // send notification to tender executive
         const notif = await createNotification(
           tenderData.createdby,
           `Your Counter Offer Request with Tender Title as ${tenderData?.tender_title} ${isApproved ? "has been approved." : "has been rejected."}.`,
           "counter_offer_approval_status",
         );
-        
 
         emitToUser(tenderData.createdby, "new_notification", notif);
-
-
       } catch (error) {
         console.log("error in sending mail or notification: ", error);
       }
@@ -777,7 +779,6 @@ class TenderService {
       ORDER BY id DESC
     `;
 
-
     const { rows } = await pool.query(getApprovedTendersQuery, []);
     return rows;
   }
@@ -847,7 +848,7 @@ class TenderService {
       const totalApprovedTendersCountResult = await pool.query(
         totalApprovedTendersCountQuery,
       );
-      
+
       const completedTendersCountResult = await pool.query(
         completedTendersCountQuery,
       );
@@ -865,7 +866,7 @@ class TenderService {
           totalApprovedTendersCountResult.rows[0].count,
           0,
         ),
-        
+
         completedTenders: parseInt(
           completedTendersCountResult.rows[0].count,
           0,
@@ -1029,7 +1030,7 @@ class TenderService {
         "pbg",
         "insurance",
         "npv_bond",
-        "immediate_processing_document_completed_at"
+        "immediate_processing_document_completed_at",
       ];
 
       const jsonColumns = [
@@ -1079,7 +1080,6 @@ class TenderService {
             tenderData.rows[0].submission_actual?.notified_to_md || // preserve existing flag
             fieldsToUpdate.submission_actual?.submission_actual_status === true, // or set if status is true
         };
-
       }
 
       // 3. counter offer approval request notification
@@ -1093,7 +1093,6 @@ class TenderService {
           "counter_offer_approval_request_notification",
         );
         emitToUser(mdId, "new_notification", notif);
-
       }
 
       // 4. Merge incoming counter_offer data with database counter_offer data
@@ -1105,7 +1104,6 @@ class TenderService {
             tenderData.rows[0].counter_offer?.notified_to_md || // preserve existing flag
             fieldsToUpdate.counter_offer?.sent_for_approval === true, // or set if sending for approval
         };
-
       }
 
       const setClauses = [];

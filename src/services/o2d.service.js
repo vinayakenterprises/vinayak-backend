@@ -2322,14 +2322,14 @@ class O2dService {
   }
 
 
-  async getCreditDebitNoteFromTally(document_type, credit_note_number, credit_note_amount, credit_note_quantity, pdfUrl) {
+  async getCreditDebitNoteFromTally(document_type, credit_debit_note_number, credit_debit_note_amount, credit_debit_note_quantity, pdfUrl) {
     try {
       // 1. Extract Order ID from the credit note number (e.g., 'CN/666' -> 666)
-      const orderIdParts = credit_note_number.split('/');
+      const orderIdParts = credit_debit_note_number.split('/');
       const orderId = orderIdParts.length > 1 ? parseInt(orderIdParts[1], 10) : null;
 
       if (!orderId || isNaN(orderId)) {
-        throw new Error(`Invalid credit_note_number format. Could not extract Order ID from: ${credit_note_number}`);
+        throw new Error(`Invalid credit_debit_note_number format. Could not extract Order ID from: ${credit_debit_note_number}`);
       }
 
       // 2. Static User ID as requested
@@ -2338,9 +2338,9 @@ class O2dService {
       // 3. Construct the body for the update function
       const body = {
         document_type: document_type,
-        credit_note_number: credit_note_number,
-        credit_note_amount: credit_note_amount,
-        credit_note_quantity: credit_note_quantity,
+        credit_debit_note_number: credit_debit_note_number,
+        credit_debit_note_amount: credit_debit_note_amount,
+        credit_debit_note_quantity: credit_debit_note_quantity,
         cn_dn_document_url: pdfUrl,
         cn_or_dn_issue_status: true,
         // actual_delivery_timestamp: new Date().toISOString(), // e.g., "2026-07-23T06:07:55.526Z"
