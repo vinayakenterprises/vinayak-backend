@@ -2252,6 +2252,14 @@ class O2dService {
       }
       if (cn_or_dn_issue_status !== undefined) {
         deliveryPayload.cn_or_dn_issue_status = cn_or_dn_issue_status;
+        
+        deliveryPayload.cn_dn_details_from_tally = {
+          document_type: body.document_type || null,
+          credit_debit_note_number: body.credit_debit_note_number || null,
+          credit_debit_note_amount: body.credit_debit_note_amount || null,
+          credit_debit_note_quantity: body.credit_debit_note_quantity || null,
+        }
+
 
         const sendNotificationToCrm = async (order_id) => {
           try {
@@ -2347,7 +2355,6 @@ class O2dService {
         cn_or_dn_issue_timestamp: new Date().toISOString(),  // Included for consistency
       };
 
-      console.log("bodyyyyyy: ", body);
 
       // 4. Call the update function
       const updatedOrder = await this.updateDeliveryAndWeightInformationFromTally(orderId, userId, body);

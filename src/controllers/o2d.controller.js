@@ -946,21 +946,28 @@ class O2dController {
     }
   };
 
-
   getCreditDebitNoteFromTally = async (req, res, next) => {
-    try{
-      const { document_type, credit_debit_note_number, credit_debit_note_amount, credit_debit_note_quantity } = req.body;
+    try {
+      const {
+        document_type,
+        credit_debit_note_number,
+        credit_debit_note_amount,
+        credit_debit_note_quantity,
+      } = req.body;
 
-      
-
-      if(!document_type || !credit_debit_note_number || !credit_debit_note_amount || !credit_debit_note_quantity){
+      if (
+        !document_type ||
+        !credit_debit_note_number ||
+        !credit_debit_note_amount ||
+        !credit_debit_note_quantity
+      ) {
         return res.status(400).json({
           status: "fail",
-          message: "Invalid payload: 'document_type', 'credit_debit_note_number', 'credit_debit_note_amount', or 'credit_debit_note_quantity' is missing or invalid."
+          message:
+            "Invalid payload: 'document_type', 'credit_debit_note_number', 'credit_debit_note_amount', or 'credit_debit_note_quantity' is missing or invalid.",
         });
       }
 
-      console.log("payload: ", req.body);
 
       let pdfUrl = null;
 
@@ -974,10 +981,10 @@ class O2dController {
         console.log("PDF uploaded to S3: ", pdfUrl);
       }
 
-      if(!pdfUrl){
+      if (!pdfUrl) {
         return res.status(400).json({
           status: "fail",
-          message: "PDF file is required."
+          message: "PDF file is required.",
         });
       }
 
@@ -986,7 +993,7 @@ class O2dController {
         credit_debit_note_number,
         credit_debit_note_amount,
         credit_debit_note_quantity,
-        pdfUrl
+        pdfUrl,
       );
 
       return res.status(200).json({
@@ -994,11 +1001,10 @@ class O2dController {
         message: "Credit Note details retrieved successfully",
         // data: updatedOrder,
       });
-
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
 
   assignToVehicleExecutive = async (req, res, next) => {
     try {
