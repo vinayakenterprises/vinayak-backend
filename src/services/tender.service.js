@@ -497,6 +497,7 @@ class TenderService {
       tender_fee_inr,
       emd_inr,
       state,
+      processing_fee_inr
     } = body;
 
     const query = `
@@ -517,13 +518,14 @@ class TenderService {
             assigned_to,
             createdBy,
             product_name,
-            product_type
+            product_type,
+            processing_fee_inr
         )
         VALUES (
             $1, $2, $3, $4, $5, $6,
             $7, $8, $9, $10, $11, $12,
             $13,
-            $14, $15, $16, $17
+            $14, $15, $16, $17, $18
         )
         RETURNING *;
     `;
@@ -546,6 +548,7 @@ class TenderService {
       userId,
       product_name,
       product_type,
+      processing_fee_inr
     ];
 
     const result = await pool.query(query, values);
@@ -1030,6 +1033,7 @@ class TenderService {
         "insurance",
         "npv_bond",
         "immediate_processing_document_completed_at",
+        "processing_fee_inr"
       ];
 
       const jsonColumns = [
