@@ -140,6 +140,11 @@ router.post(
 router.post('/get-credit-debit-note-from-tally', documentUpload, o2dController.getCreditDebitNoteFromTally);
 
 
+// sales team dashboard
+router.get('/sales-team-dashboard-pending-orders-data', authMiddleware, o2dController.getSalesTeamDashboardPendingOrdersData);
+router.get('/sales-team-dashboard-delay-dispatch-till-date', authMiddleware, o2dController.getSalesTeamDashboardDelayDispatchTillDate);
+router.get('/sales-team-dashboard-pending-dispatch-overview', authMiddleware, o2dController.getSalesTeamDashboardPendingDispatchOverview);
+
 
 
 export default router;

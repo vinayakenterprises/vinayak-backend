@@ -1006,6 +1006,57 @@ class O2dController {
     }
   };
 
+
+  getSalesTeamDashboardPendingOrdersData = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      const orders = await o2dService.getSalesTeamDashboardPendingOrdersData(userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Sales team dashboard pending orders data retrieved successfully",
+        data: orders,
+      });
+    }catch (error) {
+      next(error);
+    }
+  }
+
+
+  getSalesTeamDashboardDelayDispatchTillDate = async (req, res, next) => {
+    try{
+      const userId = req.user?.id || null;
+
+      const orders = await o2dService.getSalesTeamDashboardDelayDispatchTillDate(userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Sales team dashboard delay dispatch till date retrieved successfully",
+        data: orders,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+  getSalesTeamDashboardPendingDispatchOverview = async (req, res, next) => {
+    try{
+      const userId = req.user?.id || null;
+
+      const orders = await o2dService.getSalesTeamDashboardPendingDispatchOverview(userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Sales team dashboard pending dispatch overview retrieved successfully",
+        data: orders,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
   assignToVehicleExecutive = async (req, res, next) => {
     try {
       const { id } = req.body;
