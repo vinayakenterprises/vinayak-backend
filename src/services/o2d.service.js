@@ -1010,7 +1010,7 @@ class O2dService {
   async getAssignedSOByCRM(userId) {
     try {
       const query = `
-        SELECT so.* FROM public.sales_orders so
+        SELECT so.*, so.delivery_date::text AS delivery_date FROM public.sales_orders so
         INNER JOIN public.customers c ON so.client_name = c.company_name
         or so.client_name = any(c.child_companies)
         WHERE c.crm = $1 
@@ -2186,7 +2186,6 @@ class O2dService {
     }
   }
 
-
   async updateDeliveryAndWeightInformationFromTally(id, userId, body) {
     try {
       const {
@@ -2252,14 +2251,13 @@ class O2dService {
       }
       if (cn_or_dn_issue_status !== undefined) {
         deliveryPayload.cn_or_dn_issue_status = cn_or_dn_issue_status;
-        
+
         deliveryPayload.cn_dn_details_from_tally = {
           document_type: body.document_type || null,
           credit_debit_note_number: body.credit_debit_note_number || null,
           credit_debit_note_amount: body.credit_debit_note_amount || null,
           credit_debit_note_quantity: body.credit_debit_note_quantity || null,
-        }
-
+        };
 
         const sendNotificationToCrm = async (order_id) => {
           try {
@@ -2329,19 +2327,27 @@ class O2dService {
     }
   }
 
-
-  async getCreditDebitNoteFromTally(document_type, credit_debit_note_number, credit_debit_note_amount, credit_debit_note_quantity, pdfUrl) {
+  async getCreditDebitNoteFromTally(
+    document_type,
+    credit_debit_note_number,
+    credit_debit_note_amount,
+    credit_debit_note_quantity,
+    pdfUrl,
+  ) {
     try {
       // 1. Extract Order ID from the credit note number (e.g., 'CN/666' -> 666)
-      const orderIdParts = credit_debit_note_number.split('/');
-      const orderId = orderIdParts.length > 1 ? parseInt(orderIdParts[1], 10) : null;
+      const orderIdParts = credit_debit_note_number.split("/");
+      const orderId =
+        orderIdParts.length > 1 ? parseInt(orderIdParts[1], 10) : null;
 
       if (!orderId || isNaN(orderId)) {
-        throw new Error(`Invalid credit_debit_note_number format. Could not extract Order ID from: ${credit_debit_note_number}`);
+        throw new Error(
+          `Invalid credit_debit_note_number format. Could not extract Order ID from: ${credit_debit_note_number}`,
+        );
       }
 
       // 2. Static User ID as requested
-      const userId = 14; 
+      const userId = 14;
 
       // 3. Construct the body for the update function
       const body = {
@@ -2352,13 +2358,17 @@ class O2dService {
         cn_dn_document_url: pdfUrl,
         cn_or_dn_issue_status: true,
         // actual_delivery_timestamp: new Date().toISOString(), // e.g., "2026-07-23T06:07:55.526Z"
-        cn_or_dn_issue_timestamp: new Date().toISOString(),  // Included for consistency
+        cn_or_dn_issue_timestamp: new Date().toISOString(), // Included for consistency
       };
 
-
       // 4. Call the update function
-      const updatedOrder = await this.updateDeliveryAndWeightInformationFromTally(orderId, userId, body);
-      
+      const updatedOrder =
+        await this.updateDeliveryAndWeightInformationFromTally(
+          orderId,
+          userId,
+          body,
+        );
+
       return updatedOrder;
     } catch (error) {
       console.log("error in getting credit note from tally: ", error);
@@ -2366,6 +2376,67 @@ class O2dService {
     }
   }
 
+  async getSalesTeamDashboardPendingOrdersData(userId) {
+    try {
+      const query = `
+        SELECT
+            -- Pending Metrics
+            COUNT(*) FILTER (
+                WHERE delivery_and_weight->>'delivery_status'
+                      IS DISTINCT FROM 'Delivered'
+            ) AS total_pending_orders,
+
+            COALESCE(
+                SUM(quantity_mt) FILTER (
+                    WHERE delivery_and_weight->>'delivery_status'
+                          IS DISTINCT FROM 'Delivered'
+                ),
+                0
+            ) AS total_pending_quantity_mt
+
+        FROM public.sales_orders
+
+        -- Global filter for credit limit approval
+        WHERE credit_limit_info->>'credit_limit_request_approval_status'
+              IS DISTINCT FROM 'false'; 
+      `;
+
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+
+  async getSalesTeamDashboardDelayDispatchTillDate(userId) {
+    try{
+      const query = `SELECT
+          COUNT(*) AS total_pending_orders,
+          COALESCE(SUM(quantity_mt), 0) AS total_pending_quantity
+        FROM sales_orders
+        WHERE delivery_date <= CURRENT_DATE and vehicle_arrangement->>'actual_deliver_date' is null;
+      `;
+
+      const { rows } = await pool.query(query, []);
+      return rows;
+
+    }catch(error){
+      throw error;
+    }
+  }
+
+
+  async getSalesTeamDashboardPendingDispatchOverview(userId) {
+    try{
+      const query = `select delivery_date, sum(quantity_mt) as quantity_mt, count(delivery_date) as pending_orders from sales_orders
+      where vehicle_arrangement->>'actual_deliver_date' is null group by delivery_date`;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    }catch(error){
+      throw error;
+    }
+  }
 
   async assignToVehicleExecutive(id, userId) {
     try {
