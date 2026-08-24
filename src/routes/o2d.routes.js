@@ -128,6 +128,7 @@ router.post('/update-overdue-summary-report-information', authMiddleware, o2dCon
 router.post('/test-api-for-tally-integration', o2dController.testApiForTallyIntegration);
 router.post('/so-orders-from-tally', documentUpload, o2dController.receiveSoOrdersFromTally);
 router.post('/invoice-details-from-tally', documentUpload, o2dController.receiveInvoiceDetailsFromTally);
+router.post('/interest-note-details-from-tally', documentUpload, o2dController.receiveInterestNoteDetailsFromTally);
 
 // this api is used to upload the pdf for the invoice
 router.post(
