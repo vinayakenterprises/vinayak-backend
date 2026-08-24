@@ -2112,6 +2112,100 @@ class O2dService {
     }
   }
 
+  async receiveInterestNoteDetailsFromTally(body) {
+    try {
+      // 1. Extract the order ID from bill_reference (e.g., "2026-27/391" -> 391)
+      if (!body.bill_reference) {
+        const error = new Error(
+          "bill_reference is missing in the request body",
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+
+      // Split by '/' and take the last element, then parse it as an integer
+      const idString = body.bill_reference.split("/").pop();
+      const orderId = parseInt(idString, 10);
+
+      if (isNaN(orderId)) {
+        const error = new Error(
+          `Invalid ID extracted from bill_reference: ${body.bill_reference}`,
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+
+      // 2. Build the payload for the JSONB column
+      const paymentPayload = {
+        // Replicate frontend behavior: mark the timestamp when this was executed
+        interest_note_issued_on_timestamp: new Date().toISOString(),
+
+        // Save the entire Tally webhook/request body inside this key
+        interest_note_details_from_tally: body,
+      };
+
+      // 3. Send Notification to CRM
+      const sendNotificationToCrm = async (order_id) => {
+        try {
+          const crmIdResult = await pool.query(
+            `SELECT c.crm FROM sales_orders so 
+           INNER JOIN customers c ON so.client_name = c.company_name OR so.client_name = ANY(c.child_companies)
+           WHERE so.id = $1`,
+            [order_id],
+          );
+
+          if (
+            crmIdResult.rows.length === 0 ||
+            crmIdResult.rows[0].crm === null
+          ) {
+            console.log(
+              `Notification skipped: No CRM assigned for Order ID ${order_id}`,
+            );
+            return;
+          }
+
+          const crmId = crmIdResult.rows[0].crm;
+
+          // Assuming createNotification and emitToUser are available in this file
+          const notif = await createNotification(
+            crmId,
+            `Interest Note Work has been completed for Order ID: ${order_id}.`,
+            "interest_note_issue_completed_notification_to_crm",
+          );
+          emitToUser(crmId, "new_notification", notif);
+        } catch (error) {
+          console.log("Error while sending notification to crm: ", error);
+        }
+      };
+
+      // Trigger the notification asynchronously
+      sendNotificationToCrm(orderId);
+
+      // 4. Update the database using PostgreSQL JSONB merge
+      const query = `
+      UPDATE public.sales_orders
+      SET payment_status = COALESCE(payment_status, '{}'::jsonb) || $1::jsonb,
+          updated_at = now()
+      WHERE id = $2
+      RETURNING *;
+    `;
+
+      const values = [JSON.stringify(paymentPayload), orderId];
+      const { rows } = await pool.query(query, values);
+
+      if (rows.length === 0) {
+        const error = new Error(`Sales order not found for ID: ${orderId}`);
+        error.statusCode = 404;
+        throw error;
+      }
+
+      return rows[0];
+    } catch (error) {
+      console.error("Error in receiveInterestNoteDetailsFromTally: ", error);
+      throw error;
+    }
+  }
+
   async updateInvoicePdfUrl(orderId, invoiceNumber, invoiceUrl, userId) {
     try {
       // 1. Fetch current invoice_and_dispatch JSON from sales_orders
@@ -2408,9 +2502,8 @@ class O2dService {
     }
   }
 
-
   async getSalesTeamDashboardDelayDispatchTillDate(userId) {
-    try{
+    try {
       const query = `SELECT
           COUNT(*) AS total_pending_orders,
           COALESCE(SUM(quantity_mt), 0) AS total_pending_quantity
@@ -2420,20 +2513,18 @@ class O2dService {
 
       const { rows } = await pool.query(query, []);
       return rows;
-
-    }catch(error){
+    } catch (error) {
       throw error;
     }
   }
 
-
   async getSalesTeamDashboardPendingDispatchOverview(userId) {
-    try{
+    try {
       const query = `select delivery_date, sum(quantity_mt) as quantity_mt, count(delivery_date) as pending_orders from sales_orders
       where vehicle_arrangement->>'actual_deliver_date' is null group by delivery_date`;
       const { rows } = await pool.query(query, []);
       return rows;
-    }catch(error){
+    } catch (error) {
       throw error;
     }
   }

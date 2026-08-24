@@ -915,6 +915,23 @@ class O2dController {
     }
   };
 
+  receiveInterestNoteDetailsFromTally = async (req, res, next) => {
+    try{
+      console.log("req.body:", req.body);
+
+
+      const updateDetailsInDb = await o2dService.receiveInterestNoteDetailsFromTally(req.body);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Interest Note details received from Tally successfully",
+        data: req.body,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
   updateInvoicePdfUrl = async (req, res, next) => {
     try {
       const { order_id, invoice_number, invoice_url } = req.body;
