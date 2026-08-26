@@ -1960,6 +1960,7 @@ class O2dService {
         const thankYouAndIntimationStage =
           ORDER_STAGES.thank_you_and_intimation_stage;
         currentDispatchInfo.invoice_completed_at = invoice_completed_at;
+        currentDispatchInfo.total_invoice_amount = total_invoice_amount;
         assignToStr = `,assigned_to = (SELECT crm FROM public.customers WHERE company_name = public.sales_orders.client_name OR public.sales_orders.client_name::text = ANY(child_companies) LIMIT 1), order_status = '${thankYouAndIntimationStage}'`;
 
         const sendNotificationToCrm = async (order_id) => {
