@@ -1876,8 +1876,8 @@ class O2dService {
     try {
       const soOrders = so_orders.salesOrders;
 
-      console.log("Received SO Orders from Tally: ", soOrders);
-      console.log("terms of deliver: ", soOrders[0]?.terms_of_delivery);
+      // console.log("Received SO Orders from Tally: ", soOrders);
+      // console.log("terms of deliver: ", soOrders[0]?.terms_of_delivery);
 
 
       // Use Promise.all and map to ensure all async operations finish
@@ -2068,20 +2068,28 @@ class O2dService {
     quantity,
     total_invoice_amount,
     userId = 10,
+    crn
   ) {
     try {
-      console.log("Received Invoice Details from Tally: ", {
-        actual_dispatch_date,
-        invoice_number,
-        quantity,
-        total_invoice_amount,
-      });
+      // console.log("Received Invoice Details from Tally: ", {
+      //   actual_dispatch_date,
+      //   invoice_number,
+      //   quantity,
+      //   total_invoice_amount,
+      //   crn
+      // });
 
       // 1. Extract orderId from invoice_number
       // e.g., "2026-27/071" -> "071" -> 71
       const invoiceParts = invoice_number.split("/");
       const orderIdString = invoiceParts[invoiceParts.length - 1];
-      const orderId = parseInt(orderIdString, 10);
+      const orderId = parseInt(crn, 10);
+
+      if (isNaN(orderId)) {
+        throw new Error(
+          `Invalid order ID ${orderId}`,
+        );
+      }
 
       // 2. Format the dispatch data
       const dispatchData = {

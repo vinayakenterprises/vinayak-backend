@@ -875,25 +875,27 @@ class O2dController {
 
   receiveInvoiceDetailsFromTally = async (req, res, next) => {
     try {
-      // console.log("req.body:", req.body);
 
       const {
         actual_dispatch_date,
         invoice_number,
         quantity,
         total_invoice_amount,
+        terms_of_delivery,
       } = req.body;
+
+      const crn = terms_of_delivery;
 
       if (
         !actual_dispatch_date ||
         !invoice_number ||
         !quantity ||
-        !total_invoice_amount
+        !total_invoice_amount || !crn
       ) {
         return res.status(400).json({
           status: "fail",
           message:
-            "Invalid payload: 'actual_dispatch_date', 'invoice_number', 'quantity', or 'total_invoice_amount' is missing or invalid.",
+            "Invalid payload: 'actual_dispatch_date', 'invoice_number', 'quantity', 'total_invoice_amount', or 'crn' is missing or invalid.",
         });
       }
 
@@ -903,6 +905,8 @@ class O2dController {
         invoice_number,
         quantity,
         total_invoice_amount,
+        10,
+        crn
       );
 
       return res.status(200).json({
