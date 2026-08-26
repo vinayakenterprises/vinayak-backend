@@ -1818,8 +1818,6 @@ class O2dService {
     `;
       const crmResult = await pool.query(crmQuery, [parseInt(id)]);
 
-      console.log("crmResult: type ", typeof id);
-      console.log("crmResult: ", id);
 
       if (crmResult.rows.length === 0) {
         throw new Error("Please Assign CRM First");
@@ -1878,19 +1876,24 @@ class O2dService {
     try {
       const soOrders = so_orders.salesOrders;
 
-      // console.log("Received SO Orders from Tally: ", soOrders);
-      // console.log("Received PDF URL from Tally: ", pdfUrl);
+      console.log("Received SO Orders from Tally: ", soOrders);
+      console.log("terms of deliver: ", soOrders[0]?.terms_of_delivery);
+
 
       // Use Promise.all and map to ensure all async operations finish
       // before returning the success response
       await Promise.all(
         soOrders.map(async (sale_order) => {
-          const lastNumber = sale_order?.orderno?.split("/").pop();
-          // console.log("lastNumber: ", lastNumber);
+          // const lastNumber = sale_order?.orderno?.split("/").pop();
+          const orderId = parseInt(soOrders[0]?.terms_of_delivery);
+
+          if(!orderId){
+            throw new Error("Order ID is required");
+          }
 
           // Pass the pdfUrl to your generation function so it can be saved in the DB
           await this.completeSOGenerationRequestFromTally(
-            lastNumber,
+            orderId,
             5,
             pdfUrl, // <-- Pass the S3 URL here
             sale_order,

@@ -825,7 +825,7 @@ class O2dController {
 
   receiveSoOrdersFromTally = async (req, res, next) => {
     try {
-      console.log("req.body:", req.body);
+      // console.log("req.body:", req.body);
 
       let pdfUrl = null;
 
