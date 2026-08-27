@@ -1818,8 +1818,6 @@ class O2dService {
     `;
       const crmResult = await pool.query(crmQuery, [parseInt(id)]);
 
-      console.log("crmResult: type ", typeof id);
-      console.log("crmResult: ", id);
 
       if (crmResult.rows.length === 0) {
         throw new Error("Please Assign CRM First");
@@ -1879,18 +1877,23 @@ class O2dService {
       const soOrders = so_orders.salesOrders;
 
       // console.log("Received SO Orders from Tally: ", soOrders);
-      // console.log("Received PDF URL from Tally: ", pdfUrl);
+      // console.log("terms of deliver: ", soOrders[0]?.terms_of_delivery);
+
 
       // Use Promise.all and map to ensure all async operations finish
       // before returning the success response
       await Promise.all(
         soOrders.map(async (sale_order) => {
-          const lastNumber = sale_order?.orderno?.split("/").pop();
-          // console.log("lastNumber: ", lastNumber);
+          // const lastNumber = sale_order?.orderno?.split("/").pop();
+          const orderId = parseInt(soOrders[0]?.terms_of_delivery);
+
+          if(!orderId){
+            throw new Error("Order ID is required");
+          }
 
           // Pass the pdfUrl to your generation function so it can be saved in the DB
           await this.completeSOGenerationRequestFromTally(
-            lastNumber,
+            orderId,
             5,
             pdfUrl, // <-- Pass the S3 URL here
             sale_order,
@@ -1960,6 +1963,7 @@ class O2dService {
         const thankYouAndIntimationStage =
           ORDER_STAGES.thank_you_and_intimation_stage;
         currentDispatchInfo.invoice_completed_at = invoice_completed_at;
+        currentDispatchInfo.total_invoice_amount = total_invoice_amount;
         assignToStr = `,assigned_to = (SELECT crm FROM public.customers WHERE company_name = public.sales_orders.client_name OR public.sales_orders.client_name::text = ANY(child_companies) LIMIT 1), order_status = '${thankYouAndIntimationStage}'`;
 
         const sendNotificationToCrm = async (order_id) => {
@@ -2064,20 +2068,28 @@ class O2dService {
     quantity,
     total_invoice_amount,
     userId = 10,
+    crn
   ) {
     try {
-      console.log("Received Invoice Details from Tally: ", {
-        actual_dispatch_date,
-        invoice_number,
-        quantity,
-        total_invoice_amount,
-      });
+      // console.log("Received Invoice Details from Tally: ", {
+      //   actual_dispatch_date,
+      //   invoice_number,
+      //   quantity,
+      //   total_invoice_amount,
+      //   crn
+      // });
 
       // 1. Extract orderId from invoice_number
       // e.g., "2026-27/071" -> "071" -> 71
       const invoiceParts = invoice_number.split("/");
       const orderIdString = invoiceParts[invoiceParts.length - 1];
-      const orderId = parseInt(orderIdString, 10);
+      const orderId = parseInt(crn, 10);
+
+      if (isNaN(orderId)) {
+        throw new Error(
+          `Invalid order ID ${orderId}`,
+        );
+      }
 
       // 2. Format the dispatch data
       const dispatchData = {
@@ -2123,9 +2135,14 @@ class O2dService {
         throw error;
       }
 
+      const orderId = parseInt(body.crn, 10);
+
+      console.log("Extracted Order ID from bill_reference: ", orderId);
+
+
       // Split by '/' and take the last element, then parse it as an integer
-      const idString = body.bill_reference.split("/").pop();
-      const orderId = parseInt(idString, 10);
+      // const idString = body.bill_reference.split("/").pop();
+      // const orderId = parseInt(idString, 10);
 
       if (isNaN(orderId)) {
         const error = new Error(
@@ -2427,12 +2444,13 @@ class O2dService {
     credit_debit_note_amount,
     credit_debit_note_quantity,
     pdfUrl,
+    terms_of_delivery
   ) {
     try {
       // 1. Extract Order ID from the credit note number (e.g., 'CN/666' -> 666)
       const orderIdParts = credit_debit_note_number.split("/");
-      const orderId =
-        orderIdParts.length > 1 ? parseInt(orderIdParts[1], 10) : null;
+      // const orderId = orderIdParts.length > 1 ? parseInt(orderIdParts[1], 10) : null;
+      const orderId = parseInt(terms_of_delivery, 10);
 
       if (!orderId || isNaN(orderId)) {
         throw new Error(

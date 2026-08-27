@@ -825,7 +825,7 @@ class O2dController {
 
   receiveSoOrdersFromTally = async (req, res, next) => {
     try {
-      console.log("req.body:", req.body);
+      // console.log("req.body:", req.body);
 
       let pdfUrl = null;
 
@@ -875,25 +875,27 @@ class O2dController {
 
   receiveInvoiceDetailsFromTally = async (req, res, next) => {
     try {
-      // console.log("req.body:", req.body);
 
       const {
         actual_dispatch_date,
         invoice_number,
         quantity,
         total_invoice_amount,
+        terms_of_delivery,
       } = req.body;
+
+      const crn = terms_of_delivery;
 
       if (
         !actual_dispatch_date ||
         !invoice_number ||
         !quantity ||
-        !total_invoice_amount
+        !total_invoice_amount || !crn
       ) {
         return res.status(400).json({
           status: "fail",
           message:
-            "Invalid payload: 'actual_dispatch_date', 'invoice_number', 'quantity', or 'total_invoice_amount' is missing or invalid.",
+            "Invalid payload: 'actual_dispatch_date', 'invoice_number', 'quantity', 'total_invoice_amount', or 'crn' is missing or invalid.",
         });
       }
 
@@ -903,6 +905,8 @@ class O2dController {
         invoice_number,
         quantity,
         total_invoice_amount,
+        10,
+        crn
       );
 
       return res.status(200).json({
@@ -970,18 +974,19 @@ class O2dController {
         credit_debit_note_number,
         credit_debit_note_amount,
         credit_debit_note_quantity,
+        terms_of_delivery,
       } = req.body;
 
       if (
         !document_type ||
         !credit_debit_note_number ||
         !credit_debit_note_amount ||
-        !credit_debit_note_quantity
+        !credit_debit_note_quantity || !terms_of_delivery
       ) {
         return res.status(400).json({
           status: "fail",
           message:
-            "Invalid payload: 'document_type', 'credit_debit_note_number', 'credit_debit_note_amount', or 'credit_debit_note_quantity' is missing or invalid.",
+            "Invalid payload: 'document_type', 'credit_debit_note_number', 'credit_debit_note_amount', 'credit_debit_note_quantity', or 'terms_of_delivery' is missing or invalid.",
         });
       }
 
@@ -1011,6 +1016,7 @@ class O2dController {
         credit_debit_note_amount,
         credit_debit_note_quantity,
         pdfUrl,
+        terms_of_delivery,
       );
 
       return res.status(200).json({
