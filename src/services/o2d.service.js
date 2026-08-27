@@ -2135,9 +2135,14 @@ class O2dService {
         throw error;
       }
 
+      const orderId = parseInt(body.crn, 10);
+
+      console.log("Extracted Order ID from bill_reference: ", orderId);
+
+
       // Split by '/' and take the last element, then parse it as an integer
-      const idString = body.bill_reference.split("/").pop();
-      const orderId = parseInt(idString, 10);
+      // const idString = body.bill_reference.split("/").pop();
+      // const orderId = parseInt(idString, 10);
 
       if (isNaN(orderId)) {
         const error = new Error(
@@ -2439,12 +2444,13 @@ class O2dService {
     credit_debit_note_amount,
     credit_debit_note_quantity,
     pdfUrl,
+    terms_of_delivery
   ) {
     try {
       // 1. Extract Order ID from the credit note number (e.g., 'CN/666' -> 666)
       const orderIdParts = credit_debit_note_number.split("/");
-      const orderId =
-        orderIdParts.length > 1 ? parseInt(orderIdParts[1], 10) : null;
+      // const orderId = orderIdParts.length > 1 ? parseInt(orderIdParts[1], 10) : null;
+      const orderId = parseInt(terms_of_delivery, 10);
 
       if (!orderId || isNaN(orderId)) {
         throw new Error(
