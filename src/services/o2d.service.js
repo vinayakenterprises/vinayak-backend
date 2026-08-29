@@ -2005,31 +2005,31 @@ class O2dService {
         const invoiceNo = invoices[0].invoice || null;
         const invoiceUrl = invoices[0].invoice_url || null;
 
-        const insertQuery = `INSERT INTO public.overdue_summary_report (
-            sale_order_id, 
-            invoice_date, 
-            invoice_no, 
-            client_name,
-            balance,
-            invoice_url
-        ) 
-        VALUES (
-            $1,                   
-            $2,            
-            $3, 
-            $4, 
-            $6,
-            $5
-        )`;
+        // const insertQuery = `INSERT INTO public.overdue_summary_report (
+        //     sale_order_id, 
+        //     invoice_date, 
+        //     invoice_no, 
+        //     client_name,
+        //     balance,
+        //     invoice_url
+        // ) 
+        // VALUES (
+        //     $1,                   
+        //     $2,            
+        //     $3, 
+        //     $4, 
+        //     $6,
+        //     $5
+        // )`;
 
-        await pool.query(insertQuery, [
-          orderId,
-          invoiceDate,
-          invoiceNo,
-          clientName,
-          invoiceUrl,
-          total_invoice_amount,
-        ]);
+        // await pool.query(insertQuery, [
+        //   orderId,
+        //   invoiceDate,
+        //   invoiceNo,
+        //   clientName,
+        //   invoiceUrl,
+        //   total_invoice_amount,
+        // ]);
 
         currentDispatchInfo.invoices = [
           ...currentDispatchInfo.invoices,
@@ -3114,10 +3114,66 @@ class O2dService {
       if (cn_or_dn_issue_timestamp !== undefined) {
         deliveryPayload.cn_or_dn_issue_timestamp = cn_or_dn_issue_timestamp;
       }
+
       if (quality_confirmation_status !== undefined) {
-        deliveryPayload.quality_confirmation_status =
-          quality_confirmation_status;
+        deliveryPayload.quality_confirmation_status = quality_confirmation_status;
+
+        // If quality confirmation is true, push data to overdue_summary_report
+        if (true) {
+          // 1. Fetch the necessary invoice and client data from sales_orders
+          const fetchOrderQuery = `SELECT client_name, invoice_and_dispatch FROM public.sales_orders WHERE id = $1`;
+          const fetchResult = await pool.query(fetchOrderQuery, [id]);
+
+          if (fetchResult.rows.length > 0) {
+            const orderData = fetchResult.rows[0];
+            const clientName = orderData.client_name;
+            const invoiceAndDispatch = orderData.invoice_and_dispatch || {};
+            const invoices = invoiceAndDispatch.invoices || [];
+            const totalInvoiceAmount = invoiceAndDispatch.total_invoice_amount || null;
+
+            // Ensure an invoice actually exists before trying to insert
+            if (invoices.length > 0) {
+              const invoiceDate = invoices[0].dispatch_timestamp || null;
+              const invoiceNo = invoices[0].invoice || null;
+              const invoiceUrl = invoices[0].invoice_url || null;
+
+              // 2. Check if the record already exists for this sale_order_id
+              const checkDuplicateQuery = `SELECT 1 FROM public.overdue_summary_report WHERE sale_order_id = $1 LIMIT 1`;
+              const duplicateCheckResult = await pool.query(checkDuplicateQuery, [id]);
+
+              if (duplicateCheckResult.rows.length > 0) {
+                console.log(`Overdue summary report already exists for Order ID: ${id}. Skipping insertion.`);
+              } else {
+                // 3. Insert into overdue_summary_report if not already present
+                const insertOverdueQuery = `
+                  INSERT INTO public.overdue_summary_report (
+                    sale_order_id, 
+                    invoice_date, 
+                    invoice_no, 
+                    client_name,
+                    balance,
+                    invoice_url
+                  ) 
+                  VALUES ($1, $2, $3, $4, $5, $6)
+                `;
+
+                await pool.query(insertOverdueQuery, [
+                  id,
+                  invoiceDate,
+                  invoiceNo,
+                  clientName,
+                  totalInvoiceAmount,
+                  invoiceUrl,
+                ]);
+                console.log(`Successfully inserted into overdue_summary_report for Order ID: ${id}`);
+              }
+            } else {
+              console.log(`No invoice found in invoice_and_dispatch for Order ID: ${id}. Skipping overdue summary report insertion.`);
+            }
+          }
+        }
       }
+
       if (quality_confirmation_timestamp !== undefined) {
         deliveryPayload.quality_confirmation_timestamp =
           quality_confirmation_timestamp;
