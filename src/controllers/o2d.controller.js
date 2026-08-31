@@ -734,6 +734,24 @@ class O2dController {
     }
   };
 
+
+  getUncollectedInterestNoteData = async (req, res, next) => {
+    try{
+      const userId = req.user?.id || null;
+
+      const order = await o2dService.getUncollectedInterestNoteData(userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Uncollected Interest Note Data retrieved successfully",
+        data: order,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+
   getAdminDashboardCardsData = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
@@ -921,7 +939,7 @@ class O2dController {
 
   receiveInterestNoteDetailsFromTally = async (req, res, next) => {
     try{
-      console.log("req.body:", req.body);
+      // console.log("req.body:", req.body);
 
 
       const updateDetailsInDb = await o2dService.receiveInterestNoteDetailsFromTally(req.body);
