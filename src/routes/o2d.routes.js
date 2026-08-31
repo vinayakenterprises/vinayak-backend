@@ -110,6 +110,7 @@ router.get("/get-cn-dn-issue-data", authMiddleware, o2dController.getCnDnIssueDa
 router.get("/get-cn-dn-work-history", authMiddleware, o2dController.getCnDnWorkHistory);
 router.get("/get-interest-note-issue-data", authMiddleware, o2dController.getInterestNoteIssueData);
 router.get("/get-interest-note-issue-work-history", authMiddleware, o2dController.getInterestNoteIssueWorkHistory);
+router.get("/get-uncollected-interest-note-data", authMiddleware, o2dController.getUncollectedInterestNoteData);
 
 
 // admin dashboard related apis

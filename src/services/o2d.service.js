@@ -1631,9 +1631,14 @@ class O2dService {
   async getInterestNoteIssueData(userId) {
     try {
       const query = `
-        SELECT * FROM public.sales_orders
+        SELECT *
+        FROM public.sales_orders
         WHERE payment_status->>'is_interest_note_issue' = 'true'
-        ORDER BY id DESC
+          AND (
+            payment_status->>'collect_interest_from_client' IS NULL
+            OR payment_status->>'collect_interest_from_client' = 'true'
+          )
+        ORDER BY id DESC;
       `;
       const { rows } = await pool.query(query, []);
       return rows;
@@ -1657,6 +1662,25 @@ class O2dService {
         "Error in getting interest note issue work history: ",
         error,
       );
+      throw error;
+    }
+  }
+
+
+  async getUncollectedInterestNoteData() {
+    try{
+      const query = `SELECT 
+          client_name,
+          SUM((payment_status -> 'interest_note_details_from_tally' ->> 'calculated_interest_amount')::NUMERIC) AS total_interest_amount
+      FROM public.sales_orders
+      WHERE payment_status->>'interest_note_issued_on_timestamp' IS NOT NULL
+        AND payment_status->>'interest_note_collected_on_timestamp' IS NULL
+      GROUP BY client_name;`;
+
+      const { rows } = await pool.query(query, []);
+      return rows;  
+    }catch(error){
+      console.error("Error in getting uncollected interest note data: ", error);
       throw error;
     }
   }
@@ -2136,6 +2160,29 @@ class O2dService {
       }
 
       const orderId = parseInt(body.crn, 10);
+
+
+      const orderDetails = await pool.query(
+        `SELECT * FROM sales_orders WHERE id = $1`,
+        [orderId],
+      );
+
+      if (orderDetails.rows.length === 0) {
+        const error = new Error(`Sales order not found for ID: ${orderId}`);
+        error.statusCode = 404;
+        throw error;
+      }
+
+      const collect_interest_from_client = orderDetails.rows[0].payment_status?.collect_interest_from_client;
+
+
+      if (collect_interest_from_client === undefined) {
+        const error = new Error(`Collect Interest from Client is not selected for Order ID: ${orderId}`);
+        error.statusCode = 400;
+        throw error;
+      }
+
+
 
       console.log("Extracted Order ID from bill_reference: ", orderId);
 
@@ -2829,6 +2876,7 @@ class O2dService {
         interest_note_collected_on_timestamp,
         // cn_or_dn_issue_status,
         // cn_or_dn_issue_timestamp,
+        collect_interest_from_client,
       } = body;
 
       const saleOrderInformation = await pool.query(
@@ -2982,6 +3030,10 @@ class O2dService {
       if (interest_note_collected_on_timestamp !== undefined) {
         paymentPayload.interest_note_collected_on_timestamp =
           interest_note_collected_on_timestamp;
+      }
+
+      if (collect_interest_from_client !== undefined) {
+        paymentPayload.collect_interest_from_client = collect_interest_from_client;
       }
 
       // if (cn_or_dn_issue_status !== undefined) {
