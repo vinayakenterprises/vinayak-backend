@@ -1650,9 +1650,18 @@ class O2dService {
 
   async getInterestNoteIssueWorkHistory(userId) {
     try {
+
+      // AND (
+      //       payment_status->>'collect_interest_from_client' IS NULL
+      //       OR payment_status->>'collect_interest_from_client' = 'true'
+      //     )
+
       const query = `
         SELECT * FROM public.sales_orders
-        WHERE payment_status->>'interest_note_issued_on_timestamp' IS NOT NULL
+        WHERE payment_status->>'interest_note_issued_on_timestamp' IS NOT NULL AND (
+            payment_status->>'collect_interest_from_client' IS NULL
+            OR payment_status->>'collect_interest_from_client' = 'true'
+          )
         ORDER BY id DESC
       `;
       const { rows } = await pool.query(query, []);
