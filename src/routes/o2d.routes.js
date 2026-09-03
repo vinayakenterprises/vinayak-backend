@@ -148,5 +148,9 @@ router.get('/sales-team-dashboard-delay-dispatch-till-date', authMiddleware, o2d
 router.get('/sales-team-dashboard-pending-dispatch-overview', authMiddleware, o2dController.getSalesTeamDashboardPendingDispatchOverview);
 
 
+// receiving details
+router.put('/update-receiving-details', authMiddleware, o2dController.updateReceivingDetails);
+
+
 
 export default router;

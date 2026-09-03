@@ -1650,7 +1650,6 @@ class O2dService {
 
   async getInterestNoteIssueWorkHistory(userId) {
     try {
-
       // AND (
       //       payment_status->>'collect_interest_from_client' IS NULL
       //       OR payment_status->>'collect_interest_from_client' = 'true'
@@ -1675,9 +1674,8 @@ class O2dService {
     }
   }
 
-
   async getUncollectedInterestNoteData() {
-    try{
+    try {
       const query = `SELECT 
           client_name,
           SUM((payment_status -> 'interest_note_details_from_tally' ->> 'calculated_interest_amount')::NUMERIC) AS total_interest_amount
@@ -1687,8 +1685,8 @@ class O2dService {
       GROUP BY client_name;`;
 
       const { rows } = await pool.query(query, []);
-      return rows;  
-    }catch(error){
+      return rows;
+    } catch (error) {
       console.error("Error in getting uncollected interest note data: ", error);
       throw error;
     }
@@ -1851,7 +1849,6 @@ class O2dService {
     `;
       const crmResult = await pool.query(crmQuery, [parseInt(id)]);
 
-
       if (crmResult.rows.length === 0) {
         throw new Error("Please Assign CRM First");
       }
@@ -1912,7 +1909,6 @@ class O2dService {
       // console.log("Received SO Orders from Tally: ", soOrders);
       // console.log("terms of deliver: ", soOrders[0]?.terms_of_delivery);
 
-
       // Use Promise.all and map to ensure all async operations finish
       // before returning the success response
       await Promise.all(
@@ -1920,7 +1916,7 @@ class O2dService {
           // const lastNumber = sale_order?.orderno?.split("/").pop();
           const orderId = parseInt(soOrders[0]?.terms_of_delivery);
 
-          if(!orderId){
+          if (!orderId) {
             throw new Error("Order ID is required");
           }
 
@@ -2039,18 +2035,18 @@ class O2dService {
         const invoiceUrl = invoices[0].invoice_url || null;
 
         // const insertQuery = `INSERT INTO public.overdue_summary_report (
-        //     sale_order_id, 
-        //     invoice_date, 
-        //     invoice_no, 
+        //     sale_order_id,
+        //     invoice_date,
+        //     invoice_no,
         //     client_name,
         //     balance,
         //     invoice_url
-        // ) 
+        // )
         // VALUES (
-        //     $1,                   
-        //     $2,            
-        //     $3, 
-        //     $4, 
+        //     $1,
+        //     $2,
+        //     $3,
+        //     $4,
         //     $6,
         //     $5
         // )`;
@@ -2101,7 +2097,7 @@ class O2dService {
     quantity,
     total_invoice_amount,
     userId = 10,
-    crn
+    crn,
   ) {
     try {
       // console.log("Received Invoice Details from Tally: ", {
@@ -2119,9 +2115,7 @@ class O2dService {
       const orderId = parseInt(crn, 10);
 
       if (isNaN(orderId)) {
-        throw new Error(
-          `Invalid order ID ${orderId}`,
-        );
+        throw new Error(`Invalid order ID ${orderId}`);
       }
 
       // 2. Format the dispatch data
@@ -2170,7 +2164,6 @@ class O2dService {
 
       const orderId = parseInt(body.crn, 10);
 
-
       const orderDetails = await pool.query(
         `SELECT * FROM sales_orders WHERE id = $1`,
         [orderId],
@@ -2182,19 +2175,18 @@ class O2dService {
         throw error;
       }
 
-      const collect_interest_from_client = orderDetails.rows[0].payment_status?.collect_interest_from_client;
-
+      const collect_interest_from_client =
+        orderDetails.rows[0].payment_status?.collect_interest_from_client;
 
       if (collect_interest_from_client === undefined) {
-        const error = new Error(`Collect Interest from Client is not selected for Order ID: ${orderId}`);
+        const error = new Error(
+          `Collect Interest from Client is not selected for Order ID: ${orderId}`,
+        );
         error.statusCode = 400;
         throw error;
       }
 
-
-
       console.log("Extracted Order ID from bill_reference: ", orderId);
-
 
       // Split by '/' and take the last element, then parse it as an integer
       // const idString = body.bill_reference.split("/").pop();
@@ -2500,7 +2492,7 @@ class O2dService {
     credit_debit_note_amount,
     credit_debit_note_quantity,
     pdfUrl,
-    terms_of_delivery
+    terms_of_delivery,
   ) {
     try {
       // 1. Extract Order ID from the credit note number (e.g., 'CN/666' -> 666)
@@ -2599,6 +2591,43 @@ class O2dService {
       const { rows } = await pool.query(query, []);
       return rows;
     } catch (error) {
+      throw error;
+    }
+  }
+
+  async updateReceivingDetails(orderId, documents, userId) {
+    try {
+      // Generate current UTC timestamp
+      const completionTimestamp = new Date().toISOString();
+
+      // Create the JSON payload
+      const receivingDetailsUpdate = {
+        documents: documents,
+        completion_timestamp: completionTimestamp,
+      };
+
+      // Using COALESCE to merge with existing JSON data (if any) to prevent overwriting other keys
+      const query = `
+        UPDATE public.sales_orders
+        SET 
+          receiving_details = COALESCE(receiving_details, '{}'::jsonb) || $1::jsonb,
+          updated_at = NOW(),
+          updated_by = $2
+        WHERE id = $3
+        RETURNING *;
+      `;
+
+      const values = [JSON.stringify(receivingDetailsUpdate), userId, orderId];
+
+      const { rows } = await pool.query(query, values);
+
+      if (rows.length === 0) {
+        throw new Error("Sales order not found");
+      }
+
+      return rows[0];
+    } catch (error) {
+      console.error("Error in updating receiving details: ", error);
       throw error;
     }
   }
@@ -3042,7 +3071,8 @@ class O2dService {
       }
 
       if (collect_interest_from_client !== undefined) {
-        paymentPayload.collect_interest_from_client = collect_interest_from_client;
+        paymentPayload.collect_interest_from_client =
+          collect_interest_from_client;
       }
 
       // if (cn_or_dn_issue_status !== undefined) {
@@ -3177,7 +3207,8 @@ class O2dService {
       }
 
       if (quality_confirmation_status !== undefined) {
-        deliveryPayload.quality_confirmation_status = quality_confirmation_status;
+        deliveryPayload.quality_confirmation_status =
+          quality_confirmation_status;
 
         // If quality confirmation is true, push data to overdue_summary_report
         if (true) {
@@ -3190,7 +3221,8 @@ class O2dService {
             const clientName = orderData.client_name;
             const invoiceAndDispatch = orderData.invoice_and_dispatch || {};
             const invoices = invoiceAndDispatch.invoices || [];
-            const totalInvoiceAmount = invoiceAndDispatch.total_invoice_amount || null;
+            const totalInvoiceAmount =
+              invoiceAndDispatch.total_invoice_amount || null;
 
             // Ensure an invoice actually exists before trying to insert
             if (invoices.length > 0) {
@@ -3200,10 +3232,15 @@ class O2dService {
 
               // 2. Check if the record already exists for this sale_order_id
               const checkDuplicateQuery = `SELECT 1 FROM public.overdue_summary_report WHERE sale_order_id = $1 LIMIT 1`;
-              const duplicateCheckResult = await pool.query(checkDuplicateQuery, [id]);
+              const duplicateCheckResult = await pool.query(
+                checkDuplicateQuery,
+                [id],
+              );
 
               if (duplicateCheckResult.rows.length > 0) {
-                console.log(`Overdue summary report already exists for Order ID: ${id}. Skipping insertion.`);
+                console.log(
+                  `Overdue summary report already exists for Order ID: ${id}. Skipping insertion.`,
+                );
               } else {
                 // 3. Insert into overdue_summary_report if not already present
                 const insertOverdueQuery = `
@@ -3226,10 +3263,14 @@ class O2dService {
                   totalInvoiceAmount,
                   invoiceUrl,
                 ]);
-                console.log(`Successfully inserted into overdue_summary_report for Order ID: ${id}`);
+                console.log(
+                  `Successfully inserted into overdue_summary_report for Order ID: ${id}`,
+                );
               }
             } else {
-              console.log(`No invoice found in invoice_and_dispatch for Order ID: ${id}. Skipping overdue summary report insertion.`);
+              console.log(
+                `No invoice found in invoice_and_dispatch for Order ID: ${id}. Skipping overdue summary report insertion.`,
+              );
             }
           }
         }
