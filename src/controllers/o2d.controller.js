@@ -734,9 +734,8 @@ class O2dController {
     }
   };
 
-
   getUncollectedInterestNoteData = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id || null;
 
       const order = await o2dService.getUncollectedInterestNoteData(userId);
@@ -746,11 +745,10 @@ class O2dController {
         message: "Uncollected Interest Note Data retrieved successfully",
         data: order,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getAdminDashboardCardsData = async (req, res, next) => {
     try {
@@ -893,7 +891,6 @@ class O2dController {
 
   receiveInvoiceDetailsFromTally = async (req, res, next) => {
     try {
-
       const {
         actual_dispatch_date,
         invoice_number,
@@ -908,7 +905,8 @@ class O2dController {
         !actual_dispatch_date ||
         !invoice_number ||
         !quantity ||
-        !total_invoice_amount || !crn
+        !total_invoice_amount ||
+        !crn
       ) {
         return res.status(400).json({
           status: "fail",
@@ -924,7 +922,7 @@ class O2dController {
         quantity,
         total_invoice_amount,
         10,
-        crn
+        crn,
       );
 
       return res.status(200).json({
@@ -938,21 +936,21 @@ class O2dController {
   };
 
   receiveInterestNoteDetailsFromTally = async (req, res, next) => {
-    try{
+    try {
       // console.log("req.body:", req.body);
 
-
-      const updateDetailsInDb = await o2dService.receiveInterestNoteDetailsFromTally(req.body);
+      const updateDetailsInDb =
+        await o2dService.receiveInterestNoteDetailsFromTally(req.body);
 
       return res.status(200).json({
         status: "success",
         message: "Interest Note details received from Tally successfully",
         data: req.body,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
 
   updateInvoicePdfUrl = async (req, res, next) => {
     try {
@@ -999,7 +997,8 @@ class O2dController {
         !document_type ||
         !credit_debit_note_number ||
         !credit_debit_note_amount ||
-        !credit_debit_note_quantity || !terms_of_delivery
+        !credit_debit_note_quantity ||
+        !terms_of_delivery
       ) {
         return res.status(400).json({
           status: "fail",
@@ -1007,7 +1006,6 @@ class O2dController {
             "Invalid payload: 'document_type', 'credit_debit_note_number', 'credit_debit_note_amount', 'credit_debit_note_quantity', or 'terms_of_delivery' is missing or invalid.",
         });
       }
-
 
       let pdfUrl = null;
 
@@ -1047,56 +1045,95 @@ class O2dController {
     }
   };
 
-
   getSalesTeamDashboardPendingOrdersData = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
 
-      const orders = await o2dService.getSalesTeamDashboardPendingOrdersData(userId);
+      const orders =
+        await o2dService.getSalesTeamDashboardPendingOrdersData(userId);
 
       return res.status(200).json({
         status: "success",
-        message: "Sales team dashboard pending orders data retrieved successfully",
+        message:
+          "Sales team dashboard pending orders data retrieved successfully",
         data: orders,
       });
-    }catch (error) {
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getSalesTeamDashboardDelayDispatchTillDate = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id || null;
 
-      const orders = await o2dService.getSalesTeamDashboardDelayDispatchTillDate(userId);
+      const orders =
+        await o2dService.getSalesTeamDashboardDelayDispatchTillDate(userId);
 
       return res.status(200).json({
         status: "success",
-        message: "Sales team dashboard delay dispatch till date retrieved successfully",
+        message:
+          "Sales team dashboard delay dispatch till date retrieved successfully",
         data: orders,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getSalesTeamDashboardPendingDispatchOverview = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id || null;
 
-      const orders = await o2dService.getSalesTeamDashboardPendingDispatchOverview(userId);
+      const orders =
+        await o2dService.getSalesTeamDashboardPendingDispatchOverview(userId);
 
       return res.status(200).json({
         status: "success",
-        message: "Sales team dashboard pending dispatch overview retrieved successfully",
+        message:
+          "Sales team dashboard pending dispatch overview retrieved successfully",
         data: orders,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
+
+  updateReceivingDetails = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+      const { orderId } = req.body;
+      const { documents } = req.body;
+
+      // Validate the payload
+      if (!documents || !Array.isArray(documents)) {
+        return res.status(400).json({
+          status: "error",
+          message: "An array of document URLs is required.",
+        });
+      }
+
+      const updatedOrder = await o2dService.updateReceivingDetails(
+        orderId,
+        documents,
+        userId,
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Receiving details updated successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      if (error.message === "Sales order not found") {
+        return res.status(404).json({
+          status: "error",
+          message: "Sales order not found for the provided ID",
+        });
+      }
+      next(error);
+    }
+  };
 
   assignToVehicleExecutive = async (req, res, next) => {
     try {
