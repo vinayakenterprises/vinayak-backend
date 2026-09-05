@@ -1892,6 +1892,26 @@ class O2dService {
         soGenerationComplete,
         JSON.stringify(sale_order),
       ]);
+
+      const soExecutiveResult = await pool.query(
+        `SELECT id FROM users WHERE role = 'Sale Order Executive' AND department = 'Accounts' LIMIT 1`,
+      );
+      const soExecutiveId = soExecutiveResult.rows[0]?.id;
+
+      if (soExecutiveId) {
+        const notif = await createNotification(
+          soExecutiveId,
+          `Tally data has been fetched for Order ID: ${id}. Please refresh the page.`,
+          "tally_so_data_fetched_notification",
+        );
+        emitToUser(soExecutiveId, "new_notification", notif);
+        console.log(
+          `Tally refresh notification ${notif.id} sent to Sale Order Executive ${soExecutiveId} for Order ID ${id}`,
+        );
+      } else {
+        console.error("Sale Order Executive not found for Tally notification");
+      }
+
       return rows[0];
     } catch (error) {
       console.log(
