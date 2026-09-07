@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sales Order Request</title>
+    <style>
+      body { font-family: Arial, sans-serif; background: #f4f6f8; padding: 30px; color: #263238; }
+      .container { max-width: 600px; margin: auto; background: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #e1e5e8; }
+      .header { background: #1f4e79; color: #ffffff; padding: 26px 30px; text-align: center; }
+      .header h1 { margin: 0; font-size: 24px; }
+      .body { padding: 30px; }
+      .body p { font-size: 15px; line-height: 1.6; }
+      table { width: 100%; border-collapse: collapse; margin: 24px 0; }
+      td { padding: 12px 14px; border: 1px solid #e1e5e8; font-size: 14px; }
+      td:first-child { width: 42%; background: #f4f6f8; font-weight: bold; color: #455a64; }
+      .footer { background: #f4f6f8; border-top: 1px solid #e1e5e8; color: #78909c; font-size: 12px; padding: 18px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header"><h1>Sales Order Request</h1></div>
+      <div class="body">
+        <p>Dear Team,</p>
+        <p>A new sales order request has been created and is ready for SO generation.</p>
+        <table>
+          <tr><td>Order ID</td><td>{{order_id}}</td></tr>
+          <tr><td>Client</td><td>{{client_name}}</td></tr>
+          <tr><td>Quantity</td><td>{{quantity_mt}} MT</td></tr>
+          <tr><td>Rod Size</td><td>{{rod_size}}</td></tr>
+          <tr><td>Delivery Date</td><td>{{delivery_date}}</td></tr>
+          <tr><td>Dispatch Type</td><td>{{dispatch_type}}</td></tr>
+        </table>
+        <p>Please log in to the portal to generate the sales order.</p>
+      </div>
+      <div class="footer">This is an automated email. Please do not reply.</div>
+    </div>
+  </body>
+</html>
