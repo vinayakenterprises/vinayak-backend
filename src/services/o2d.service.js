@@ -265,7 +265,7 @@ class O2dService {
     try {
       let whereCondition = "WHERE c.sales_person = $1 or c.crm = $1";
       let inputArray = [userId];
-      if (userId === 15 || userId === 9) {
+      if (userId === 15 || userId === 9 || userId === 16) {
         whereCondition = "";
         inputArray = [];
       }
