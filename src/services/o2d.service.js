@@ -2,6 +2,7 @@ import pool from "../config/database.js";
 import { ORDER_STAGES } from "../utils/constants.js";
 import { emitToUser } from "../utils/socket.js";
 import { createNotification } from "./notification.service.js";
+import { sendMail } from "./mail.service.js";
 import crypto from "node:crypto";
 
 class O2dService {
@@ -37,6 +38,7 @@ class O2dService {
     }
 
     let orderStatus = null;
+    let soGenerationExecutiveEmail = null;
     if (credit_limit_info?.credit_limit_approval_request === true) {
       orderStatus = ORDER_STAGES.credit_limit_approval_stage;
 
@@ -80,11 +82,13 @@ class O2dService {
 
       // send notification to sale order generator executive
       try {
-        const getSoGenerationExecutiveId = await pool.query(
-          `SELECT id FROM users WHERE role = 'Sale Order Executive' AND department = 'Accounts'`,
+        const getSoGenerationExecutive = await pool.query(
+          `SELECT id, email_id FROM users WHERE role = 'Sale Order Executive' AND department = 'Accounts'`,
         );
 
-        const soGenerationExecutiveId = getSoGenerationExecutiveId.rows[0].id;
+        const soGenerationExecutive = getSoGenerationExecutive.rows[0];
+        const soGenerationExecutiveId = soGenerationExecutive?.id;
+        soGenerationExecutiveEmail = soGenerationExecutive?.email_id;
 
         if (!soGenerationExecutiveId) {
           throw new Error("Sales Executive not found");
@@ -170,6 +174,26 @@ class O2dService {
     const { rows } = await pool.query(query, values);
 
     const createdOrder = rows[0];
+
+    if (soGenerationExecutiveEmail) {
+      try {
+        await sendMail({
+          to: soGenerationExecutiveEmail,
+          subject: `Sales Order Request - Order ID: ${createdOrder.id}`,
+          templateName: "so-creation-request",
+          replacements: {
+            order_id: createdOrder.id,
+            client_name: createdOrder.client_name,
+            quantity_mt: createdOrder.quantity_mt,
+            rod_size: createdOrder.rod_size,
+            // delivery_date: createdOrder.delivery_date,
+            dispatch_type: createdOrder.dispatch_type,
+          },
+        });
+      } catch (error) {
+        console.log("Error sending SO creation email:", error);
+      }
+    }
 
     // Send notification to CRM for PO upload
     if (!createdOrder.credit_limit_info?.credit_limit_approval_request) {
@@ -692,15 +716,19 @@ class O2dService {
         }
       };
 
-      const sendNotificationToSoExecutive = async (order_id) => {
+      const sendNotificationToSoExecutive = async (order_id, order) => {
         try {
           try {
-            const getSoGenerationExecutiveId = await pool.query(
-              `SELECT id FROM users WHERE role = 'Sale Order Executive' AND department = 'Accounts'`,
+            const getSoGenerationExecutive = await pool.query(
+              `SELECT id, email_id
+               FROM users
+               WHERE role = 'Sale Order Executive'
+                 AND department = 'Accounts'
+               LIMIT 1`,
             );
 
-            const soGenerationExecutiveId =
-              getSoGenerationExecutiveId.rows[0].id;
+            const soGenerationExecutive = getSoGenerationExecutive.rows[0];
+            const soGenerationExecutiveId = soGenerationExecutive?.id;
 
             if (!soGenerationExecutiveId) {
               throw new Error("Sales Executive not found");
@@ -712,6 +740,22 @@ class O2dService {
               "so_generation_notification",
             );
             emitToUser(soGenerationExecutiveId, "new_notification", notif);
+
+            if (soGenerationExecutive.email_id) {
+              await sendMail({
+                to: soGenerationExecutive.email_id,
+                subject: `Sales Order Approved - Order ID: ${order_id}`,
+                templateName: "so-creation-request",
+                replacements: {
+                  order_id,
+                  client_name: order.client_name,
+                  quantity_mt: order.quantity_mt,
+                  rod_size: order.rod_size,
+                  delivery_date: order.delivery_date,
+                  dispatch_type: order.dispatch_type,
+                },
+              });
+            }
           } catch (error) {
             console.log("error while sending notification: ", error);
           }
@@ -741,7 +785,7 @@ class O2dService {
         ]);
 
         // sendNotificationToCrm(order_id);
-        sendNotificationToSoExecutive(order_id);
+        sendNotificationToSoExecutive(order_id, rows[0]);
         sendNotificationSaleExecutive(order_id);
 
         const order = rows[0];
