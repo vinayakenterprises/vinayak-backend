@@ -180,7 +180,7 @@ class O2dService {
         await sendMail({
           to: soGenerationExecutiveEmail,
           subject: `Sales Order Request - Order ID: ${createdOrder.id}`,
-          templateName: "so-creation",
+          templateName: "so-creation-request",
           replacements: {
             order_id: createdOrder.id,
             client_name: createdOrder.client_name,
@@ -716,18 +716,15 @@ class O2dService {
         }
       };
 
-      const sendNotificationToSoExecutive = async (order_id) => {
+      const sendNotificationToSoExecutive = async (order_id, order) => {
         try {
           try {
             const getSoGenerationExecutive = await pool.query(
-              `SELECT u.id, u.email_id, so.client_name, so.quantity_mt, so.rod_size, so.delivery_date, so.dispatch_type
-               FROM users u
-               CROSS JOIN sales_orders so
-               WHERE u.role = 'Sale Order Executive'
-                 AND u.department = 'Accounts'
-                 AND so.id = $1
+              `SELECT id, email_id
+               FROM users
+               WHERE role = 'Sale Order Executive'
+                 AND department = 'Accounts'
                LIMIT 1`,
-              [order_id],
             );
 
             const soGenerationExecutive = getSoGenerationExecutive.rows[0];
@@ -748,14 +745,14 @@ class O2dService {
               await sendMail({
                 to: soGenerationExecutive.email_id,
                 subject: `Sales Order Approved - Order ID: ${order_id}`,
-                templateName: "so-creation",
+                templateName: "so-creation-request",
                 replacements: {
                   order_id,
-                  client_name: soGenerationExecutive.client_name,
-                  quantity_mt: soGenerationExecutive.quantity_mt,
-                  rod_size: soGenerationExecutive.rod_size,
-                  delivery_date: soGenerationExecutive.delivery_date,
-                  dispatch_type: soGenerationExecutive.dispatch_type,
+                  client_name: order.client_name,
+                  quantity_mt: order.quantity_mt,
+                  rod_size: order.rod_size,
+                  delivery_date: order.delivery_date,
+                  dispatch_type: order.dispatch_type,
                 },
               });
             }
@@ -788,7 +785,7 @@ class O2dService {
         ]);
 
         // sendNotificationToCrm(order_id);
-        sendNotificationToSoExecutive(order_id);
+        sendNotificationToSoExecutive(order_id, rows[0]);
         sendNotificationSaleExecutive(order_id);
 
         const order = rows[0];
