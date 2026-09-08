@@ -284,12 +284,12 @@ class HrService {
         let history = Array.isArray(row.history)
           ? row.history
           : (() => {
-              try {
-                return JSON.parse(row.history || "[]");
-              } catch {
-                return [];
-              }
-            })();
+            try {
+              return JSON.parse(row.history || "[]");
+            } catch {
+              return [];
+            }
+          })();
 
         // Sort history ascending by month id (YYYY-MM)
         history.sort((a, b) => a.id.localeCompare(b.id));
@@ -786,7 +786,7 @@ class HrService {
   }
 
   async getAllHiringTasks() {
-    const query = "SELECT * FROM hiring_tasks ORDER BY id DESC;";
+    const query = "SELECT * FROM hiring_tasks ORDER BY created_at DESC, id DESC;";
     try {
       const { rows } = await pool.query(query);
       return rows.map((row) => {
@@ -811,7 +811,7 @@ class HrService {
     const query = `
       SELECT * FROM hiring_tasks
       WHERE start_date <= $2 AND end_date >= $1
-      ORDER BY start_date ASC, id DESC;
+      ORDER BY created_at DESC, id DESC;
     `;
 
     try {
