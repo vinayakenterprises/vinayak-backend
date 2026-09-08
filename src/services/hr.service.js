@@ -257,17 +257,17 @@ class HrService {
     const params = [];
     const conditions = [];
 
-    // Apply filtering logic if a date range is selected
+    // Apply filtering logic if a date range is selected (filter on position opening date: created_at)
     if (cleanStart && cleanEnd) {
-      params.push(cleanEnd); // $1
-
-      // Include all jobs created on or before the selected endDate so monthly history snapshots determine metrics
+      params.push(cleanStart); // $1
+      params.push(cleanEnd);   // $2
+      conditions.push(`created_at::date >= $1::date AND created_at::date <= $2::date`);
+    } else if (cleanStart) {
+      params.push(cleanStart);
+      conditions.push(`created_at::date >= $1::date`);
+    } else if (cleanEnd) {
+      params.push(cleanEnd);
       conditions.push(`created_at::date <= $1::date`);
-    } else {
-      if (cleanEnd) {
-        params.push(cleanEnd);
-        conditions.push(`created_at::date <= $${params.length}::date`);
-      }
     }
 
     if (conditions.length > 0) {
@@ -294,56 +294,10 @@ class HrService {
         // Sort history ascending by month id (YYYY-MM)
         history.sort((a, b) => a.id.localeCompare(b.id));
 
-        let interviewees = 0;
-        let offers = 0;
-        let onboarded = 0;
+        let interviewees = Number(row.interviewees_appeared || 0);
+        let offers = Number(row.offers_given || 0);
+        let onboarded = Number(row.onboarded_candidates || 0);
         let status = row.hiring_status;
-
-        // When a date range is selected:
-        if (startMonth && endMonth) {
-          // Sum only the history entries between startMonth and endMonth
-          const rangeLogs = history.filter(
-            (h) => h.id >= startMonth && h.id <= endMonth,
-          );
-
-          for (const h of rangeLogs) {
-            interviewees += Number(h.interviewees_appeared || 0);
-            offers += Number(h.offers_given || 0);
-            onboarded += Number(h.onboarded_candidates || 0);
-          }
-
-          // Determine the latest status up to endMonth
-          const latestLog = [...history]
-            .reverse()
-            .find((h) => h.id <= endMonth);
-
-          if (latestLog) {
-            status = latestLog.status;
-          }
-
-          // If position is Closed, but closing date/month is after endMonth, show status as Open for endMonth
-          if (row.hiring_status === "Closed" && row.closing_date) {
-            const closingMonth = new Intl.DateTimeFormat("en-CA", {
-              timeZone: "Asia/Kolkata",
-            })
-              .format(new Date(row.closing_date))
-              .substring(0, 7);
-            if (endMonth < closingMonth) {
-              status = "Open";
-            }
-          }
-        } else {
-          // If no date range is provided, return all-time totals from history
-          for (const h of history) {
-            interviewees += Number(h.interviewees_appeared || 0);
-            offers += Number(h.offers_given || 0);
-            onboarded += Number(h.onboarded_candidates || 0);
-          }
-
-          if (history.length > 0) {
-            status = history[history.length - 1].status;
-          }
-        }
 
         let finalClosedDate = formatToYYYYMMDD(row.final_closed_date);
         if (status === "Closed" && !finalClosedDate) {
@@ -725,6 +679,7 @@ class HrService {
       const records = await this.getAllHiringRecords({ startDate, endDate });
 
       let total_positions = 0;
+      let total_closed = 0;
       let total_interviewees = 0;
       let total_offers = 0;
       let total_onboarded = 0;
@@ -735,11 +690,14 @@ class HrService {
           total_interviewees += Number(rec.interviewees_appeared || 0);
           total_offers += Number(rec.offers_given || 0);
           total_onboarded += Number(rec.onboarded_candidates || 0);
+        } else if (rec.hiring_status === "Closed") {
+          total_closed += 1;
         }
       }
 
       return {
         total_positions,
+        total_closed,
         total_interviewees,
         total_offers,
         total_onboarded,
