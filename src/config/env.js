@@ -8,13 +8,22 @@ const __dirname = path.dirname(__filename);
 // Load environment variables from the root .env file
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
+const nodeEnv = process.env.NODE_ENV || 'development';
+
+// Dynamic database selection based on environment
+const defaultDbName = nodeEnv === 'production'
+  ? (process.env.DB_DATABASE_PROD || 'vinayak_db')
+  : (process.env.DB_DATABASE_DEV || 'vinayak_db_dev');
+
+const dbName = process.env.DB_DATABASE || defaultDbName;
+
 const config = {
   port: parseInt(process.env.PORT || '3000', 10),
-  nodeEnv: process.env.NODE_ENV || 'development',
+  nodeEnv,
   db: {
     user: process.env.DB_USER || 'postgres',
     host: process.env.DB_HOST || 'localhost',
-    database: process.env.DB_DATABASE || 'postgres',
+    database: dbName,
     password: process.env.DB_PASSWORD || 'postgres',
     port: parseInt(process.env.DB_PORT || '5432', 10),
   },
