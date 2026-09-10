@@ -5,6 +5,15 @@ import { createNotification } from "./notification.service.js";
 import { sendMail } from "./mail.service.js";
 import crypto from "node:crypto";
 
+const emailDateFormatter = new Intl.DateTimeFormat("en-IN", {
+  timeZone: "Asia/Kolkata",
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
+const formatEmailDate = (value) =>
+  value ? emailDateFormatter.format(new Date(value)) : "-";
+
 class O2dService {
   async createSaleOrder(data, userId) {
     const {
@@ -45,10 +54,11 @@ class O2dService {
       // send notification to sales lead for credit limit approval
       try {
         const salesLeadIdResult = await pool.query(
-          `SELECT id FROM users WHERE role = 'Sales Executive Lead' AND department = 'Sales'`,
+          `SELECT id, email_id FROM users WHERE role = 'Sales Executive Lead' AND department = 'Sales'`,
         );
 
-        const salesLeadId = salesLeadIdResult.rows[0].id;
+        const salesLead = salesLeadIdResult.rows[0];
+        const salesLeadId = salesLead?.id;
 
         if (!salesLeadId) {
           throw new Error("Sales Executive Lead not found");
@@ -60,6 +70,23 @@ class O2dService {
           "credit_limit_approval_request_notification",
         );
         emitToUser(salesLeadId, "new_notification", notif);
+
+        if (salesLead.email_id) {
+          await sendMail({
+            to: salesLead.email_id,
+            subject: `Credit Limit Approval Required - ${client_name}`,
+            templateName: "credit-limit-approval-request",
+            replacements: {
+              client_name,
+              quantity_mt,
+              rod_size,
+              delivery_date: formatEmailDate(delivery_date),
+              dispatch_type,
+              credit_limit: credit_limit_info.credit_limit,
+              remaining_credit: credit_limit_info.remaining_credit_limit,
+            },
+          });
+        }
       } catch (error) {
         console.log("error in sending notification to sales lead: ", error);
       }
@@ -186,7 +213,7 @@ class O2dService {
             client_name: createdOrder.client_name,
             quantity_mt: createdOrder.quantity_mt,
             rod_size: createdOrder.rod_size,
-            // delivery_date: createdOrder.delivery_date,
+            delivery_date: formatEmailDate(createdOrder.delivery_date),
             dispatch_type: createdOrder.dispatch_type,
           },
         });
@@ -751,7 +778,7 @@ class O2dService {
                   client_name: order.client_name,
                   quantity_mt: order.quantity_mt,
                   rod_size: order.rod_size,
-                  delivery_date: order.delivery_date,
+                  delivery_date: formatEmailDate(order.delivery_date),
                   dispatch_type: order.dispatch_type,
                 },
               });
