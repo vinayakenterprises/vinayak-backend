@@ -713,7 +713,7 @@ class O2dService {
 
       let soGenerationStage = "";
 
-      const sendNotificationSaleExecutive = async (order_id) => {
+      const sendNotificationSaleExecutive = async (order_id, order = null) => {
         try {
           const crmIdResult = await pool.query(
             `select c.sales_person from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
@@ -735,6 +735,29 @@ class O2dService {
             "credit_limit_request_result_notification_to_sales_executive",
           );
           emitToUser(salesPersonId, "new_notification", notif);
+
+          const salesExecutiveUser = await pool.query(
+            `SELECT email_id FROM users WHERE id = $1`,
+            [salesPersonId],
+          );
+
+          const salesExecutiveEmail = salesExecutiveUser.rows[0]?.email_id;
+          if (salesExecutiveEmail) {
+            await sendMail({
+              to: salesExecutiveEmail,
+              subject: `Credit Limit Request ${credit_limit_request_approval_status ? "Approved" : "Rejected"} - Order ID: ${order_id}`,
+              templateName: "credit-limit-result-mail",
+              replacements: {
+                order_id,
+                client_name: order?.client_name || "-",
+                quantity_mt: order?.quantity_mt || "-",
+                rod_size: order?.rod_size || "-",
+                delivery_date: formatEmailDate(order?.delivery_date),
+                dispatch_type: order?.dispatch_type || "-",
+                approval_status: credit_limit_request_approval_status ? "Approved" : "Rejected",
+              },
+            });
+          }
         } catch (error) {
           console.log(
             "error while sending notification to sales executive: ",
@@ -813,7 +836,7 @@ class O2dService {
 
         // sendNotificationToCrm(order_id);
         sendNotificationToSoExecutive(order_id, rows[0]);
-        sendNotificationSaleExecutive(order_id);
+        sendNotificationSaleExecutive(order_id, rows[0]);
 
         const order = rows[0];
 
@@ -857,7 +880,7 @@ class O2dService {
         ]);
 
         // sendNotificationToCrm(order_id);
-        sendNotificationSaleExecutive(order_id);
+        sendNotificationSaleExecutive(order_id, rows[0]);
 
         return rows[0] || null;
       }
@@ -2745,7 +2768,7 @@ class O2dService {
 
       // get order details
       const orderDetails = await pool.query(
-        `select client_name, quantity_mt from sales_orders where id = $1`,
+        `select client_name, quantity_mt, rod_size, delivery_date, dispatch_type from sales_orders where id = $1`,
         [id],
       );
 
@@ -2761,6 +2784,28 @@ class O2dService {
             "vehicle_arrangement_request_notification",
           );
           emitToUser(vehicleExecutiveId, "new_notification", notif);
+
+          const vehicleExecutiveUser = await pool.query(
+            `SELECT email_id FROM users WHERE id = $1`,
+            [vehicleExecutiveId],
+          );
+
+          const vehicleExecutiveEmail = vehicleExecutiveUser.rows[0]?.email_id;
+          if (vehicleExecutiveEmail) {
+            await sendMail({
+              to: "jr.developeramisha@vinayak-enterprises.com",
+              subject: `Vehicle Assignment Request - Order ID: ${order_id}`,
+              templateName: "vehicle-assignment-request-mail",
+              replacements: {
+                order_id,
+                client_name: orderDetails.rows[0].client_name,
+                quantity_mt: orderDetails.rows[0].quantity_mt,
+                rod_size: orderDetails.rows[0].rod_size || "-",
+                delivery_date: formatEmailDate(orderDetails.rows[0].delivery_date),
+                dispatch_type: orderDetails.rows[0].dispatch_type || "-",
+              },
+            });
+          }
         } catch (error) {
           console.log(
             "error while sending notification to vehicle executive: ",
@@ -2951,6 +2996,36 @@ class O2dService {
             "order_assigned_to_invoice_executive",
           );
           emitToUser(invoiceExecutiveId, "new_notification", notif);
+
+          const invoiceExecutiveUser = await pool.query(
+            `SELECT email_id FROM users WHERE id = $1`,
+            [invoiceExecutiveId],
+          );
+
+          const invoiceExecutiveEmail = invoiceExecutiveUser.rows[0]?.email_id;
+          if (invoiceExecutiveEmail) {
+            const orderDetails = await pool.query(
+              `SELECT client_name, quantity_mt, rod_size, delivery_date, dispatch_type FROM sales_orders WHERE id = $1`,
+              [id],
+            );
+
+            const order = orderDetails.rows[0];
+            if (order) {
+              await sendMail({
+                to: invoiceExecutiveEmail,
+                subject: `Order Assigned to Invoice Executive - Order ID: ${id}`,
+                templateName: "invoice-assignment-request-mail",
+                replacements: {
+                  order_id: id,
+                  client_name: order.client_name || "-",
+                  quantity_mt: order.quantity_mt || "-",
+                  rod_size: order.rod_size || "-",
+                  delivery_date: formatEmailDate(order.delivery_date),
+                  dispatch_type: order.dispatch_type || "-",
+                },
+              });
+            }
+          }
         } catch (error) {
           console.log(
             "error in sending notification to invoice executive: ",
