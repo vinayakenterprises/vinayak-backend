@@ -123,7 +123,8 @@ class TenderService {
 
   async getRejectedTendersForTenderAgent(userId) {
     try {
-      const getRejectedTendersForTenderAgentQuery = `select * from tender_information where approved = false and createdBy = $1 order by id desc`;
+      const getRejectedTendersForTenderAgentQuery = `select *, publish_date::text AS publish_date,
+        closing_date::text AS closing_date from tender_information where approved = false and createdBy = $1 order by id desc`;
       const { rows } = await pool.query(getRejectedTendersForTenderAgentQuery, [
         userId,
       ]);
