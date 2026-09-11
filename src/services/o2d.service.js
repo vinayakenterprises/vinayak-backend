@@ -2793,7 +2793,7 @@ class O2dService {
           const vehicleExecutiveEmail = vehicleExecutiveUser.rows[0]?.email_id;
           if (vehicleExecutiveEmail) {
             await sendMail({
-              to: "jr.developeramisha@vinayak-enterprises.com",
+              to: vehicleExecutiveEmail,
               subject: `Vehicle Assignment Request - Order ID: ${order_id}`,
               templateName: "vehicle-assignment-request-mail",
               replacements: {
