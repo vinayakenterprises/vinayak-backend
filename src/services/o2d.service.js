@@ -32,6 +32,7 @@ class O2dService {
       credit_limit_info,
       vehicle_type,
       splitted_from,
+      sale_rate,
     } = data;
 
     const getCrm = await pool.query(
@@ -171,9 +172,9 @@ class O2dService {
       INSERT INTO public.sales_orders (
         client_name, rate, ex_works_rate, freight, quantity_mt, rod_size,
         delivery_date, bill_to, ship_to, dispatch_type, sales_person_name,
-        assigned_to, created_by, updated_by, credit_limit_info, order_status, vehicle_type, order_split_related
+        assigned_to, created_by, updated_by, credit_limit_info, order_status, vehicle_type, order_split_related, sale_rate
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
       ) RETURNING *;
     `;
 
@@ -196,6 +197,7 @@ class O2dService {
       orderStatus,
       vehicle_type,
       orderSplitRelatedData,
+      sale_rate,
     ];
 
     const { rows } = await pool.query(query, values);
@@ -705,7 +707,7 @@ class O2dService {
 
   async approveCreditLimitExceededSale(body, userId) {
     try {
-      const { order_id, credit_limit_request_approval_status } = body;
+      const { order_id, credit_limit_request_approval_status, remark } = body;
 
       if (!order_id) {
         throw new Error("Order ID is required");
@@ -823,7 +825,15 @@ class O2dService {
         const approveQuery = `
         UPDATE sales_orders
         SET credit_limit_info = COALESCE(credit_limit_info, '{}'::jsonb)
-            || jsonb_build_object('credit_limit_request_approved_at', now(), 'credit_limit_request_approval_status', true),
+            || jsonb_build_object(
+              'credit_limit_request_approved_at', now(),
+              'credit_limit_request_approval_status', true
+            )
+            || CASE
+                WHEN $3::text IS NOT NULL AND TRIM($3::text) <> ''
+                THEN jsonb_build_object('remark', $3::text)
+                ELSE '{}'::jsonb
+              END,
             order_status = $2
         WHERE id = $1
         RETURNING *;
@@ -832,6 +842,7 @@ class O2dService {
         const { rows } = await pool.query(approveQuery, [
           order_id,
           soGenerationStage,
+          remark, 
         ]);
 
         // sendNotificationToCrm(order_id);
@@ -868,7 +879,15 @@ class O2dService {
         const rejectQuery = `
         UPDATE sales_orders
         SET credit_limit_info = COALESCE(credit_limit_info, '{}'::jsonb)
-            || jsonb_build_object('credit_limit_request_approved_at', now(), 'credit_limit_request_approval_status', false),
+            || jsonb_build_object(
+              'credit_limit_request_approved_at', now(),
+              'credit_limit_request_approval_status', false
+            )
+            || CASE
+                WHEN $3::text IS NOT NULL AND TRIM($3::text) <> ''
+                THEN jsonb_build_object('remark', $3::text)
+                ELSE '{}'::jsonb
+              END,
             order_status = $2
         WHERE id = $1
         RETURNING *;
@@ -877,6 +896,7 @@ class O2dService {
         const { rows } = await pool.query(rejectQuery, [
           order_id,
           soGenerationStage,
+          remark,
         ]);
 
         // sendNotificationToCrm(order_id);
