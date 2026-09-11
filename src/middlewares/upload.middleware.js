@@ -9,7 +9,7 @@ export const upload = multer({
   },
 });
 
-export const tenderUpload = upload.fields([
+export const documentUpload = upload.fields([
   { name: 'tender_documents', maxCount: 20 },
   { name: 'payment_type', maxCount: 1 },
   { name: 'payment_type_file', maxCount: 1 },

@@ -1,8 +1,18 @@
 import pool from "../config/database.js";
 import { ORDER_STAGES } from "../utils/constants.js";
+import { emitToUser } from "../utils/socket.js";
+import { createNotification } from "./notification.service.js";
 import { sendMail } from "./mail.service.js";
-import userService from "./user.service.js";
+import crypto from "node:crypto";
 
+const emailDateFormatter = new Intl.DateTimeFormat("en-IN", {
+  timeZone: "Asia/Kolkata",
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
+const formatEmailDate = (value) =>
+  value ? emailDateFormatter.format(new Date(value)) : "-";
 
 class O2dService {
 
@@ -21,6 +31,9 @@ class O2dService {
       sales_person_name,
       assigned_to,
       credit_limit_info,
+      vehicle_type,
+      splitted_from,
+      sale_rate,
     } = data;
 
     // Check CRM
@@ -33,39 +46,143 @@ class O2dService {
     );
 
     if (getCrm.rows[0].crm === null) {
-      throw new Error("Please Assign CRM First");
+      const error = new Error("Please Assign CRM First");
+      error.statusCode = 400;
+      error.isOperational = true;
+      throw error;
     }
 
-    // Decide Order Status
-    const orderStatus = credit_limit_info?.credit_limit_approval_request
-      ? ORDER_STAGES.credit_limit_approval_stage
-      : ORDER_STAGES.so_generation_stage;
+    let orderStatus = null;
+    let soGenerationExecutiveEmail = null;
+    if (credit_limit_info?.credit_limit_approval_request === true) {
+      orderStatus = ORDER_STAGES.credit_limit_approval_stage;
+
+      // send notification to sales lead for credit limit approval
+      try {
+        const salesLeadIdResult = await pool.query(
+          `SELECT id, email_id FROM users WHERE role = 'Sales Executive Lead' AND department = 'Sales'`,
+        );
+
+        const salesLead = salesLeadIdResult.rows[0];
+        const salesLeadId = salesLead?.id;
+
+        if (!salesLeadId) {
+          throw new Error("Sales Executive Lead not found");
+        }
+
+        const notif = await createNotification(
+          salesLeadId,
+          `Sale Order for ${client_name} requires your approval for credit limit.`,
+          "credit_limit_approval_request_notification",
+        );
+        emitToUser(salesLeadId, "new_notification", notif);
+
+        if (salesLead.email_id) {
+          await sendMail({
+            to: salesLead.email_id,
+            subject: `Credit Limit Approval Required - ${client_name}`,
+            templateName: "credit-limit-approval-request",
+            replacements: {
+              client_name,
+              quantity_mt,
+              rod_size,
+              delivery_date: formatEmailDate(delivery_date),
+              dispatch_type,
+              credit_limit: credit_limit_info.credit_limit,
+              remaining_credit: credit_limit_info.remaining_credit_limit,
+            },
+          });
+        }
+      } catch (error) {
+        console.log("error in sending notification to sales lead: ", error);
+      }
+
+      // send notification to crm
+      // try {
+      //   const crmId = getCrm.rows[0].crm;
+
+      //   const notif = await createNotification(
+      //     crmId,
+      //     `Sale Order for ${client_name} is created and requires credit limit approval from sales lead.`,
+      //     "credit_limit_approval_request_notification_to_crm",
+      //   );
+      //   emitToUser(crmId, "new_notification", notif);
+      // } catch (error) {
+      //   console.log("error in sending notification to crm: ", error);
+      // }
+    } else {
+      orderStatus = ORDER_STAGES.so_generation_stage;
+
+      // send notification to sale order generator executive
+      try {
+        const getSoGenerationExecutive = await pool.query(
+          `SELECT id, email_id FROM users WHERE role = 'Sale Order Executive' AND department = 'Accounts'`,
+        );
+
+        const soGenerationExecutive = getSoGenerationExecutive.rows[0];
+        const soGenerationExecutiveId = soGenerationExecutive?.id;
+        soGenerationExecutiveEmail = soGenerationExecutive?.email_id;
+
+        if (!soGenerationExecutiveId) {
+          throw new Error("Sales Executive not found");
+        }
+
+        const notif = await createNotification(
+          soGenerationExecutiveId,
+          `Please create SO for ${client_name}.`,
+          "so_generation_notification",
+        );
+        emitToUser(soGenerationExecutiveId, "new_notification", notif);
+      } catch (error) {
+        console.log("error while sending notification: ", error);
+      }
+
+      // send notification to crm
+      try {
+        try {
+          const crmId = getCrm.rows[0].crm;
+
+          const notif = await createNotification(
+            crmId,
+            `Sale Order for ${client_name} is created and sent to sale order generator executive.`,
+            "so_generation_notification_to_crm",
+          );
+          emitToUser(crmId, "new_notification", notif);
+        } catch (error) {
+          console.log("error in sending notification to crm: ", error);
+        }
+      } catch (error) {
+        console.log("error in sending notification to crm: ", error);
+      }
+    }
+
+    let originalCreatorId;
+    const orderSplitRelatedData = splitted_from
+      ? JSON.stringify({ splitted_from })
+      : null;
+    if (splitted_from) {
+      const originalCreatedBy = await pool.query(
+        `select created_by from sales_orders where id = $1`,
+        [splitted_from],
+      );
+
+      if (originalCreatedBy.rows.length === 0) {
+        throw new Error("Original order not found");
+      }
+
+      originalCreatorId = originalCreatedBy.rows[0].created_by;
+    }
 
     // Insert Sales Order
     const query = `
-    INSERT INTO public.sales_orders (
-      client_name,
-      rate,
-      ex_works_rate,
-      freight,
-      quantity_mt,
-      rod_size,
-      delivery_date,
-      bill_to,
-      ship_to,
-      dispatch_type,
-      sales_person_name,
-      assigned_to,
-      created_by,
-      updated_by,
-      credit_limit_info,
-      order_status
-    )
-    VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16
-    )
-    RETURNING *;
-  `;
+      INSERT INTO public.sales_orders (
+        client_name, rate, ex_works_rate, freight, quantity_mt, rod_size,
+        delivery_date, bill_to, ship_to, dispatch_type, sales_person_name,
+        assigned_to, created_by, updated_by, credit_limit_info, order_status, vehicle_type, order_split_related, sale_rate
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
+      ) RETURNING *;
+    `;
 
     const values = [
       client_name,
@@ -79,80 +196,81 @@ class O2dService {
       ship_to,
       dispatch_type,
       sales_person_name,
-      userId, // assigned_to
-      userId, // created_by
-      userId, // updated_by
+      originalCreatorId || userId,
+      originalCreatorId || userId,
+      originalCreatorId || userId,
       credit_limit_info,
       orderStatus,
+      vehicle_type,
+      orderSplitRelatedData,
+      sale_rate,
     ];
 
     const { rows } = await pool.query(query, values);
-    const salesOrder = rows[0];
 
-    // Send approval email only if credit limit approval is required
-    if (credit_limit_info?.credit_limit_approval_request) {
-      const { rows: leadRows } = await pool.query(`
-      SELECT email_id
-      FROM users
-      WHERE role = 'Sales Executive Lead'
-      LIMIT 1
-    `);
+    const createdOrder = rows[0];
 
-      if (!leadRows.length) {
-        throw new Error("No Sales Executive Lead found.");
-      }
-
-      const salesLeadEmail = leadRows[0].email_id;
-
+    if (soGenerationExecutiveEmail) {
       try {
         await sendMail({
-          to: salesLeadEmail,
-          subject: `Action Required: Sales Order Approval - Order #${salesOrder.id}`,
-          templateName: "sales-order-credit-limit-approval-mail",
+          to: soGenerationExecutiveEmail,
+          subject: `Sales Order Request - Order ID: ${createdOrder.id}`,
+          templateName: "so-creation-request",
           replacements: {
-            order_id: salesOrder.id,
-            client_name: salesOrder.client_name,
-            quantity_mt: salesOrder.quantity_mt,
-            rate: salesOrder.rate,
-            delivery_date: new Date(
-              salesOrder.delivery_date
-            ).toLocaleDateString("en-IN"),
-            sales_person_name: salesOrder.sales_person_name,
-
-            // Credit Information
-            credit_message: credit_limit_info.message,
-            credit_limit: credit_limit_info.credit_limit,
-            remaining_credit: credit_limit_info.remaining_credit,
-
-            // Footer
-            appName: "Mittalu Pvt Ltd",
-          }
+            order_id: createdOrder.id,
+            client_name: createdOrder.client_name,
+            quantity_mt: createdOrder.quantity_mt,
+            rod_size: createdOrder.rod_size,
+            delivery_date: formatEmailDate(createdOrder.delivery_date),
+            dispatch_type: createdOrder.dispatch_type,
+          },
         });
-
-        console.log("Approval email sent successfully.");
       } catch (error) {
-        console.error("Error sending approval email:", error);
-        throw error;
+        console.log("Error sending SO creation email:", error);
       }
     }
-    return salesOrder;
+
+    // Send notification to CRM for PO upload
+    if (!createdOrder.credit_limit_info?.credit_limit_approval_request) {
+      try {
+        const crmId = getCrm.rows[0].crm;
+
+        const notif = await createNotification(
+          crmId,
+          `Please upload the PO for Order ID: ${createdOrder.id}. Client: ${createdOrder.client_name} Quantity: ${createdOrder.quantity_mt} MT`,
+          "po_upload_notification_to_crm",
+          {
+            order_id: createdOrder.id,
+            client_name: createdOrder.client_name,
+            quantity_mt: createdOrder.quantity_mt,
+          },
+        );
+
+        emitToUser(crmId, "new_notification", notif);
+      } catch (error) {
+        console.log("Error sending PO upload notification to CRM:", error);
+      }
+    }
+
+    return rows[0];
   }
 
-  async getAllClientNamesList() {
+  async getAllClientNamesList(userId) {
     try {
       const query = `
       SELECT ARRAY_AGG(client_name) AS master_client_list
       FROM (
-          SELECT company_name AS client_name FROM customers
+          SELECT company_name AS client_name FROM customers where sales_person = $1
           UNION
           SELECT UNNEST(child_companies) AS client_name 
           FROM customers 
-          WHERE child_companies IS NOT NULL
+          WHERE sales_person = $1 and child_companies IS NOT NULL 
       ) AS combined_names;
     `;
-      const { rows } = await pool.query(query);
+      const { rows } = await pool.query(query, [userId]);
 
       // Here, rows[0] is correct because the query only returns exactly 1 row containing the aggregated array
+      // console.log("Retrieved client names list: ", rows[0].master_client_list);
       return rows[0].master_client_list;
 
       // Example output: ['AS Metals', 'Alpha Communication LLP', 'Goyal Industries', ...]
@@ -202,10 +320,66 @@ class O2dService {
     return rows[0];
   }
 
-  async retrieveAllCustomersList() {
-    const query = "SELECT * FROM public.customers ORDER BY id DESC";
-    const { rows } = await pool.query(query);
-    return rows;
+  async retrieveAllCustomersList(userId) {
+    try {
+      let whereCondition = "WHERE c.sales_person = $1 or c.crm = $1";
+      let inputArray = [userId];
+      if (userId === 15 || userId === 9 || userId === 16) {
+        whereCondition = "";
+        inputArray = [];
+      }
+
+      const query = `SELECT 
+            c.*,
+            COALESCE(pending.total_pending_quantity, 0) AS total_pending_quantity,
+            CASE 
+                WHEN c.credit_limit = 0 THEN 0
+                ELSE c.credit_limit - COALESCE(pending.total_pending_quantity, 0)
+            END AS remaining_credit_limit
+        FROM 
+            public.customers c
+        LEFT JOIN LATERAL (
+            SELECT sum(quantity_mt) AS total_pending_quantity
+            FROM sales_orders so
+            WHERE 
+                (so.client_name = c.company_name OR so.client_name = ANY(c.child_companies))
+                AND (so.payment_status IS NULL OR (so.payment_status->>'payment_status')::boolean = false)
+        ) pending ON true
+        ${whereCondition}
+        ORDER BY 
+            c.id DESC;`;
+
+      const { rows } = await pool.query(query, inputArray);
+
+      // const crmIds = rows.map((item) => {
+      //   const {crm} = item;
+      //   if(crm === null){
+      //     continue;
+      //   }
+      //   return crm;
+      // });
+
+      const userIdsSet = new Set();
+      for (const item of rows) {
+        const { crm, sales_person } = item;
+        if (crm === null || sales_person === null) {
+          continue;
+        }
+        userIdsSet.add(crm);
+        userIdsSet.add(sales_person);
+      }
+
+      const userIds = [...userIdsSet];
+
+      const userDetails = await pool.query(
+        `select id, username from users where id in (${userIds.join(",")})`,
+      );
+
+      return [rows, userDetails?.rows];
+    } catch (error) {
+      console.log("error in retrieving customer list: ", error);
+      throw error;
+    }
   }
 
   async retrieveCustomerDetailsById(id) {
@@ -264,6 +438,60 @@ class O2dService {
 
     const { rows } = await pool.query(query, values);
     return rows[0] || null;
+  }
+
+  async getCrmAndSalesPerson(crm, sales_person) {
+    try {
+      let query = ``;
+      if (crm) {
+        query = `select id, username, role, department from users where role = 'Customer Relations Handler'`;
+      }
+      if (sales_person) {
+        query = `select id, username, role, department from users where role = 'Sales Executive'`;
+      }
+
+      const { rows } = await pool.query(query);
+
+      return rows;
+    } catch (error) {
+      console.log("error in getting crm and sales person: ", error);
+      throw error;
+    }
+  }
+
+  async updateCrmAndSalesPerson(id, crm, sales) {
+    try {
+      const updates = [];
+      const values = [id];
+      let index = 2;
+
+      if (crm !== undefined) {
+        updates.push(`crm = $${index++}`);
+        values.push(crm);
+      }
+
+      if (sales !== undefined) {
+        updates.push(`sales_person = $${index++}`);
+        values.push(sales);
+      }
+
+      if (updates.length === 0) {
+        throw new Error("No fields to update");
+      }
+
+      const query = `
+      UPDATE public.customers
+      SET ${updates.join(", ")}
+      WHERE id = $1
+      RETURNING *;
+    `;
+
+      const { rows } = await pool.query(query, values);
+      return rows[0] || null;
+    } catch (error) {
+      console.error("Error updating CRM and sales person:", error);
+      throw error;
+    }
   }
 
   async removeCustomerRecordById(id) {
@@ -411,7 +639,10 @@ class O2dService {
         const creditLimit = clientCreditLimit.rows[0].credit_limit;
 
         const totalPendingOrder = await pool.query(
-          `select sum(quantity_mt) as total_pending_quantity from sales_orders where client_name = $1 and payment_status is null`,
+          `SELECT sum(quantity_mt) AS total_pending_quantity 
+          FROM sales_orders 
+          WHERE client_name = $1 
+            AND (payment_status is null or (payment_status->>'payment_status')::boolean = false)`,
           [client_name],
         );
         const totalPendingOrderQuantity =
@@ -482,22 +713,203 @@ class O2dService {
 
   async approveCreditLimitExceededSale(body, userId) {
     try {
-      const { order_id } = body;
+      const { order_id, credit_limit_request_approval_status, remark } = body;
 
       if (!order_id) {
         throw new Error("Order ID is required");
       }
 
-      const approveQuery = `
+      let soGenerationStage = "";
+
+      const sendNotificationSaleExecutive = async (order_id, order = null) => {
+        try {
+          const crmIdResult = await pool.query(
+            `select c.sales_person from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+            [order_id],
+          );
+
+          if (
+            crmIdResult.rows.length === 0 ||
+            crmIdResult.rows[0].sales_person === null
+          ) {
+            throw new Error("Please Assign Sales Executive First");
+          }
+          const salesPersonId = crmIdResult.rows[0].sales_person;
+
+          const notif = await createNotification(
+            salesPersonId,
+            `Credit Limit Request for Order ID: ${order_id} has been ${credit_limit_request_approval_status ? "approved" : "rejected"} by Sales Lead.`,
+            "credit_limit_request_result_notification_to_sales_executive",
+          );
+          emitToUser(salesPersonId, "new_notification", notif);
+
+          const salesExecutiveUser = await pool.query(
+            `SELECT email_id FROM users WHERE id = $1`,
+            [salesPersonId],
+          );
+
+          const salesExecutiveEmail = salesExecutiveUser.rows[0]?.email_id;
+          if (salesExecutiveEmail) {
+            await sendMail({
+              to: salesExecutiveEmail,
+              subject: `Credit Limit Request ${credit_limit_request_approval_status ? "Approved" : "Rejected"} - Order ID: ${order_id}`,
+              templateName: "credit-limit-result-mail",
+              replacements: {
+                order_id,
+                client_name: order?.client_name || "-",
+                quantity_mt: order?.quantity_mt || "-",
+                rod_size: order?.rod_size || "-",
+                delivery_date: formatEmailDate(order?.delivery_date),
+                dispatch_type: order?.dispatch_type || "-",
+                approval_status: credit_limit_request_approval_status ? "Approved" : "Rejected",
+              },
+            });
+          }
+        } catch (error) {
+          console.log(
+            "error while sending notification to sales executive: ",
+            error,
+          );
+        }
+      };
+
+      const sendNotificationToSoExecutive = async (order_id, order) => {
+        try {
+          try {
+            const getSoGenerationExecutive = await pool.query(
+              `SELECT id, email_id
+               FROM users
+               WHERE role = 'Sale Order Executive'
+                 AND department = 'Accounts'
+               LIMIT 1`,
+            );
+
+            const soGenerationExecutive = getSoGenerationExecutive.rows[0];
+            const soGenerationExecutiveId = soGenerationExecutive?.id;
+
+            if (!soGenerationExecutiveId) {
+              throw new Error("Sales Executive not found");
+            }
+
+            const notif = await createNotification(
+              soGenerationExecutiveId,
+              `Please create SO for Order ID: ${order_id}.`,
+              "so_generation_notification",
+            );
+            emitToUser(soGenerationExecutiveId, "new_notification", notif);
+
+            if (soGenerationExecutive.email_id) {
+              await sendMail({
+                to: soGenerationExecutive.email_id,
+                subject: `Sales Order Approved - Order ID: ${order_id}`,
+                templateName: "so-creation-request",
+                replacements: {
+                  order_id,
+                  client_name: order.client_name,
+                  quantity_mt: order.quantity_mt,
+                  rod_size: order.rod_size,
+                  delivery_date: formatEmailDate(order.delivery_date),
+                  dispatch_type: order.dispatch_type,
+                },
+              });
+            }
+          } catch (error) {
+            console.log("error while sending notification: ", error);
+          }
+        } catch (error) {
+          console.log(
+            "error while sending notification to so executive: ",
+            error,
+          );
+        }
+      };
+
+      if (credit_limit_request_approval_status === true) {
+        soGenerationStage = ORDER_STAGES.so_generation_stage;
+
+        const approveQuery = `
         UPDATE sales_orders
         SET credit_limit_info = COALESCE(credit_limit_info, '{}'::jsonb)
-            || jsonb_build_object('credit_limit_request_approved_at', now())
+            || jsonb_build_object(
+              'credit_limit_request_approved_at', now(),
+              'credit_limit_request_approval_status', true
+            )
+            || CASE
+                WHEN $3::text IS NOT NULL AND TRIM($3::text) <> ''
+                THEN jsonb_build_object('remark', $3::text)
+                ELSE '{}'::jsonb
+              END,
+            order_status = $2
         WHERE id = $1
         RETURNING *;
       `;
 
-      const { rows } = await pool.query(approveQuery, [order_id]);
-      return rows[0] || null;
+        const { rows } = await pool.query(approveQuery, [
+          order_id,
+          soGenerationStage,
+          remark, 
+        ]);
+
+        // sendNotificationToCrm(order_id);
+        sendNotificationToSoExecutive(order_id, rows[0]);
+        sendNotificationSaleExecutive(order_id, rows[0]);
+
+        const order = rows[0];
+
+        // Send notification to crm after approval for po pdf upload
+        const crmIdResult = await pool.query(
+          `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+          [order_id],
+        );
+
+        if (crmIdResult.rows.length === 0 || crmIdResult.rows[0].crm === null) {
+          throw new Error("Please Assign CRM First");
+        }
+        const crmId = crmIdResult.rows[0].crm;
+        if (crmId) {
+          const notif = await createNotification(
+            crmId,
+            `Please upload the PO for Order ID: ${order.id}. Client: ${order.client_name}. Qty: ${order.quantity_mt} MT.`,
+            "po_upload_notification_to_crm_after_credit_limit_approval",
+          );
+
+          emitToUser(crmId, "new_notification", notif);
+        }
+
+        return rows[0] || null;
+      } else {
+        soGenerationStage = ORDER_STAGES.order_completed_stage;
+
+        const rejectQuery = `
+        UPDATE sales_orders
+        SET credit_limit_info = COALESCE(credit_limit_info, '{}'::jsonb)
+            || jsonb_build_object(
+              'credit_limit_request_approved_at', now(),
+              'credit_limit_request_approval_status', false
+            )
+            || CASE
+                WHEN $3::text IS NOT NULL AND TRIM($3::text) <> ''
+                THEN jsonb_build_object('remark', $3::text)
+                ELSE '{}'::jsonb
+              END,
+            order_status = $2
+        WHERE id = $1
+        RETURNING *;
+      `;
+
+        const { rows } = await pool.query(rejectQuery, [
+          order_id,
+          soGenerationStage,
+          remark,
+        ]);
+
+        // sendNotificationToCrm(order_id);
+        sendNotificationSaleExecutive(order_id, rows[0]);
+
+        return rows[0] || null;
+      }
     } catch (error) {
       console.log("error in approving credit limit exceeded sale: ", error);
       throw error;
@@ -541,6 +953,17 @@ class O2dService {
         sanitizedSlipData.so_order_completed_at = so_order_completed_at;
       }
 
+      // Add PO document dispatch metadata
+      sanitizedSlipData.sent_for_po_document = true;
+      sanitizedSlipData.sent_for_po_at_timestamp = sent_for_so_at
+        ? new Date(sent_for_so_at).toISOString()
+        : new Date().toISOString();
+
+      const poRelatedData = {
+        sent_for_po_document: true,
+        sent_for_po_at_timestamp: sanitizedSlipData.sent_for_po_at_timestamp,
+      };
+
       // If no valid fields were provided, you might want to stop the update to save DB calls
       if (Object.keys(sanitizedSlipData).length === 0) {
         throw new Error(
@@ -562,6 +985,7 @@ class O2dService {
         UPDATE public.sales_orders
         SET 
           sale_order_generation = COALESCE(sale_order_generation, '{}'::jsonb) || $1::jsonb,
+          po_related = COALESCE(po_related, '{}'::jsonb) || $5::jsonb,
           updated_at = now(),
           updated_by = $2,
           assigned_to = $4
@@ -575,12 +999,42 @@ class O2dService {
         userId,
         order_id,
         salesOrdersExecutiveId,
+        JSON.stringify(poRelatedData),
       ];
 
       const { rows } = await pool.query(query, values);
       return rows[0] || null;
     } catch (error) {
       console.error("Error in generating sale order slip: ", error);
+      throw error;
+    }
+  }
+
+  async updatePoRelated(id, po_data, userId) {
+    try {
+      if (!id) {
+        throw new Error("Order ID is required");
+      }
+
+      const query = `
+        UPDATE public.sales_orders
+        SET po_related = COALESCE(po_related, '{}'::jsonb) || jsonb_build_object(
+              'sent_for_po_document', COALESCE(po_related->'sent_for_po_document', 'true'::jsonb),
+              'sent_for_po_at_timestamp', COALESCE(po_related->'sent_for_po_at_timestamp', COALESCE(sale_order_generation->'sent_for_so_at', to_jsonb(now()::text)))
+            ) || $2::jsonb,
+            updated_at = now(),
+            updated_by = $3
+        WHERE id = $1
+        RETURNING *;
+      `;
+      const { rows } = await pool.query(query, [
+        id,
+        JSON.stringify(po_data),
+        userId,
+      ]);
+      return rows[0] || null;
+    } catch (error) {
+      console.error("Error in updatePoRelated: ", error);
       throw error;
     }
   }
@@ -617,12 +1071,15 @@ class O2dService {
       // Extract the crmId (defaulting to null if the record isn't found)
       const crmId = crmResult.rows[0].crm;
 
+      const soGenerationComplete = ORDER_STAGES.so_generation_completed_stage;
+
       const query = `
         UPDATE public.sales_orders
         SET sale_order_generation = COALESCE(sale_order_generation, '{}'::jsonb) || jsonb_build_object(
             'so_order_completed_at', now(),
             'document_url', $3::text
         ),
+        order_status = $5,
         assigned_to = $4,
         updated_at = now(),
         updated_by = $2
@@ -630,11 +1087,23 @@ class O2dService {
         RETURNING *;
       `;
 
+      try {
+        const notif = await createNotification(
+          crmId,
+          `Sale Order for Order ID: ${id} is created from Accounts Team!`,
+          "so_generation_completion_notification",
+        );
+        emitToUser(crmId, "new_notification", notif);
+      } catch (error) {
+        console.log("error while sending notification: ", error);
+      }
+
       const { rows } = await pool.query(query, [
         id,
         userId,
         document_url,
         crmId,
+        soGenerationComplete,
       ]);
       return rows[0];
     } catch (error) {
@@ -661,10 +1130,11 @@ class O2dService {
   async getAssignedSOByCRM(userId) {
     try {
       const query = `
-        SELECT so.* FROM public.sales_orders so
+        SELECT so.*, so.delivery_date::text AS delivery_date FROM public.sales_orders so
         INNER JOIN public.customers c ON so.client_name = c.company_name
+        or so.client_name = any(c.child_companies)
         WHERE c.crm = $1 
-          AND so.sale_order_generation->>'sent_for_so' = 'true' 
+          AND so.sale_order_generation->>'sent_for_so' = 'true'
           -- AND so.sale_order_generation->>'so_order_completed_at' IS NOT NULL 
         ORDER BY so.id DESC;
       `;
@@ -722,7 +1192,7 @@ class O2dService {
         dispatchData;
 
       // 1. Fetch current invoice_and_dispatch from the database
-      const fetchQuery = `SELECT invoice_and_dispatch FROM public.sales_orders WHERE id = $1`;
+      const fetchQuery = `SELECT invoice_and_dispatch, client_name FROM public.sales_orders WHERE id = $1`;
       const { rows } = await pool.query(fetchQuery, [orderId]);
 
       if (rows.length === 0) {
@@ -747,12 +1217,77 @@ class O2dService {
       let assignToStr = ``;
 
       if (invoice_completed_at) {
+        // const invoiceGenerationCompletedStage = ORDER_STAGES.invoice_generation_completed_stage;
+        const thankYouAndIntimationStage =
+          ORDER_STAGES.thank_you_and_intimation_stage;
         currentDispatchInfo.invoice_completed_at = invoice_completed_at;
-        assignToStr = `,assigned_to = (SELECT crm FROM public.customers WHERE company_name = public.sales_orders.client_name OR public.sales_orders.client_name::text = ANY(child_companies) LIMIT 1)`;
+        assignToStr = `,assigned_to = (SELECT crm FROM public.customers WHERE company_name = public.sales_orders.client_name OR public.sales_orders.client_name::text = ANY(child_companies) LIMIT 1), order_status = '${thankYouAndIntimationStage}'`;
+
+        const sendNotificationToCrm = async (order_id) => {
+          try {
+            const crmIdResult = await pool.query(
+              `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+              [order_id],
+            );
+
+            if (
+              crmIdResult.rows.length === 0 ||
+              crmIdResult.rows[0].crm === null
+            ) {
+              throw new Error("Please Assign CRM First");
+            }
+            const crmId = crmIdResult.rows[0].crm;
+
+            const notif = await createNotification(
+              crmId,
+              `Invoice & Dispatch Phase Completed for Order ID: ${orderId}.`,
+              "invoice_and_dispatch_completed_notification_to_crm",
+            );
+            emitToUser(crmId, "new_notification", notif);
+          } catch (error) {
+            console.log("error while sending notification to crm: ", error);
+          }
+        };
+
+        sendNotificationToCrm(orderId);
       }
 
       // If new invoices are provided, append them to the existing array
       if (invoices && Array.isArray(invoices) && invoices.length > 0) {
+        console.log("lskjdlsdfk -> ", invoices);
+
+        // todo - save to overdue summary report
+        const clientName = rows[0].client_name || null;
+        const invoiceDate = invoices[0].dispatch_timestamp || null;
+        const invoiceNo = invoices[0].invoice || null;
+        const invoiceUrl = invoices[0].invoice_url || null;
+
+        const insertQuery = `INSERT INTO public.overdue_summary_report (
+            sale_order_id, 
+            invoice_date, 
+            invoice_no, 
+            client_name,
+            balance,
+            invoice_url
+        ) 
+        VALUES (
+            $1,                   
+            $2,            
+            $3, 
+            $4, 
+            0,
+            $5
+        )`;
+
+        await pool.query(insertQuery, [
+          orderId,
+          invoiceDate,
+          invoiceNo,
+          clientName,
+          invoiceUrl,
+        ]);
+
         currentDispatchInfo.invoices = [
           ...currentDispatchInfo.invoices,
           ...invoices,
@@ -800,6 +1335,1443 @@ class O2dService {
     }
   }
 
+  async createComplaintForSaleOrder(saleOrderId, data, userId) {
+    try {
+      const {
+        description,
+        documents,
+        contact_person_name,
+        contact_person_number,
+        priority_level,
+        remark,
+      } = data;
+
+      if (!description?.trim()) {
+        throw new Error("Description is required");
+      }
+
+      if (!priority_level?.trim()) {
+        throw new Error("Priority level is required");
+      }
+
+      const orderExists = await pool.query(
+        `
+      SELECT id
+      FROM sales_orders
+      WHERE id = $1
+      `,
+        [saleOrderId],
+      );
+
+      if (!orderExists.rows.length) {
+        throw new Error("Sales order not found");
+      }
+
+      const { rows } = await pool.query(
+        `
+      INSERT INTO complaint_info (
+        sale_order_id,
+        description,
+        documents,
+        contact_person_name,
+        contact_person_number,
+        priority_level,
+        remark,
+        created_by,
+        updated_by
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9
+      )
+      RETURNING *;
+      `,
+        [
+          saleOrderId,
+          description,
+          JSON.stringify(documents || []),
+          // documents || [],
+          contact_person_name || null,
+          contact_person_number || null,
+          priority_level,
+          remark || null,
+          userId,
+          userId,
+        ],
+      );
+
+      return rows[0];
+    } catch (error) {
+      console.error("Error in createComplaintForSaleOrder:", error);
+      throw error;
+    }
+  }
+
+  async getAllComplaintsForSaleOrder(saleOrderId) {
+    try {
+      const { rows } = await pool.query(
+        `
+      SELECT *
+      FROM complaint_info
+      WHERE sale_order_id = $1
+      ORDER BY created_at DESC
+      `,
+        [saleOrderId],
+      );
+
+      return rows;
+    } catch (error) {
+      console.error("Error in getAllComplaintsForSaleOrder:", error);
+      throw error;
+    }
+  }
+
+  async getComplaintDetailsForSaleOrder(saleOrderId, complaintId) {
+    try {
+      const { rows } = await pool.query(
+        `
+      SELECT *
+      FROM complaint_info
+      WHERE complaint_id = $1
+      AND sale_order_id = $2
+      `,
+        [complaintId, saleOrderId],
+      );
+
+      if (!rows.length) {
+        throw new Error("Complaint not found");
+      }
+
+      return rows[0];
+    } catch (error) {
+      console.error("Error in getComplaintDetailsForSaleOrder:", error);
+      throw error;
+    }
+  }
+
+  async updateComplaintDetailsForSaleOrder(
+    saleOrderId,
+    complaintId,
+    data,
+    userId,
+  ) {
+    try {
+      const {
+        description,
+        documents,
+        contact_person_name,
+        contact_person_number,
+        priority_level,
+        remark,
+        remark_final,
+      } = data;
+
+      const complaintExists = await pool.query(
+        `
+      SELECT complaint_id
+      FROM complaint_info
+      WHERE complaint_id = $1
+      AND sale_order_id = $2
+      `,
+        [complaintId, saleOrderId],
+      );
+
+      if (!complaintExists.rows.length) {
+        throw new Error("Complaint not found");
+      }
+
+      const { rows } = await pool.query(
+        `
+      UPDATE complaint_info
+      SET
+        description = $1,
+        documents = $2,
+        contact_person_name = $3,
+        contact_person_number = $4,
+        priority_level = $5,
+        remark = $6,
+        remark_final = $10,
+        updated_by = $7,
+        updated_at = NOW()
+      WHERE complaint_id = $8
+      AND sale_order_id = $9
+      RETURNING *;
+      `,
+        [
+          description,
+          JSON.stringify(documents || []),
+          contact_person_name || null,
+          contact_person_number || null,
+          priority_level,
+          remark || null,
+          userId,
+          complaintId,
+          saleOrderId,
+          remark_final || null,
+        ],
+      );
+
+      return rows[0];
+    } catch (error) {
+      console.error("Error in updateComplaintDetailsForSaleOrder:", error);
+      throw error;
+    }
+  }
+
+  async deleteComplaintForSaleOrder(saleOrderId, complaintId) {
+    try {
+      const { rowCount } = await pool.query(
+        `
+      DELETE FROM complaint_info
+      WHERE complaint_id = $1
+      AND sale_order_id = $2
+      `,
+        [complaintId, saleOrderId],
+      );
+
+      if (!rowCount) {
+        throw new Error("Complaint not found");
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Error in deleteComplaintForSaleOrder:", error);
+      throw error;
+    }
+  }
+
+  async updateCallActionInformation(id, userId, body) {
+    try {
+      const { action_done_at, visit_status } = body;
+
+      // Dynamically build the payload
+      const callActionPayload = {};
+      let newComplaintStatus = null; // Defaults to null (no change to status)
+
+      if (action_done_at !== undefined) {
+        callActionPayload.action_done_at = action_done_at;
+
+        // Since action_done_at is provided, we set the string for the DB to update
+        newComplaintStatus = "Call Action Done";
+      }
+
+      if (visit_status !== undefined) {
+        console.log("visit status: ", visit_status);
+        callActionPayload.visit_status = visit_status;
+
+        if (visit_status === "Required") {
+          newComplaintStatus = "Plant Visit Required";
+        } else {
+          newComplaintStatus = "Call Action Done";
+        }
+      }
+
+      // Prevent database call if nothing was actually sent
+      if (Object.keys(callActionPayload).length === 0) {
+        throw new Error("No valid call action fields provided for update.");
+      }
+
+      const query = `
+        UPDATE public.complaint_info
+        SET call_action = COALESCE(call_action, '{}'::jsonb) || $2::jsonb,
+            complaint_status = COALESCE($4, complaint_status), 
+            updated_at = now(),
+            updated_by = $1
+        WHERE complaint_id = $3
+        RETURNING *;
+      `;
+
+      const values = [
+        userId,
+        JSON.stringify(callActionPayload), // $2: The JSON object
+        id, // $3: complaint_id
+        newComplaintStatus, // $4: The VARCHAR status (or null)
+      ];
+
+      const { rows } = await pool.query(query, values);
+
+      return rows.length ? rows[0] : null;
+    } catch (error) {
+      console.error("error in updating call action information: ", error);
+      throw error;
+    }
+  }
+
+  async getCallComplaintData(userId) {
+    try {
+      const query = `
+        SELECT 
+            ci.*,
+            so.client_name,
+            so.delivery_and_weight->>'quality_confirmation_status' AS complaint_tat_informatoin,
+            so.quantity_mt
+        FROM 
+            public.complaint_info ci
+        LEFT JOIN 
+            public.sales_orders so ON ci.sale_order_id = so.id
+        ORDER BY 
+            ci.created_at DESC
+      `;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      console.error("error in getting call complaint data: ", error);
+      throw error;
+    }
+  }
+
+  async updatePlantVisitInformation(id, userId, body) {
+    try {
+      const {
+        plant_visit_done_at,
+        documents,
+        solution,
+        person_met_at_site,
+        quantity_replaced,
+      } = body;
+
+      // Dynamically build the payload so we only update provided fields
+      const visitActionPayload = {};
+
+      if (plant_visit_done_at !== undefined) {
+        visitActionPayload.plant_visit_done_at = plant_visit_done_at;
+      }
+      if (documents !== undefined) {
+        // Ensure documents is stored as an array
+        visitActionPayload.documents = Array.isArray(documents)
+          ? documents
+          : [];
+      }
+      if (solution !== undefined) {
+        visitActionPayload.solution = solution;
+      }
+      if (person_met_at_site !== undefined) {
+        visitActionPayload.person_met_at_site = person_met_at_site;
+      }
+      if (quantity_replaced !== undefined) {
+        // Ensure it is stored as a float
+        visitActionPayload.quantity_replaced = parseFloat(quantity_replaced);
+      }
+
+      // Prevent database call if the payload is completely empty
+      if (Object.keys(visitActionPayload).length === 0) {
+        throw new Error("No valid plant visit fields provided for update.");
+      }
+
+      // const query = `
+      //   UPDATE public.complaint_info
+      //   SET visit_action_related = COALESCE(visit_action_related, '{}'::jsonb) || $2::jsonb,
+      //       updated_at = now(),
+      //       updated_by = $1
+      //   WHERE complaint_id = $3
+      //   RETURNING *;
+      // `;
+      const query = `
+        UPDATE public.complaint_info
+        SET visit_action_related = COALESCE(visit_action_related, '{}'::jsonb) 
+            || $2::jsonb 
+            || jsonb_build_object(
+                'created_at', COALESCE((visit_action_related->>'created_at')::timestamptz, now()),
+                'updated_at', now()
+              ),
+            updated_at = now(),
+            updated_by = $1
+        WHERE complaint_id = $3
+        RETURNING *;
+      `;
+
+      const values = [
+        userId,
+        JSON.stringify(visitActionPayload),
+        id, // Assuming 'id' passed to the function is the complaint_id
+      ];
+
+      const { rows } = await pool.query(query, values);
+
+      return rows.length ? rows[0] : null;
+    } catch (error) {
+      console.error("Error in updating plant visit information: ", error);
+      throw error;
+    }
+  }
+
+  async updateComplaintClosureInformation(complaint_id, userId) {
+    try {
+      const query = `
+        UPDATE public.complaint_info
+        SET complaint_status = 'Closed',
+            updated_at = now(),
+            updated_by = $1
+        WHERE complaint_id = $2
+        RETURNING *;
+      `;
+
+      const values = [userId, complaint_id];
+
+      const { rows } = await pool.query(query, values);
+
+      return rows.length ? rows[0] : null;
+    } catch (error) {
+      console.error("Error in updating complaint closure information: ", error);
+      throw error;
+    }
+  }
+
+  async getCnDnIssueData(userId) {
+    try {
+      const query = `
+        SELECT * FROM public.sales_orders
+        WHERE delivery_and_weight IS NOT NULL
+          AND (delivery_and_weight->>'settlement' = 'CN Issue' or delivery_and_weight->>'settlement' = 'DN Issue')
+          AND delivery_and_weight->>'cn_or_dn_issue_timestamp' IS NULL
+        ORDER BY id DESC
+      `;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      console.error("Error in getting cn/dn issue data: ", error);
+      throw error;
+    }
+  }
+
+  async getCnDnWorkHistory(userId) {
+    try {
+      const query = `
+        SELECT * FROM public.sales_orders
+        WHERE delivery_and_weight->>'cn_or_dn_issue_timestamp' IS NOT NULL
+        ORDER BY id DESC
+      `;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      console.error("Error in getting cn/dn work history: ", error);
+      throw error;
+    }
+  }
+
+  async getInterestNoteIssueData(userId) {
+    try {
+      const query = `
+        SELECT *
+        FROM public.sales_orders
+        WHERE payment_status->>'is_interest_note_issue' = 'true'
+          AND (
+            payment_status->>'collect_interest_from_client' IS NULL
+            OR payment_status->>'collect_interest_from_client' = 'true'
+          )
+        ORDER BY id DESC;
+      `;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      console.error("Error in getting interest note issue data: ", error);
+      throw error;
+    }
+  }
+
+  async getInterestNoteIssueWorkHistory(userId) {
+    try {
+      // AND (
+      //       payment_status->>'collect_interest_from_client' IS NULL
+      //       OR payment_status->>'collect_interest_from_client' = 'true'
+      //     )
+
+      const query = `
+        SELECT * FROM public.sales_orders
+        WHERE payment_status->>'interest_note_issued_on_timestamp' IS NOT NULL AND (
+            payment_status->>'collect_interest_from_client' IS NULL
+            OR payment_status->>'collect_interest_from_client' = 'true'
+          )
+        ORDER BY id DESC
+      `;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      console.error(
+        "Error in getting interest note issue work history: ",
+        error,
+      );
+      throw error;
+    }
+  }
+
+  async getUncollectedInterestNoteData() {
+    try {
+      const query = `SELECT 
+          client_name,
+          SUM((payment_status -> 'interest_note_details_from_tally' ->> 'calculated_interest_amount')::NUMERIC) AS total_interest_amount
+      FROM public.sales_orders
+      WHERE payment_status->>'interest_note_issued_on_timestamp' IS NOT NULL
+        AND payment_status->>'interest_note_collected_on_timestamp' IS NULL
+      GROUP BY client_name;`;
+
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      console.error("Error in getting uncollected interest note data: ", error);
+      throw error;
+    }
+  }
+
+  async getAdminDashboardCardsData(userId) {
+    try {
+      const query = `
+        SELECT 
+            -- Pending Metrics
+            COUNT(*) FILTER (
+                WHERE delivery_and_weight->>'delivery_status' IS DISTINCT FROM 'Delivered'
+            ) AS total_pending_orders,
+            
+            COALESCE(SUM(quantity_mt) FILTER (
+                WHERE delivery_and_weight->>'delivery_status' IS DISTINCT FROM 'Delivered'
+            ), 0) AS total_pending_quantity_mt,
+
+            -- Delivered Metrics
+            COUNT(*) FILTER (
+                WHERE delivery_and_weight->>'delivery_status' = 'Delivered'
+            ) AS total_delivered_orders,
+            
+            COALESCE(SUM(quantity_mt) FILTER (
+                WHERE delivery_and_weight->>'delivery_status' = 'Delivered'
+            ), 0) AS total_delivered_quantity_mt
+
+        FROM public.sales_orders
+        -- New global filter for credit limit approval
+        WHERE credit_limit_info->>'credit_limit_request_approval_status' IS DISTINCT FROM 'false';
+        `;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      console.error("Error in getting admin dashboard cards data: ", error);
+      throw error;
+    }
+  }
+
+  async getActiveSaleOrdersAdminDashboard(userId, start_date, end_date) {
+    try {
+      let query = `SELECT * FROM sales_orders`;
+      const values = [];
+
+      if (start_date && end_date) {
+        query += ` WHERE created_at BETWEEN $1 AND $2`;
+        values.push(start_date, end_date);
+      }
+
+      query += ` ORDER BY id DESC`;
+
+      const { rows } = await pool.query(query, values);
+
+      if (rows.length === 0) {
+        throw new Error("No active sale orders found");
+      }
+
+      return rows;
+    } catch (error) {
+      console.error(
+        "Error in getting active sale orders admin dashboard data:",
+        error,
+      );
+      throw error;
+    }
+  }
+
+  async getOverdueReportData(id, userId) {
+    try {
+      const query = `SELECT osr.*, ci.complaint_status, ci.updated_at
+      FROM overdue_summary_report osr 
+      LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
+      WHERE osr.is_deleted = false 
+        AND (ci.sale_order_id IS NULL OR ci.complaint_status = 'Closed')
+      ORDER BY osr.id DESC`;
+
+      const { rows } = await pool.query(query, []);
+
+      return rows;
+    } catch (error) {
+      console.error("Error in getting overdue report data: ", error);
+      throw error;
+    }
+  }
+
+  async updateOverdueSummaryReportInformation(id, userId, body) {
+    try {
+      const keys = Object.keys(body);
+      if (keys.length === 0) {
+        throw new Error("No fields provided to update.");
+      }
+
+      const setClauses = [];
+      const values = [];
+      let paramIndex = 1;
+
+      const allowedFields = [
+        "sale_order_id",
+        "invoice_date",
+        "invoice_no",
+        "client_name",
+        "balance",
+        "is_deleted",
+      ];
+
+      for (const key of keys) {
+        if (allowedFields.includes(key)) {
+          setClauses.push(`${key} = $${paramIndex}`);
+          values.push(body[key]);
+          paramIndex++;
+        }
+      }
+
+      if (setClauses.length === 0) {
+        throw new Error("No valid fields provided to update.");
+      }
+
+      // Add the userId for updated_by securely using parameterization
+      setClauses.push(`updated_by = $${paramIndex}`);
+      values.push(userId);
+      paramIndex++;
+
+      // Use PostgreSQL's native NOW() function for the current timestamp
+      setClauses.push(`updated_at = NOW()`);
+
+      // Push the row id to the very end of the values array for the WHERE condition
+      values.push(id);
+
+      const query = `
+        UPDATE public.overdue_summary_report
+        SET ${setClauses.join(", ")}
+        WHERE id = $${paramIndex}
+        RETURNING *;
+      `;
+
+      // Executing the query matching your reference style
+      const { rows } = await pool.query(query, values);
+      return rows[0]; // Returning the single updated row
+    } catch (error) {
+      console.error(
+        "Error in updating overdue summary report information: ",
+        error,
+      );
+      throw error;
+    }
+  }
+
+  async completeSOGenerationRequestFromTally(
+    id,
+    userId,
+    document_url,
+    sale_order,
+  ) {
+    try {
+      const crmQuery = `
+      SELECT c.crm 
+      FROM sales_orders so 
+      INNER JOIN customers c ON so.client_name = c.company_name OR so.client_name::text = ANY(c.child_companies)
+      WHERE so.id = $1
+    `;
+      const crmResult = await pool.query(crmQuery, [parseInt(id)]);
+
+      if (crmResult.rows.length === 0) {
+        throw new Error("Please Assign CRM First");
+      }
+
+      // Extract the crmId (defaulting to null if the record isn't found)
+      const crmId = crmResult.rows[0].crm;
+
+      const soGenerationComplete = ORDER_STAGES.so_generation_completed_stage;
+
+      const query = `
+        UPDATE public.sales_orders
+        SET sale_order_generation = COALESCE(sale_order_generation, '{}'::jsonb) || jsonb_build_object(
+            'so_order_completed_at', now(),
+            'document_url', $3::text,
+            'sale_order_details', $6::jsonb
+        ),
+        order_status = $5,
+        assigned_to = $4,
+        updated_at = now(),
+        updated_by = $2
+        WHERE id = $1
+        RETURNING *;
+      `;
+
+      try {
+        const notif = await createNotification(
+          crmId,
+          `Sale Order for Order ID: ${id} is created from Accounts Team!`,
+          "so_generation_completion_notification",
+        );
+        emitToUser(crmId, "new_notification", notif);
+      } catch (error) {
+        console.log("error while sending notification: ", error);
+      }
+
+      const { rows } = await pool.query(query, [
+        id,
+        userId,
+        document_url,
+        crmId,
+        soGenerationComplete,
+        JSON.stringify(sale_order),
+      ]);
+
+      const soExecutiveResult = await pool.query(
+        `SELECT id FROM users WHERE role = 'Sale Order Executive' AND department = 'Accounts' LIMIT 1`,
+      );
+      const soExecutiveId = soExecutiveResult.rows[0]?.id;
+
+      if (soExecutiveId) {
+        const notif = await createNotification(
+          soExecutiveId,
+          `Tally data has been fetched for Order ID: ${id}. Please refresh the page.`,
+          "tally_so_data_fetched_notification",
+        );
+        emitToUser(soExecutiveId, "new_notification", notif);
+        console.log(
+          `Tally refresh notification ${notif.id} sent to Sale Order Executive ${soExecutiveId} for Order ID ${id}`,
+        );
+      } else {
+        console.error("Sale Order Executive not found for Tally notification");
+      }
+
+      return rows[0];
+    } catch (error) {
+      console.log(
+        "error in completing so generation request from tally: ",
+        error,
+      );
+      throw error;
+    }
+  }
+
+  async receiveSoOrdersFromTally(so_orders, pdfUrl) {
+    try {
+      const soOrders = so_orders.salesOrders;
+
+      // console.log("Received SO Orders from Tally: ", soOrders);
+      // console.log("terms of deliver: ", soOrders[0]?.terms_of_delivery);
+
+      // Use Promise.all and map to ensure all async operations finish
+      // before returning the success response
+      await Promise.all(
+        soOrders.map(async (sale_order) => {
+          // const lastNumber = sale_order?.orderno?.split("/").pop();
+          const orderId = parseInt(soOrders[0]?.terms_of_delivery);
+
+          if (!orderId) {
+            throw new Error("Order ID is required");
+          }
+
+          // Pass the pdfUrl to your generation function so it can be saved in the DB
+          await this.completeSOGenerationRequestFromTally(
+            orderId,
+            5,
+            pdfUrl, // <-- Pass the S3 URL here
+            sale_order,
+          );
+        }),
+      );
+
+      return {
+        status: "success",
+        message: "SO orders received from Tally successfully",
+      };
+    } catch (error) {
+      console.error("Error in processing SO orders from Tally: ", error);
+      throw error;
+    }
+  }
+
+  async updateInvoiceAndDispatchInfoFromTally(
+    orderId,
+    dispatchData,
+    userId,
+    total_invoice_amount,
+  ) {
+    try {
+      const { actual_dispatch_date, invoices, invoice_completed_at } =
+        dispatchData;
+
+      // 1. Fetch current invoice_and_dispatch from the database
+      const fetchQuery = `SELECT invoice_and_dispatch, client_name FROM public.sales_orders WHERE id = $1`;
+      const { rows } = await pool.query(fetchQuery, [orderId]);
+
+      if (rows.length === 0) {
+        throw new Error("Sales order not found");
+      }
+
+      // 2. Parse existing data or initialize an empty structure
+      let currentDispatchInfo = rows[0].invoice_and_dispatch || {};
+
+      if (!currentDispatchInfo.invoices) {
+        currentDispatchInfo.invoices = [];
+      }
+
+      // 3. Check for existing invoice and RETURN EARLY if found
+      if (invoices && invoices.length > 0) {
+        const incomingInvoiceNo = invoices[0].invoice;
+        const invoiceExists = currentDispatchInfo.invoices.some(
+          (inv) => inv.invoice === incomingInvoiceNo,
+        );
+
+        if (invoiceExists) {
+          console.log(
+            `Invoice ${incomingInvoiceNo} already exists for Order ID: ${orderId}. Aborting update to maintain single invoice rule.`,
+          );
+          // Return immediately. No data is changed, no notifications sent.
+          return rows[0];
+        }
+      }
+
+      // 4. Incrementally update fields based on what was passed in the request
+      if (actual_dispatch_date) {
+        currentDispatchInfo.actual_dispatch_date = actual_dispatch_date;
+      }
+
+      let assignToStr = ``;
+
+      if (invoice_completed_at) {
+        const thankYouAndIntimationStage =
+          ORDER_STAGES.thank_you_and_intimation_stage;
+        currentDispatchInfo.invoice_completed_at = invoice_completed_at;
+        currentDispatchInfo.total_invoice_amount = total_invoice_amount;
+        assignToStr = `,assigned_to = (SELECT crm FROM public.customers WHERE company_name = public.sales_orders.client_name OR public.sales_orders.client_name::text = ANY(child_companies) LIMIT 1), order_status = '${thankYouAndIntimationStage}'`;
+
+        const sendNotificationToCrm = async (order_id) => {
+          try {
+            const crmIdResult = await pool.query(
+              `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+              [order_id],
+            );
+
+            if (
+              crmIdResult.rows.length === 0 ||
+              crmIdResult.rows[0].crm === null
+            ) {
+              throw new Error("Please Assign CRM First");
+            }
+            const crmId = crmIdResult.rows[0].crm;
+
+            const notif = await createNotification(
+              crmId,
+              `Invoice & Dispatch Phase Completed for Order ID: ${orderId}.`,
+              "invoice_and_dispatch_completed_notification_to_crm",
+            );
+            emitToUser(crmId, "new_notification", notif);
+          } catch (error) {
+            console.log("error while sending notification to crm: ", error);
+          }
+        };
+
+        sendNotificationToCrm(orderId);
+      }
+
+      // 5. Append new invoice and save to overdue summary report
+      if (invoices && Array.isArray(invoices) && invoices.length > 0) {
+        console.log("Processing new invoice -> ", invoices);
+
+        const clientName = rows[0].client_name || null;
+        const invoiceDate = invoices[0].dispatch_timestamp || null;
+        const invoiceNo = invoices[0].invoice || null;
+        const invoiceUrl = invoices[0].invoice_url || null;
+
+        // const insertQuery = `INSERT INTO public.overdue_summary_report (
+        //     sale_order_id,
+        //     invoice_date,
+        //     invoice_no,
+        //     client_name,
+        //     balance,
+        //     invoice_url
+        // )
+        // VALUES (
+        //     $1,
+        //     $2,
+        //     $3,
+        //     $4,
+        //     $6,
+        //     $5
+        // )`;
+
+        // await pool.query(insertQuery, [
+        //   orderId,
+        //   invoiceDate,
+        //   invoiceNo,
+        //   clientName,
+        //   invoiceUrl,
+        //   total_invoice_amount,
+        // ]);
+
+        currentDispatchInfo.invoices = [
+          ...currentDispatchInfo.invoices,
+          ...invoices,
+        ];
+      }
+
+      // 6. Save the merged data back to the database
+      const updateQuery = `
+      UPDATE public.sales_orders
+      SET 
+        invoice_and_dispatch = $1::jsonb,
+        updated_at = now(),
+        updated_by = $2
+        ${assignToStr}
+      WHERE id = $3
+      RETURNING *;
+    `;
+
+      const updateResult = await pool.query(updateQuery, [
+        JSON.stringify(currentDispatchInfo),
+        userId,
+        orderId,
+      ]);
+
+      return updateResult.rows[0];
+    } catch (error) {
+      console.error("Error in updateDispatchInfo: ", error);
+      throw error;
+    }
+  }
+
+  async receiveInvoiceDetailsFromTally(
+    actual_dispatch_date,
+    invoice_number,
+    quantity,
+    total_invoice_amount,
+    userId = 10,
+    crn,
+  ) {
+    try {
+      // console.log("Received Invoice Details from Tally: ", {
+      //   actual_dispatch_date,
+      //   invoice_number,
+      //   quantity,
+      //   total_invoice_amount,
+      //   crn
+      // });
+
+      // 1. Extract orderId from invoice_number
+      // e.g., "2026-27/071" -> "071" -> 71
+      const invoiceParts = invoice_number.split("/");
+      const orderIdString = invoiceParts[invoiceParts.length - 1];
+      const orderId = parseInt(crn, 10);
+
+      if (isNaN(orderId)) {
+        throw new Error(`Invalid order ID ${orderId}`);
+      }
+
+      // 2. Format the dispatch data
+      const dispatchData = {
+        actual_dispatch_date: actual_dispatch_date,
+        invoices: [
+          {
+            invoice: invoice_number,
+            quantity_dispatched: quantity,
+            invoice_url: null,
+            dispatch_timestamp: new Date().toISOString(), // Creates timestamp like "2026-08-18T10:22:59.557Z"
+          },
+        ],
+        invoice_completed_at: new Date().toISOString(),
+      };
+
+      // 3. Call the update function
+      // (Using `this.` assuming both functions belong to the same class/service)
+      const updateResult = await this.updateInvoiceAndDispatchInfoFromTally(
+        orderId,
+        dispatchData,
+        userId,
+        total_invoice_amount,
+      );
+
+      console.log(
+        `Successfully updated invoice & dispatch info for Order ID: ${orderId}`,
+      );
+      return updateResult;
+    } catch (error) {
+      console.error("Error in processing invoice details from Tally: ", error);
+      throw error;
+    }
+  }
+
+  async receiveInterestNoteDetailsFromTally(body) {
+    try {
+      // 1. Extract the order ID from bill_reference (e.g., "2026-27/391" -> 391)
+      if (!body.bill_reference) {
+        const error = new Error(
+          "bill_reference is missing in the request body",
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const orderId = parseInt(body.crn, 10);
+
+      const orderDetails = await pool.query(
+        `SELECT * FROM sales_orders WHERE id = $1`,
+        [orderId],
+      );
+
+      if (orderDetails.rows.length === 0) {
+        const error = new Error(`Sales order not found for ID: ${orderId}`);
+        error.statusCode = 404;
+        throw error;
+      }
+
+      const collect_interest_from_client =
+        orderDetails.rows[0].payment_status?.collect_interest_from_client;
+
+      if (collect_interest_from_client === undefined) {
+        const error = new Error(
+          `Collect Interest from Client is not selected for Order ID: ${orderId}`,
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+
+      console.log("Extracted Order ID from bill_reference: ", orderId);
+
+      // Split by '/' and take the last element, then parse it as an integer
+      // const idString = body.bill_reference.split("/").pop();
+      // const orderId = parseInt(idString, 10);
+
+      if (isNaN(orderId)) {
+        const error = new Error(
+          `Invalid ID extracted from bill_reference: ${body.bill_reference}`,
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+
+      // 2. Build the payload for the JSONB column
+      const paymentPayload = {
+        // Replicate frontend behavior: mark the timestamp when this was executed
+        interest_note_issued_on_timestamp: new Date().toISOString(),
+
+        // Save the entire Tally webhook/request body inside this key
+        interest_note_details_from_tally: body,
+      };
+
+      // 3. Send Notification to CRM
+      const sendNotificationToCrm = async (order_id) => {
+        try {
+          const crmIdResult = await pool.query(
+            `SELECT c.crm FROM sales_orders so 
+           INNER JOIN customers c ON so.client_name = c.company_name OR so.client_name = ANY(c.child_companies)
+           WHERE so.id = $1`,
+            [order_id],
+          );
+
+          if (
+            crmIdResult.rows.length === 0 ||
+            crmIdResult.rows[0].crm === null
+          ) {
+            console.log(
+              `Notification skipped: No CRM assigned for Order ID ${order_id}`,
+            );
+            return;
+          }
+
+          const crmId = crmIdResult.rows[0].crm;
+
+          // Assuming createNotification and emitToUser are available in this file
+          const notif = await createNotification(
+            crmId,
+            `Interest Note Work has been completed for Order ID: ${order_id}.`,
+            "interest_note_issue_completed_notification_to_crm",
+          );
+          emitToUser(crmId, "new_notification", notif);
+        } catch (error) {
+          console.log("Error while sending notification to crm: ", error);
+        }
+      };
+
+      // Trigger the notification asynchronously
+      sendNotificationToCrm(orderId);
+
+      // 4. Update the database using PostgreSQL JSONB merge
+      const query = `
+      UPDATE public.sales_orders
+      SET payment_status = COALESCE(payment_status, '{}'::jsonb) || $1::jsonb,
+          updated_at = now()
+      WHERE id = $2
+      RETURNING *;
+    `;
+
+      const values = [JSON.stringify(paymentPayload), orderId];
+      const { rows } = await pool.query(query, values);
+
+      if (rows.length === 0) {
+        const error = new Error(`Sales order not found for ID: ${orderId}`);
+        error.statusCode = 404;
+        throw error;
+      }
+
+      return rows[0];
+    } catch (error) {
+      console.error("Error in receiveInterestNoteDetailsFromTally: ", error);
+      throw error;
+    }
+  }
+
+  async updateInvoicePdfUrl(orderId, invoiceNumber, invoiceUrl, userId) {
+    try {
+      // 1. Fetch current invoice_and_dispatch JSON from sales_orders
+      const fetchQuery = `SELECT invoice_and_dispatch FROM public.sales_orders WHERE id = $1`;
+      const { rows } = await pool.query(fetchQuery, [orderId]);
+
+      if (rows.length === 0) {
+        throw new Error(`Sales order with ID ${orderId} not found`);
+      }
+
+      let currentDispatchInfo = rows[0].invoice_and_dispatch || {};
+
+      // 2. Find the specific invoice in the JSON array and update the URL
+      let invoiceFound = false;
+      if (
+        currentDispatchInfo.invoices &&
+        Array.isArray(currentDispatchInfo.invoices)
+      ) {
+        currentDispatchInfo.invoices = currentDispatchInfo.invoices.map(
+          (inv) => {
+            if (inv.invoice === invoiceNumber) {
+              invoiceFound = true;
+              // Append the new invoice_url to this specific invoice object
+              return { ...inv, invoice_url: invoiceUrl };
+            }
+            return inv;
+          },
+        );
+      }
+
+      if (!invoiceFound) {
+        throw new Error(
+          `Invoice number ${invoiceNumber} not found in Order ID ${orderId}.`,
+        );
+      }
+
+      // 3. Update the sales_orders table with the modified JSON array
+      const updateSalesOrderQuery = `
+      UPDATE public.sales_orders
+      SET 
+        invoice_and_dispatch = $1::jsonb,
+        updated_at = now(),
+        updated_by = $2
+      WHERE id = $3
+      RETURNING *;
+    `;
+
+      const updateResult = await pool.query(updateSalesOrderQuery, [
+        JSON.stringify(currentDispatchInfo),
+        userId,
+        orderId,
+      ]);
+
+      // 4. Update the overdue_summary_report table corresponding row
+      const updateOverdueQuery = `
+      UPDATE public.overdue_summary_report
+      SET invoice_url = $1
+      WHERE sale_order_id = $2 AND invoice_no = $3
+    `;
+
+      await pool.query(updateOverdueQuery, [
+        invoiceUrl,
+        orderId,
+        invoiceNumber,
+      ]);
+
+      // Return the updated sales order record
+      return updateResult.rows[0];
+    } catch (error) {
+      console.error("Error in updating invoice URL: ", error);
+      throw error;
+    }
+  }
+
+  async updateDeliveryAndWeightInformationFromTally(id, userId, body) {
+    try {
+      const {
+        actual_delivery_timestamp,
+        delivery_status,
+        weight_difference_in_kg,
+        settlement,
+        cn_or_dn_issue_status,
+        cn_or_dn_issue_timestamp,
+        quality_confirmation_status,
+        quality_confirmation_timestamp,
+        cn_dn_document_url,
+      } = body;
+
+      // Dynamically build the payload so we only update provided fields.
+      // This prevents overwriting existing data with nulls during partial updates.
+      const deliveryPayload = {};
+
+      if (actual_delivery_timestamp !== undefined) {
+        deliveryPayload.actual_delivery_timestamp = actual_delivery_timestamp;
+      }
+      if (delivery_status !== undefined) {
+        deliveryPayload.delivery_status = delivery_status;
+      }
+      if (weight_difference_in_kg !== undefined) {
+        // Map the input variable to the specific DB column key and ensure it's a float
+        deliveryPayload.weight_difference_in_kg = parseFloat(
+          weight_difference_in_kg,
+        );
+      }
+      if (settlement !== undefined) {
+        deliveryPayload.settlement = settlement;
+
+        const sendNotificationToJuniorAccountant = async (order_id) => {
+          try {
+            const juniorAccountantIdResult = await pool.query(
+              `select id from users where role = 'Junior Accountant' and department = 'Accounts'`,
+            );
+
+            const juniorAccountantId = juniorAccountantIdResult.rows[0].id;
+
+            if (!juniorAccountantId) {
+              throw new Error("Junior Accountant not found");
+            }
+
+            const notif = await createNotification(
+              juniorAccountantId,
+              `Please Create ${settlement === "CN Issue" ? "Credit" : "Debit"} Note for Order ID: ${order_id}.`,
+              "cn_dn_issue_notification_to_junior_accountant",
+            );
+            emitToUser(juniorAccountantId, "new_notification", notif);
+          } catch (error) {
+            console.log(
+              "error while sending notification to junior accountant: ",
+              error,
+            );
+          }
+        };
+
+        if (settlement === "CN Issue" || settlement === "DN Issue") {
+          sendNotificationToJuniorAccountant(id);
+        }
+      }
+      if (cn_or_dn_issue_status !== undefined) {
+        deliveryPayload.cn_or_dn_issue_status = cn_or_dn_issue_status;
+
+        deliveryPayload.cn_dn_details_from_tally = {
+          document_type: body.document_type || null,
+          credit_debit_note_number: body.credit_debit_note_number || null,
+          credit_debit_note_amount: body.credit_debit_note_amount || null,
+          credit_debit_note_quantity: body.credit_debit_note_quantity || null,
+        };
+
+        const sendNotificationToCrm = async (order_id) => {
+          try {
+            const crmIdResult = await pool.query(
+              `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+              [order_id],
+            );
+
+            if (
+              crmIdResult.rows.length === 0 ||
+              crmIdResult.rows[0].crm === null
+            ) {
+              throw new Error("Please Assign CRM First");
+            }
+            const crmId = crmIdResult.rows[0].crm;
+
+            const notif = await createNotification(
+              crmId,
+              `CN/DN has been issued for Order ID: ${order_id}.`,
+              "cn_dn_issue_completed_notification_to_crm",
+            );
+            emitToUser(crmId, "new_notification", notif);
+          } catch (error) {
+            console.log("error while sending notification to crm: ", error);
+          }
+        };
+
+        if (cn_or_dn_issue_status === true) {
+          sendNotificationToCrm(id);
+        }
+      }
+      if (cn_or_dn_issue_timestamp !== undefined) {
+        deliveryPayload.cn_or_dn_issue_timestamp = cn_or_dn_issue_timestamp;
+      }
+      if (quality_confirmation_status !== undefined) {
+        deliveryPayload.quality_confirmation_status =
+          quality_confirmation_status;
+      }
+      if (quality_confirmation_timestamp !== undefined) {
+        deliveryPayload.quality_confirmation_timestamp =
+          quality_confirmation_timestamp;
+      }
+      if (cn_dn_document_url !== undefined) {
+        deliveryPayload.cn_dn_document_url = cn_dn_document_url;
+      }
+      const query = `
+        UPDATE public.sales_orders
+        SET delivery_and_weight = COALESCE(delivery_and_weight, '{}'::jsonb) || $2::jsonb,
+            updated_at = now(),
+            updated_by = $1
+        WHERE id = $3
+        RETURNING *;
+      `;
+
+      const values = [userId, JSON.stringify(deliveryPayload), id];
+
+      const { rows } = await pool.query(query, values);
+
+      return rows.length ? rows[0] : null;
+    } catch (error) {
+      console.error(
+        "error in updating delivery and weight information: ",
+        error,
+      );
+      throw error;
+    }
+  }
+
+  async getCreditDebitNoteFromTally(
+    document_type,
+    credit_debit_note_number,
+    credit_debit_note_amount,
+    credit_debit_note_quantity,
+    pdfUrl,
+    terms_of_delivery,
+  ) {
+    try {
+      // 1. Extract Order ID from the credit note number (e.g., 'CN/666' -> 666)
+      const orderIdParts = credit_debit_note_number.split("/");
+      // const orderId = orderIdParts.length > 1 ? parseInt(orderIdParts[1], 10) : null;
+      const orderId = parseInt(terms_of_delivery, 10);
+
+      if (!orderId || isNaN(orderId)) {
+        throw new Error(
+          `Invalid credit_debit_note_number format. Could not extract Order ID from: ${credit_debit_note_number}`,
+        );
+      }
+
+      // 2. Static User ID as requested
+      const userId = 14;
+
+      // 3. Construct the body for the update function
+      const body = {
+        document_type: document_type,
+        credit_debit_note_number: credit_debit_note_number,
+        credit_debit_note_amount: credit_debit_note_amount,
+        credit_debit_note_quantity: credit_debit_note_quantity,
+        cn_dn_document_url: pdfUrl,
+        cn_or_dn_issue_status: true,
+        // actual_delivery_timestamp: new Date().toISOString(), // e.g., "2026-07-23T06:07:55.526Z"
+        cn_or_dn_issue_timestamp: new Date().toISOString(), // Included for consistency
+      };
+
+      // 4. Call the update function
+      const updatedOrder =
+        await this.updateDeliveryAndWeightInformationFromTally(
+          orderId,
+          userId,
+          body,
+        );
+
+      return updatedOrder;
+    } catch (error) {
+      console.log("error in getting credit note from tally: ", error);
+      throw error;
+    }
+  }
+
+  async getSalesTeamDashboardPendingOrdersData(userId) {
+    try {
+      const query = `
+        SELECT
+            -- Pending Metrics
+            COUNT(*) FILTER (
+                WHERE delivery_and_weight->>'delivery_status'
+                      IS DISTINCT FROM 'Delivered'
+            ) AS total_pending_orders,
+
+            COALESCE(
+                SUM(quantity_mt) FILTER (
+                    WHERE delivery_and_weight->>'delivery_status'
+                          IS DISTINCT FROM 'Delivered'
+                ),
+                0
+            ) AS total_pending_quantity_mt
+
+        FROM public.sales_orders
+
+        -- Global filter for credit limit approval
+        WHERE credit_limit_info->>'credit_limit_request_approval_status'
+              IS DISTINCT FROM 'false'; 
+      `;
+
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async getSalesTeamDashboardDelayDispatchTillDate(userId) {
+    try {
+      const query = `SELECT
+          COUNT(*) AS total_pending_orders,
+          COALESCE(SUM(quantity_mt), 0) AS total_pending_quantity
+        FROM sales_orders
+        WHERE delivery_date <= CURRENT_DATE and vehicle_arrangement->>'actual_deliver_date' is null;
+      `;
+
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async getSalesTeamDashboardPendingDispatchOverview(userId) {
+    try {
+      const query = `select delivery_date, sum(quantity_mt) as quantity_mt, count(delivery_date) as pending_orders from sales_orders
+      where vehicle_arrangement->>'actual_deliver_date' is null group by delivery_date`;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async updateReceivingDetails(orderId, documents, userId) {
+    try {
+      // Generate current UTC timestamp
+      const completionTimestamp = new Date().toISOString();
+
+      // Create the JSON payload
+      const receivingDetailsUpdate = {
+        documents: documents,
+        completion_timestamp: completionTimestamp,
+      };
+
+      // Using COALESCE to merge with existing JSON data (if any) to prevent overwriting other keys
+      const query = `
+        UPDATE public.sales_orders
+        SET 
+          receiving_details = COALESCE(receiving_details, '{}'::jsonb) || $1::jsonb,
+          updated_at = NOW(),
+          updated_by = $2
+        WHERE id = $3
+        RETURNING *;
+      `;
+
+      const values = [JSON.stringify(receivingDetailsUpdate), userId, orderId];
+
+      const { rows } = await pool.query(query, values);
+
+      if (rows.length === 0) {
+        throw new Error("Sales order not found");
+      }
+
+      return rows[0];
+    } catch (error) {
+      console.error("Error in updating receiving details: ", error);
+      throw error;
+    }
+  }
+
   async assignToVehicleExecutive(id, userId) {
     try {
       // Get vehicle executive id
@@ -814,16 +2786,78 @@ class O2dService {
 
       const vehicleExecutiveId = getVehicleExecutiveId.rows[0].id;
 
+      if (!vehicleExecutiveId) {
+        throw new Error("Vehicle Executive not found");
+      }
+
+      const vehicleArrangeMentStage = ORDER_STAGES.vehicle_arrangement_stage;
+
+      // get order details
+      const orderDetails = await pool.query(
+        `select client_name, quantity_mt, rod_size, delivery_date, dispatch_type from sales_orders where id = $1`,
+        [id],
+      );
+
+      if (!orderDetails.rows.length) {
+        throw new Error("Order not found");
+      }
+
+      const sendNotificationToVehicleExecutive = async (order_id) => {
+        try {
+          const notif = await createNotification(
+            vehicleExecutiveId,
+            `Please arrange a vehicle for Order #${order_id} (${orderDetails?.rows?.[0]?.client_name}) - Quantity: ${orderDetails?.rows?.[0]?.quantity_mt} MT.`,
+            "vehicle_arrangement_request_notification",
+          );
+          emitToUser(vehicleExecutiveId, "new_notification", notif);
+
+          const vehicleExecutiveUser = await pool.query(
+            `SELECT email_id FROM users WHERE id = $1`,
+            [vehicleExecutiveId],
+          );
+
+          const vehicleExecutiveEmail = vehicleExecutiveUser.rows[0]?.email_id;
+          if (vehicleExecutiveEmail) {
+            await sendMail({
+              to: vehicleExecutiveEmail,
+              subject: `Vehicle Assignment Request - Order ID: ${order_id}`,
+              templateName: "vehicle-assignment-request-mail",
+              replacements: {
+                order_id,
+                client_name: orderDetails.rows[0].client_name,
+                quantity_mt: orderDetails.rows[0].quantity_mt,
+                rod_size: orderDetails.rows[0].rod_size || "-",
+                delivery_date: formatEmailDate(orderDetails.rows[0].delivery_date),
+                dispatch_type: orderDetails.rows[0].dispatch_type || "-",
+              },
+            });
+          }
+        } catch (error) {
+          console.log(
+            "error while sending notification to vehicle executive: ",
+            error,
+          );
+        }
+      };
+
       // FIX 2: Correct spelling of COALESCE and assign it to the 'vehicle_arrangement' column
       const query = `
       UPDATE public.sales_orders
-      SET assigned_to = $2, 
+      SET assigned_to = $2,
+          order_status = $3,
           vehicle_arrangement = COALESCE(vehicle_arrangement, '{}'::jsonb) || jsonb_build_object('assigned_to_vehicle_executive', true::boolean)
       WHERE id = $1
       RETURNING *;
-    `;
+      `;
 
-      const { rows } = await pool.query(query, [id, vehicleExecutiveId]);
+      const { rows } = await pool.query(query, [
+        id,
+        vehicleExecutiveId,
+        vehicleArrangeMentStage,
+      ]);
+
+      sendNotificationToVehicleExecutive(id);
+
       return rows[0];
     } catch (error) {
       console.error("Error in assigning to vehicle executive: ", error);
@@ -861,14 +2895,58 @@ class O2dService {
     }
   }
 
-  async markAsDeliveredByTransportExecutive(id, userId) {
+  async markAsDeliveredByTransportExecutive(id, userId, body) {
     try {
+      const vehicleArrangementCompletedStage =
+        ORDER_STAGES.vehicle_arrangement_completed_stage;
+
+      const sendNotificationToCrm = async (order_id) => {
+        try {
+          const crmIdResult = await pool.query(
+            `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+            [order_id],
+          );
+
+          if (
+            crmIdResult.rows.length === 0 ||
+            crmIdResult.rows[0].crm === null
+          ) {
+            throw new Error("Please Assign CRM First");
+          }
+          const crmId = crmIdResult.rows[0].crm;
+
+          // Note: "vehicle_arrangement_completed_notification_to_crm" is exactly 49 characters long.
+          // If your notification type column is still limited to VARCHAR(50) from the previous error,
+          // this will pass, but leaves no room for future adjustments.
+          const notif = await createNotification(
+            crmId,
+            `Vehicle has been arranged for Order ID: ${order_id}.`,
+            "vehicle_arrangement_completed_notification_to_crm",
+          );
+          emitToUser(crmId, "new_notification", notif);
+        } catch (error) {
+          console.log("error while sending notification to crm: ", error);
+        }
+      };
+
+      // 1. Extract only the valid additional fields from the body
+      const additionalVehicleData = {};
+      if (body.vehicle_no) additionalVehicleData.vehicle_no = body.vehicle_no;
+      if (body.bilty_url) additionalVehicleData.bilty_url = body.bilty_url;
+      if (body.loaded_proof_urls)
+        additionalVehicleData.loaded_proof_urls = body.loaded_proof_urls;
+
+      // 2. Merge actual_deliver_date with the dynamic JSON payload ($4)
       const query = `
         UPDATE public.sales_orders
         SET 
-          vehicle_arrangement = COALESCE(vehicle_arrangement, '{}'::jsonb) || jsonb_build_object('actual_deliver_date', CURRENT_DATE),
+          vehicle_arrangement = COALESCE(vehicle_arrangement, '{}'::jsonb) 
+            || jsonb_build_object('actual_deliver_date', CURRENT_DATE)
+            || $4::jsonb,
           updated_at = now(),
           updated_by = $2,
+          order_status = $3,
           assigned_to = (
             SELECT crm 
             FROM public.customers 
@@ -880,7 +2958,16 @@ class O2dService {
         RETURNING *;
       `;
 
-      const { rows } = await pool.query(query, [id, userId]);
+      // 3. Stringify the dynamic object so pg parses it cleanly as JSONB
+      const { rows } = await pool.query(query, [
+        id,
+        userId,
+        vehicleArrangementCompletedStage,
+        JSON.stringify(additionalVehicleData),
+      ]);
+
+      sendNotificationToCrm(id);
+
       return rows[0];
     } catch (error) {
       console.error(
@@ -905,14 +2992,74 @@ class O2dService {
 
       const invoiceExecutiveId = getInvoiceExecutiveId.rows[0].id;
 
+      console.log("Invoice Executive ID: ", invoiceExecutiveId);
+
+      const invoiceGenertionStage = ORDER_STAGES.invoice_generation_stage;
+
       const query = `
         UPDATE public.sales_orders
-        SET invoice_and_dispatch = COALESCE(invoice_and_dispatch, '{}'::jsonb) || jsonb_build_object('assign_to', $2::text)
+        SET invoice_and_dispatch = COALESCE(invoice_and_dispatch, '{}'::jsonb) || jsonb_build_object('assign_to', $2::text),
+        order_status = $3,
+        assigned_to = $2::integer,
+        updated_at = now(),
+        updated_by = $4
         WHERE id = $1
         RETURNING *;
       `;
 
-      const { rows } = await pool.query(query, [id, invoiceExecutiveId]);
+      const { rows } = await pool.query(query, [
+        id,
+        invoiceExecutiveId,
+        invoiceGenertionStage,
+        userId,
+      ]);
+
+      if (invoiceExecutiveId) {
+        try {
+          const notif = await createNotification(
+            invoiceExecutiveId,
+            `Order with Order ID: ${id} has been assigned to You.`,
+            "order_assigned_to_invoice_executive",
+          );
+          emitToUser(invoiceExecutiveId, "new_notification", notif);
+
+          const invoiceExecutiveUser = await pool.query(
+            `SELECT email_id FROM users WHERE id = $1`,
+            [invoiceExecutiveId],
+          );
+
+          const invoiceExecutiveEmail = invoiceExecutiveUser.rows[0]?.email_id;
+          if (invoiceExecutiveEmail) {
+            const orderDetails = await pool.query(
+              `SELECT client_name, quantity_mt, rod_size, delivery_date, dispatch_type FROM sales_orders WHERE id = $1`,
+              [id],
+            );
+
+            const order = orderDetails.rows[0];
+            if (order) {
+              await sendMail({
+                to: invoiceExecutiveEmail,
+                subject: `Order Assigned to Invoice Executive - Order ID: ${id}`,
+                templateName: "invoice-assignment-request-mail",
+                replacements: {
+                  order_id: id,
+                  client_name: order.client_name || "-",
+                  quantity_mt: order.quantity_mt || "-",
+                  rod_size: order.rod_size || "-",
+                  delivery_date: formatEmailDate(order.delivery_date),
+                  dispatch_type: order.dispatch_type || "-",
+                },
+              });
+            }
+          }
+        } catch (error) {
+          console.log(
+            "error in sending notification to invoice executive: ",
+            error,
+          );
+        }
+      }
+
       return rows[0];
     } catch (error) {
       console.error("Error in assigning order to invoice executive: ", error);
@@ -925,20 +3072,649 @@ class O2dService {
       // We update the specific order, injecting the JSON payload.
       // We keep the assign_to check for authorization and the IS NULL check
       // to prevent overwriting an already completed order.
+
+      const completedStage = ORDER_STAGES.order_completed_stage;
+
       const query = `
       UPDATE public.sales_orders
-      SET intimation_thankyou = $1
+      SET intimation_thankyou = $1,
+      order_status = $3
       WHERE id = $2 
       RETURNING *;
     `;
 
-      const values = [payload, orderId];
+      const values = [payload, orderId, completedStage];
       const { rows } = await pool.query(query, values);
 
       // Return the updated row, or null if no row was updated
       return rows.length ? rows[0] : null;
     } catch (error) {
       console.error("Error inserting intimation and thank you data: ", error);
+      throw error;
+    }
+  }
+
+  async updatePaymentInformation(id, userId, body) {
+    try {
+      const {
+        payment_status,
+        payment_status_marked_at,
+        payment_done_at,
+        under_one_lakh,
+        is_interest_note_issue,
+        interest_note_issued_on_timestamp,
+        interest_note_collected_on_timestamp,
+        // cn_or_dn_issue_status,
+        // cn_or_dn_issue_timestamp,
+        collect_interest_from_client,
+      } = body;
+
+      const saleOrderInformation = await pool.query(
+        `select invoice_and_dispatch, payment_status from sales_orders where id = $1`,
+        [id],
+      );
+
+      if (saleOrderInformation.rows.length === 0) {
+        throw new Error("Sales order not found");
+      }
+
+      const saleOrder = saleOrderInformation.rows[0];
+
+      // Dynamically build the payload so we only update provided fields.
+      const paymentPayload = {};
+
+      if (payment_status !== undefined) {
+        paymentPayload.payment_status = payment_status;
+
+        const interestNoteAssignStatus =
+          saleOrder?.payment_status?.is_interest_note_issue;
+
+        if (payment_status === true && interestNoteAssignStatus === undefined) {
+          const invoiceDate =
+            saleOrder.invoice_and_dispatch?.actual_dispatch_date;
+
+          if (!invoiceDate) {
+            const error = new Error("Invoice Date is required");
+            error.statusCode = 400;
+            error.isOperational = true;
+            throw error;
+          }
+
+          let dueDate = new Date(invoiceDate);
+          dueDate.setDate(dueDate.getDate() + 10);
+          const complaintInformation = await pool.query(
+            `select * from complaint_info where sale_order_id = $1`,
+            [id],
+          );
+
+          const complaintStatus =
+            complaintInformation.rows[0]?.complaint_status;
+          if (complaintStatus === "Closed") {
+            dueDate = new Date(complaintInformation.rows[0]?.updated_at);
+            dueDate.setDate(dueDate.getDate() + 10);
+          }
+
+          if (dueDate < new Date()) {
+            paymentPayload.is_interest_note_issue = true;
+            paymentPayload.is_interest_note_issue_at = new Date().toISOString();
+
+            const sendNotificationToJuniorAccountant = async (order_id) => {
+              try {
+                const juniorAccountantIdResult = await pool.query(
+                  `select id from users where role = 'Junior Accountant' and department = 'Accounts'`,
+                );
+
+                const juniorAccountantId = juniorAccountantIdResult.rows[0].id;
+
+                if (!juniorAccountantId) {
+                  throw new Error("Junior Accountant not found");
+                }
+
+                const notif = await createNotification(
+                  juniorAccountantId,
+                  `Please Issue Interest Note for Order ID: ${order_id}.`,
+                  "interest_note_issue_notification_to_junior_accountant",
+                );
+                emitToUser(juniorAccountantId, "new_notification", notif);
+              } catch (error) {
+                console.log(
+                  "error while sending notification to junior accountant: ",
+                  error,
+                );
+              }
+            };
+
+            sendNotificationToJuniorAccountant(id);
+          }
+        }
+      }
+      if (payment_status_marked_at !== undefined) {
+        paymentPayload.payment_status_marked_at = payment_status_marked_at;
+      }
+      if (payment_done_at !== undefined) {
+        paymentPayload.payment_done_at = payment_done_at;
+      }
+      if (under_one_lakh !== undefined) {
+        paymentPayload.under_one_lakh = under_one_lakh;
+      }
+      if (is_interest_note_issue !== undefined) {
+        // paymentPayload.is_interest_note_issue = is_interest_note_issue;
+        // const sendNotificationToJuniorAccountant = async (order_id) => {
+        //   try {
+        //     const juniorAccountantIdResult = await pool.query(
+        //       `select id from users where role = 'Junior Accountant' and department = 'Accounts'`,
+        //     );
+        //     const juniorAccountantId = juniorAccountantIdResult.rows[0].id;
+        //     if (!juniorAccountantId) {
+        //       throw new Error("Junior Accountant not found");
+        //     }
+        //     const notif = await createNotification(
+        //       juniorAccountantId,
+        //       `Please Issue Interest Note for Order ID: ${order_id}.`,
+        //       "interest_note_issue_notification_to_junior_accountant",
+        //     );
+        //     emitToUser(juniorAccountantId, "new_notification", notif);
+        //   } catch (error) {
+        //     console.log(
+        //       "error while sending notification to junior accountant: ",
+        //       error,
+        //     );
+        //   }
+        // };
+        // if (is_interest_note_issue === true) {
+        //   sendNotificationToJuniorAccountant(id);
+        // }
+      }
+      if (interest_note_issued_on_timestamp !== undefined) {
+        paymentPayload.interest_note_issued_on_timestamp =
+          interest_note_issued_on_timestamp;
+
+        const sendNotificationToCrm = async (order_id) => {
+          try {
+            const crmIdResult = await pool.query(
+              `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+              [order_id],
+            );
+
+            if (
+              crmIdResult.rows.length === 0 ||
+              crmIdResult.rows[0].crm === null
+            ) {
+              throw new Error("Please Assign CRM First");
+            }
+            const crmId = crmIdResult.rows[0].crm;
+
+            const notif = await createNotification(
+              crmId,
+              `Interest Note Work has been completed for Order ID: ${id}.`,
+              "interest_note_issue_completed_notification_to_crm",
+            );
+            emitToUser(crmId, "new_notification", notif);
+          } catch (error) {
+            console.log("error while sending notification to crm: ", error);
+          }
+        };
+        sendNotificationToCrm(id);
+      }
+      if (interest_note_collected_on_timestamp !== undefined) {
+        paymentPayload.interest_note_collected_on_timestamp =
+          interest_note_collected_on_timestamp;
+      }
+
+      if (collect_interest_from_client !== undefined) {
+        paymentPayload.collect_interest_from_client =
+          collect_interest_from_client;
+      }
+
+      // if (cn_or_dn_issue_status !== undefined) {
+      //   paymentPayload.cn_or_dn_issue_status = cn_or_dn_issue_status;
+      // }
+      // if (cn_or_dn_issue_timestamp !== undefined) {
+      //   paymentPayload.cn_or_dn_issue_timestamp = cn_or_dn_issue_timestamp;
+      // }
+
+      // Optional: Prevent database call if payload is empty
+      if (Object.keys(paymentPayload).length === 0) {
+        throw new Error("No valid payment fields provided for update.");
+      }
+
+      const query = `
+        UPDATE public.sales_orders
+        SET payment_status = COALESCE(payment_status, '{}'::jsonb) || $2::jsonb,
+            updated_at = now(),
+            updated_by = $1
+        WHERE id = $3
+        RETURNING *;
+      `;
+
+      const values = [userId, JSON.stringify(paymentPayload), id];
+
+      const { rows } = await pool.query(query, values);
+      return rows[0];
+    } catch (error) {
+      console.error("Error in updating payment information: ", error);
+      throw error;
+    }
+  }
+
+  async updateDeliveryAndWeightInformation(id, userId, body) {
+    try {
+      const {
+        actual_delivery_timestamp,
+        delivery_status,
+        weight_difference_in_kg,
+        settlement,
+        cn_or_dn_issue_status,
+        cn_or_dn_issue_timestamp,
+        quality_confirmation_status,
+        quality_confirmation_timestamp,
+      } = body;
+
+      // Dynamically build the payload so we only update provided fields.
+      // This prevents overwriting existing data with nulls during partial updates.
+      const deliveryPayload = {};
+
+      if (actual_delivery_timestamp !== undefined) {
+        deliveryPayload.actual_delivery_timestamp = actual_delivery_timestamp;
+      }
+      if (delivery_status !== undefined) {
+        deliveryPayload.delivery_status = delivery_status;
+      }
+      if (weight_difference_in_kg !== undefined) {
+        // Map the input variable to the specific DB column key and ensure it's a float
+        deliveryPayload.weight_difference_in_kg = parseFloat(
+          weight_difference_in_kg,
+        );
+      }
+      if (settlement !== undefined) {
+        deliveryPayload.settlement = settlement;
+
+        const sendNotificationToJuniorAccountant = async (order_id) => {
+          try {
+            const juniorAccountantIdResult = await pool.query(
+              `select id from users where role = 'Junior Accountant' and department = 'Accounts'`,
+            );
+
+            const juniorAccountantId = juniorAccountantIdResult.rows[0].id;
+
+            if (!juniorAccountantId) {
+              throw new Error("Junior Accountant not found");
+            }
+
+            const notif = await createNotification(
+              juniorAccountantId,
+              `Please Create ${settlement === "CN Issue" ? "Credit" : "Debit"} Note for Order ID: ${order_id}.`,
+              "cn_dn_issue_notification_to_junior_accountant",
+            );
+            emitToUser(juniorAccountantId, "new_notification", notif);
+          } catch (error) {
+            console.log(
+              "error while sending notification to junior accountant: ",
+              error,
+            );
+          }
+        };
+
+        if (settlement === "CN Issue" || settlement === "DN Issue") {
+          sendNotificationToJuniorAccountant(id);
+        }
+      }
+      if (cn_or_dn_issue_status !== undefined) {
+        deliveryPayload.cn_or_dn_issue_status = cn_or_dn_issue_status;
+
+        const sendNotificationToCrm = async (order_id) => {
+          try {
+            const crmIdResult = await pool.query(
+              `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
+          where so.id = $1`,
+              [order_id],
+            );
+
+            if (
+              crmIdResult.rows.length === 0 ||
+              crmIdResult.rows[0].crm === null
+            ) {
+              throw new Error("Please Assign CRM First");
+            }
+            const crmId = crmIdResult.rows[0].crm;
+
+            const notif = await createNotification(
+              crmId,
+              `CN/DN has been issued for Order ID: ${order_id}.`,
+              "cn_dn_issue_completed_notification_to_crm",
+            );
+            emitToUser(crmId, "new_notification", notif);
+          } catch (error) {
+            console.log("error while sending notification to crm: ", error);
+          }
+        };
+
+        if (cn_or_dn_issue_status === true) {
+          sendNotificationToCrm(id);
+        }
+      }
+      if (cn_or_dn_issue_timestamp !== undefined) {
+        deliveryPayload.cn_or_dn_issue_timestamp = cn_or_dn_issue_timestamp;
+      }
+
+      if (quality_confirmation_status !== undefined) {
+        deliveryPayload.quality_confirmation_status =
+          quality_confirmation_status;
+
+        // If quality confirmation is true, push data to overdue_summary_report
+        if (true) {
+          // 1. Fetch the necessary invoice and client data from sales_orders
+          const fetchOrderQuery = `SELECT client_name, invoice_and_dispatch FROM public.sales_orders WHERE id = $1`;
+          const fetchResult = await pool.query(fetchOrderQuery, [id]);
+
+          if (fetchResult.rows.length > 0) {
+            const orderData = fetchResult.rows[0];
+            const clientName = orderData.client_name;
+            const invoiceAndDispatch = orderData.invoice_and_dispatch || {};
+            const invoices = invoiceAndDispatch.invoices || [];
+            const totalInvoiceAmount =
+              invoiceAndDispatch.total_invoice_amount || null;
+
+            // Ensure an invoice actually exists before trying to insert
+            if (invoices.length > 0) {
+              const invoiceDate = invoices[0].dispatch_timestamp || null;
+              const invoiceNo = invoices[0].invoice || null;
+              const invoiceUrl = invoices[0].invoice_url || null;
+
+              // 2. Check if the record already exists for this sale_order_id
+              const checkDuplicateQuery = `SELECT 1 FROM public.overdue_summary_report WHERE sale_order_id = $1 LIMIT 1`;
+              const duplicateCheckResult = await pool.query(
+                checkDuplicateQuery,
+                [id],
+              );
+
+              if (duplicateCheckResult.rows.length > 0) {
+                console.log(
+                  `Overdue summary report already exists for Order ID: ${id}. Skipping insertion.`,
+                );
+              } else {
+                // 3. Insert into overdue_summary_report if not already present
+                const insertOverdueQuery = `
+                  INSERT INTO public.overdue_summary_report (
+                    sale_order_id, 
+                    invoice_date, 
+                    invoice_no, 
+                    client_name,
+                    balance,
+                    invoice_url
+                  ) 
+                  VALUES ($1, $2, $3, $4, $5, $6)
+                `;
+
+                await pool.query(insertOverdueQuery, [
+                  id,
+                  invoiceDate,
+                  invoiceNo,
+                  clientName,
+                  totalInvoiceAmount,
+                  invoiceUrl,
+                ]);
+                console.log(
+                  `Successfully inserted into overdue_summary_report for Order ID: ${id}`,
+                );
+              }
+            } else {
+              console.log(
+                `No invoice found in invoice_and_dispatch for Order ID: ${id}. Skipping overdue summary report insertion.`,
+              );
+            }
+          }
+        }
+      }
+
+      if (quality_confirmation_timestamp !== undefined) {
+        deliveryPayload.quality_confirmation_timestamp =
+          quality_confirmation_timestamp;
+      }
+
+      const query = `
+        UPDATE public.sales_orders
+        SET delivery_and_weight = COALESCE(delivery_and_weight, '{}'::jsonb) || $2::jsonb,
+            updated_at = now(),
+            updated_by = $1
+        WHERE id = $3
+        RETURNING *;
+      `;
+
+      const values = [userId, JSON.stringify(deliveryPayload), id];
+
+      const { rows } = await pool.query(query, values);
+
+      return rows.length ? rows[0] : null;
+    } catch (error) {
+      console.error(
+        "error in updating delivery and weight information: ",
+        error,
+      );
+      throw error;
+    }
+  }
+
+  async addRemarksToOrder(orderId, data, userId) {
+    try {
+      const { remark } = data;
+
+      if (!remark?.trim()) {
+        throw new Error("Remark is required");
+      }
+
+      const { rows } = await pool.query(
+        `
+      SELECT remarks
+      FROM sales_orders
+      WHERE id = $1
+      `,
+        [orderId],
+      );
+
+      if (!rows.length) {
+        throw new Error("Sales order not found");
+      }
+
+      const remarks = rows[0].remarks || [];
+
+      remarks.push({
+        id: crypto.randomUUID(),
+        remark,
+        created_at: new Date().toISOString(),
+        created_by: userId,
+        updated_at: null,
+      });
+
+      await pool.query(
+        `
+      UPDATE sales_orders
+      SET remarks = $1,
+          updated_by = $2,
+          updated_at = NOW()
+      WHERE id = $3
+      `,
+        [JSON.stringify(remarks), userId, orderId],
+      );
+
+      return remarks;
+    } catch (error) {
+      console.error("Error in addRemarksToOrder:", error);
+      throw error;
+    }
+  }
+
+  async getRemarksForOrder(orderId) {
+    try {
+      const { rows } = await pool.query(
+        `
+      SELECT remarks
+      FROM sales_orders
+      WHERE id = $1
+      `,
+        [orderId],
+      );
+
+      if (!rows.length) {
+        throw new Error("Sales order not found");
+      }
+
+      return rows[0].remarks || [];
+    } catch (error) {
+      console.error("Error in getRemarksForOrder:", error);
+      throw error;
+    }
+  }
+
+  async updateRemarksForOrder(orderId, remarkId, data, userId) {
+    try {
+      const { remark } = data;
+
+      if (!remark?.trim()) {
+        throw new Error("Remark is required");
+      }
+
+      const { rows } = await pool.query(
+        `
+      SELECT remarks
+      FROM sales_orders
+      WHERE id = $1
+      `,
+        [orderId],
+      );
+
+      if (!rows.length) {
+        throw new Error("Sales order not found");
+      }
+
+      const remarks = rows[0].remarks || [];
+
+      const index = remarks.findIndex((r) => r.id === remarkId);
+
+      if (index === -1) {
+        throw new Error("Remark not found");
+      }
+
+      remarks[index] = {
+        ...remarks[index],
+        remark,
+        updated_at: new Date().toISOString(),
+      };
+
+      await pool.query(
+        `
+      UPDATE sales_orders
+      SET remarks = $1,
+          updated_by = $2,
+          updated_at = NOW()
+      WHERE id = $3
+      `,
+        [JSON.stringify(remarks), userId, orderId],
+      );
+
+      return remarks[index];
+    } catch (error) {
+      console.error("Error in updateRemarksForOrder:", error);
+      throw error;
+    }
+  }
+
+  async deleteRemarksForOrder(orderId, remarkId, userId) {
+    try {
+      const { rows } = await pool.query(
+        `
+      SELECT remarks
+      FROM sales_orders
+      WHERE id = $1
+      `,
+        [orderId],
+      );
+
+      if (!rows.length) {
+        throw new Error("Sales order not found");
+      }
+
+      let remarks = rows[0].remarks || [];
+
+      const exists = remarks.some((r) => r.id === remarkId);
+
+      if (!exists) {
+        throw new Error("Remark not found");
+      }
+
+      remarks = remarks.filter((r) => r.id !== remarkId);
+
+      await pool.query(
+        `
+      UPDATE sales_orders
+      SET remarks = $1,
+          updated_by = $2,
+          updated_at = NOW()
+      WHERE id = $3
+      `,
+        [JSON.stringify(remarks), userId, orderId],
+      );
+
+      return remarks;
+    } catch (error) {
+      console.error("Error in deleteRemarksForOrder:", error);
+      throw error;
+    }
+  }
+
+  async getSpecificSaleOrderInformation(userId, id) {
+    try {
+      const query = `
+        SELECT * FROM public.sales_orders
+        WHERE id = $1
+      `;
+
+      const { rows } = await pool.query(query, [id]);
+
+      return rows;
+    } catch (error) {
+      console.error("Error in getSpecificSaleOrderInformation:", error);
+      throw error;
+    }
+  }
+
+  async splitOrderIntoMultipleOrders(order_id, previous_information, userId) {
+    try {
+      // Construct the JSON object for the order_split_related column
+      const orderSplitRelatedData = {
+        is_slitted: true,
+        splitted_at: new Date().toISOString(), // Standardizes 'now()' to an ISO string for JSON
+        // previous_information: previous_information
+      };
+
+      const orderStatus = ORDER_STAGES.order_splitted;
+
+      const query = `
+        UPDATE public.sales_orders
+        SET order_split_related = $1,
+            updated_by = $2,
+            updated_at = NOW(),
+            order_status = $3
+        WHERE id = $4
+        RETURNING *;
+      `;
+
+      // JSON.stringify is used to safely map the JS object to the JSONB column
+      const { rows } = await pool.query(query, [
+        JSON.stringify(orderSplitRelatedData),
+        userId,
+        orderStatus,
+        order_id,
+      ]);
+
+      if (!rows.length) {
+        throw new Error("Sales order not found");
+      }
+
+      return rows[0];
+    } catch (error) {
+      console.error("Error in splitOrderIntoMultipleOrders:", error);
       throw error;
     }
   }

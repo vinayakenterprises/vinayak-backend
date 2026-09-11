@@ -90,8 +90,19 @@ class TenderService {
 
   async getActiveTenders() {
     try {
-      const getActiveTendersQuery = `select * from tender_information where approved is null and send_for_approval = false order by id desc`;
+      const getActiveTendersQuery = `
+      SELECT 
+        *,
+        publish_date::text AS publish_date,
+        closing_date::text AS closing_date
+      FROM tender_information
+      WHERE approved IS NULL
+        AND send_for_approval = false
+      ORDER BY id DESC
+    `;
+
       const { rows } = await pool.query(getActiveTendersQuery);
+
       return rows;
     } catch (error) {
       throw error;
@@ -126,7 +137,7 @@ class TenderService {
     try {
       const getShortfallTendersQuery = `select * from tender_information where shortfall = true and createdBy = $1 and tender_completed_at is not null order by id desc`;
       const { rows } = await pool.query(getShortfallTendersQuery, [userId]);
-      
+
       return rows;
     } catch (error) {
       throw error;
@@ -184,8 +195,7 @@ class TenderService {
 
       const { rows } = await pool.query(updateQuery, [userId, id]);
 
-
-      try{
+      try {
         const mdIdQuery = `SELECT id FROM users WHERE role = 'MD'`;
         const mdId = await pool.query(mdIdQuery);
         const mdIdResult = mdId.rows[0].id;
@@ -196,7 +206,7 @@ class TenderService {
           "tender_completed_notification",
         );
         emitToUser(mdIdResult, "new_notification", notif);
-      }catch(error){
+      } catch (error) {
         console.log("error in sending notification: ", error);
       }
 
@@ -205,9 +215,6 @@ class TenderService {
       throw error;
     }
   }
-
-
-
 
   async getTendersForMD(userId) {
     try {
@@ -224,7 +231,6 @@ class TenderService {
       throw error;
     }
   }
-
 
   async deleteTender(id) {
     try {
@@ -305,7 +311,7 @@ class TenderService {
         const isApproved = approveStatus === true;
 
         sendMail({
-          to: "rinkusingh805764@gmail.com",
+          to: "tender@mitt-alu.com",
           subject: isApproved
             ? `✅ Tender Approved - ${tenderInformationFromDB.rows[0].tender_ref_no}`
             : `❌ Tender Rejected - ${tenderInformationFromDB.rows[0].tender_ref_no}`,
@@ -385,7 +391,7 @@ class TenderService {
         });
 
         sendMail({
-          to: "rinkusingh805764@gmail.com",
+          to: "tender@mitt-alu.com",
           subject: isApproved
             ? `✅ Counter Offer Approved - ${tenderData.tender_ref_no || "N/A"}`
             : `❌ Counter Offer Rejected - ${tenderData.tender_ref_no || "N/A"}`,
@@ -452,19 +458,14 @@ class TenderService {
           },
         });
 
-
-
         // send notification to tender executive
         const notif = await createNotification(
           tenderData.createdby,
           `Your Counter Offer Request with Tender Title as ${tenderData?.tender_title} ${isApproved ? "has been approved." : "has been rejected."}.`,
           "counter_offer_approval_status",
         );
-        
 
         emitToUser(tenderData.createdby, "new_notification", notif);
-
-
       } catch (error) {
         console.log("error in sending mail or notification: ", error);
       }
@@ -496,6 +497,7 @@ class TenderService {
       tender_fee_inr,
       emd_inr,
       state,
+      processing_fee_inr
     } = body;
 
     const query = `
@@ -516,13 +518,14 @@ class TenderService {
             assigned_to,
             createdBy,
             product_name,
-            product_type
+            product_type,
+            processing_fee_inr
         )
         VALUES (
             $1, $2, $3, $4, $5, $6,
             $7, $8, $9, $10, $11, $12,
             $13,
-            $14, $15, $16, $17
+            $14, $15, $16, $17, $18
         )
         RETURNING *;
     `;
@@ -545,6 +548,7 @@ class TenderService {
       userId,
       product_name,
       product_type,
+      processing_fee_inr
     ];
 
     const result = await pool.query(query, values);
@@ -654,9 +658,10 @@ class TenderService {
       }
 
       const mdUserData = await pool.query(
-        `SELECT id FROM users WHERE role = 'MD'`,
+        `SELECT id, email_id FROM users WHERE role = 'MD'`,
       );
       const mdId = mdUserData.rows[0].id;
+      const emailId = mdUserData.rows[0].email_id;
 
       const updateQuery = `
         UPDATE tender_information
@@ -675,7 +680,7 @@ class TenderService {
 
       try {
         sendMail({
-          to: "rinkusingh805764@gmail.com",
+          to: emailId,
           subject: `⏳ Action Required: Tender Approval - ${tenderData.tender_ref_no}`,
           templateName: "send-for-approval-mail", // The HTML file created above
           replacements: {
@@ -776,7 +781,6 @@ class TenderService {
       ORDER BY id DESC
     `;
 
-
     const { rows } = await pool.query(getApprovedTendersQuery, []);
     return rows;
   }
@@ -846,7 +850,7 @@ class TenderService {
       const totalApprovedTendersCountResult = await pool.query(
         totalApprovedTendersCountQuery,
       );
-      
+
       const completedTendersCountResult = await pool.query(
         completedTendersCountQuery,
       );
@@ -864,7 +868,7 @@ class TenderService {
           totalApprovedTendersCountResult.rows[0].count,
           0,
         ),
-        
+
         completedTenders: parseInt(
           completedTendersCountResult.rows[0].count,
           0,
@@ -1028,7 +1032,8 @@ class TenderService {
         "pbg",
         "insurance",
         "npv_bond",
-        "immediate_processing_document_completed_at"
+        "immediate_processing_document_completed_at",
+        "processing_fee_inr"
       ];
 
       const jsonColumns = [
@@ -1078,7 +1083,6 @@ class TenderService {
             tenderData.rows[0].submission_actual?.notified_to_md || // preserve existing flag
             fieldsToUpdate.submission_actual?.submission_actual_status === true, // or set if status is true
         };
-
       }
 
       // 3. counter offer approval request notification
@@ -1092,7 +1096,6 @@ class TenderService {
           "counter_offer_approval_request_notification",
         );
         emitToUser(mdId, "new_notification", notif);
-
       }
 
       // 4. Merge incoming counter_offer data with database counter_offer data
@@ -1104,7 +1107,6 @@ class TenderService {
             tenderData.rows[0].counter_offer?.notified_to_md || // preserve existing flag
             fieldsToUpdate.counter_offer?.sent_for_approval === true, // or set if sending for approval
         };
-
       }
 
       const setClauses = [];
@@ -1176,7 +1178,7 @@ class TenderService {
 
         try {
           sendMail({
-            to: "rinkusingh805764@gmail.com",
+            to: "shreyans@mitt-alu.com",
             subject: `⏳ Action Required: Tender Approval - ${tenderData.tender_ref_no}`,
             templateName: "counter-offer-approval-request-mail",
             replacements: {

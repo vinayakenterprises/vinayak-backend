@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Credit Limit Request Result</title>
+    <style>
+      body { font-family: Arial, sans-serif; background: #f4f6f8; padding: 30px; color: #263238; }
+      .container { max-width: 640px; margin: auto; background: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #e1e5e8; }
+      .header { background: #14532d; color: #ffffff; padding: 26px 30px; text-align: center; }
+      .header h1 { margin: 0; font-size: 22px; }
+      .body { padding: 30px; }
+      .body p { font-size: 15px; line-height: 1.6; }
+      table { width: 100%; border-collapse: collapse; margin: 24px 0; }
+      td { padding: 12px 14px; border: 1px solid #e1e5e8; font-size: 14px; }
+      td:first-child { width: 42%; background: #f4f6f8; font-weight: bold; color: #455a64; }
+      .footer { background: #f4f6f8; border-top: 1px solid #e1e5e8; color: #78909c; font-size: 12px; padding: 18px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header"><h1>Credit Limit Request Result</h1></div>
+      <div class="body">
+        <p>Dear Sales Executive,</p>
+        <p>The credit limit request for the sales order below has been <b>{{approval_status}}</b>.</p>
+        <table>
+          <tr><td>Order ID</td><td>{{order_id}}</td></tr>
+          <tr><td>Client</td><td>{{client_name}}</td></tr>
+          <tr><td>Quantity</td><td>{{quantity_mt}} MT</td></tr>
+          <tr><td>Rod Size</td><td>{{rod_size}}</td></tr>
+          <tr><td>Delivery Date</td><td>{{delivery_date}}</td></tr>
+          <tr><td>Dispatch Type</td><td>{{dispatch_type}}</td></tr>
+          <tr><td>Approval Status</td><td>{{approval_status}}</td></tr>
+        </table>
+        <p>Please log in to the portal for the next order action.</p>
+      </div>
+      <div class="footer">This is an automated email. Please do not reply.</div>
+    </div>
+  </body>
+</html>

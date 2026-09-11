@@ -27,6 +27,17 @@ const pool = new Pool({
   },
 });
 
+logger.info(
+  `PostgreSQL Pool Initialized -> Host: "${config.db.host}" | Database: "${config.db.database}" | Environment: "${config.nodeEnv}"`
+);
+
+const prodDbName = process.env.DB_DATABASE_PROD || "vinayak_db";
+if (config.nodeEnv === "development" && config.db.database === prodDbName) {
+  logger.warn(
+    `⚠️ SAFETY WARNING: Currently running in DEVELOPMENT mode but connected to PRODUCTION database "${prodDbName}"!`
+  );
+}
+
 pool.on("error", (err) => {
   logger.error("Unexpected error on idle database client", err);
 });
