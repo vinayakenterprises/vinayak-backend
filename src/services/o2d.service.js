@@ -15,6 +15,7 @@ const formatEmailDate = (value) =>
   value ? emailDateFormatter.format(new Date(value)) : "-";
 
 class O2dService {
+
   async createSaleOrder(data, userId) {
     const {
       client_name,
@@ -35,9 +36,13 @@ class O2dService {
       sale_rate,
     } = data;
 
+    // Check CRM
     const getCrm = await pool.query(
-      `select crm from customers where company_name = $1 or $1::text = any(child_companies)`,
-      [client_name],
+      `SELECT crm
+     FROM customers
+     WHERE company_name = $1
+        OR $1::text = ANY(child_companies)`,
+      [client_name]
     );
 
     if (getCrm.rows[0].crm === null) {
@@ -168,6 +173,7 @@ class O2dService {
       originalCreatorId = originalCreatedBy.rows[0].created_by;
     }
 
+    // Insert Sales Order
     const query = `
       INSERT INTO public.sales_orders (
         client_name, rate, ex_works_rate, freight, quantity_mt, rod_size,
