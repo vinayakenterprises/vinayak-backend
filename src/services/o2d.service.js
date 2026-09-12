@@ -2521,10 +2521,11 @@ class O2dService {
         const sendNotificationToJuniorAccountant = async (order_id) => {
           try {
             const juniorAccountantIdResult = await pool.query(
-              `select id from users where role = 'Junior Accountant' and department = 'Accounts'`,
+              `select id, email_id from users where role = 'Junior Accountant' and department = 'Accounts' LIMIT 1`,
             );
 
-            const juniorAccountantId = juniorAccountantIdResult.rows[0].id;
+            const juniorAccountantId = juniorAccountantIdResult.rows[0]?.id;
+            const juniorAccountantEmail = juniorAccountantIdResult.rows[0]?.email_id;
 
             if (!juniorAccountantId) {
               throw new Error("Junior Accountant not found");
@@ -2536,6 +2537,13 @@ class O2dService {
               "cn_dn_issue_notification_to_junior_accountant",
             );
             emitToUser(juniorAccountantId, "new_notification", notif);
+
+            if (juniorAccountantEmail) {
+              const orderDetails = await pool.query(
+                `SELECT client_name, quantity_mt, rod_size, delivery_date, dispatch_type FROM sales_orders WHERE id = $1`,
+                [order_id],
+              );
+            }
           } catch (error) {
             console.log(
               "error while sending notification to junior accountant: ",
@@ -3161,10 +3169,11 @@ class O2dService {
             const sendNotificationToJuniorAccountant = async (order_id) => {
               try {
                 const juniorAccountantIdResult = await pool.query(
-                  `select id from users where role = 'Junior Accountant' and department = 'Accounts'`,
+                  `select id, email_id from users where role = 'Junior Accountant' and department = 'Accounts' LIMIT 1`,
                 );
 
-                const juniorAccountantId = juniorAccountantIdResult.rows[0].id;
+                const juniorAccountantId = juniorAccountantIdResult.rows[0]?.id;
+                const juniorAccountantEmail = juniorAccountantIdResult.rows[0]?.email_id;
 
                 if (!juniorAccountantId) {
                   throw new Error("Junior Accountant not found");
@@ -3176,6 +3185,31 @@ class O2dService {
                   "interest_note_issue_notification_to_junior_accountant",
                 );
                 emitToUser(juniorAccountantId, "new_notification", notif);
+
+                if (juniorAccountantEmail) {
+                  const orderDetails = await pool.query(
+                    `SELECT client_name, quantity_mt, rod_size, delivery_date, dispatch_type FROM sales_orders WHERE id = $1`,
+                    [order_id],
+                  );
+                  const order = orderDetails.rows[0];
+                  if (order) {
+                    await sendMail({
+                      to: juniorAccountantEmail,
+                      subject: `Interest Note Issue Request - Order ID: ${order_id}`,
+                      templateName: "junior-accountant-note-mail",
+                      replacements: {
+                        order_id,
+                        client_name: order.client_name || "-",
+                        quantity_mt: order.quantity_mt || "-",
+                        rod_size: order.rod_size || "-",
+                        delivery_date: formatEmailDate(order.delivery_date),
+                        dispatch_type: order.dispatch_type || "-",
+                        note_type: "Interest Note",
+                        message: `Please Issue Interest Note for Order ID: ${order_id}.`,
+                      },
+                    });
+                  }
+                }
               } catch (error) {
                 console.log(
                   "error while sending notification to junior accountant: ",
@@ -3333,10 +3367,11 @@ class O2dService {
         const sendNotificationToJuniorAccountant = async (order_id) => {
           try {
             const juniorAccountantIdResult = await pool.query(
-              `select id from users where role = 'Junior Accountant' and department = 'Accounts'`,
+              `select id, email_id from users where role = 'Junior Accountant' and department = 'Accounts' LIMIT 1`,
             );
 
-            const juniorAccountantId = juniorAccountantIdResult.rows[0].id;
+            const juniorAccountantId = juniorAccountantIdResult.rows[0]?.id;
+            const juniorAccountantEmail = juniorAccountantIdResult.rows[0]?.email_id;
 
             if (!juniorAccountantId) {
               throw new Error("Junior Accountant not found");
@@ -3348,6 +3383,31 @@ class O2dService {
               "cn_dn_issue_notification_to_junior_accountant",
             );
             emitToUser(juniorAccountantId, "new_notification", notif);
+
+            if (juniorAccountantEmail) {
+              const orderDetails = await pool.query(
+                `SELECT client_name, quantity_mt, rod_size, delivery_date, dispatch_type FROM sales_orders WHERE id = $1`,
+                [order_id],
+              );
+              const order = orderDetails.rows[0];
+              if (order) {
+                await sendMail({
+                  to: juniorAccountantEmail,
+                  subject: `${settlement === "CN Issue" ? "Credit" : "Debit"} Note Creation Request - Order ID: ${order_id}`,
+                  templateName: "junior-accountant-note-mail",
+                  replacements: {
+                    order_id,
+                    client_name: order.client_name || "-",
+                    quantity_mt: order.quantity_mt || "-",
+                    rod_size: order.rod_size || "-",
+                    delivery_date: formatEmailDate(order.delivery_date),
+                    dispatch_type: order.dispatch_type || "-",
+                    note_type: settlement === "CN Issue" ? "Credit Note" : "Debit Note",
+                    message: `Please Create ${settlement === "CN Issue" ? "Credit" : "Debit"} Note for Order ID: ${order_id}.`,
+                  },
+                });
+              }
+            }
           } catch (error) {
             console.log(
               "error while sending notification to junior accountant: ",
