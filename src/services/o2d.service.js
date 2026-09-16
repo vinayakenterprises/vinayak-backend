@@ -652,16 +652,16 @@ class O2dService {
           response.credit_limit = creditLimit;
           response.message = "Credit Limit Exceeded";
           response.remaining_credit =
-            creditLimit - (totalPendingOrderQuantity + quantity_mt);
+            parseInt(creditLimit) - (parseInt(totalPendingOrderQuantity || 0) + quantity_mt);
         } else {
           response.credit_limit = creditLimit;
           response.message = "Within the Credit Limit";
           response.remaining_credit =
-            creditLimit - (totalPendingOrderQuantity + quantity_mt);
+            parseInt(creditLimit) - (parseInt(totalPendingOrderQuantity || 0) + quantity_mt);
         }
       }
-
       return response;
+
     } catch (error) {
       console.log("error in checking credit limit: ", error);
       throw error;
