@@ -2409,7 +2409,6 @@ class O2dService {
 
   async updateInvoiceBillFromTally(body) {
     try {
-      console.log("Received Invoice Bill Details from Tally: ", body);
 
       const { date, party_name, voucher_number, bill_allocations } = body;
 
@@ -2701,13 +2700,40 @@ class O2dService {
     credit_debit_note_amount,
     credit_debit_note_quantity,
     pdfUrl,
-    terms_of_delivery,
+    original_invoice_number,
   ) {
     try {
       // 1. Extract Order ID from the credit note number (e.g., 'CN/666' -> 666)
-      const orderIdParts = credit_debit_note_number.split("/");
-      // const orderId = orderIdParts.length > 1 ? parseInt(orderIdParts[1], 10) : null;
-      const orderId = parseInt(terms_of_delivery, 10);
+      // const orderIdParts = credit_debit_note_number.split("/");
+
+      // const invoiceNumber = parseInt(original_invoice_number, 10);
+
+      // if (!invoiceNumber || isNaN(invoiceNumber)) {
+      //   throw new Error(
+      //     `Invalid original_invoice_number format. Could not extract Order ID from: ${original_invoice_number}`,
+      //   );
+      // }
+
+      const orderDetailsUsingInvoiceNumber = await pool.query(`SELECT so.*
+        FROM sales_orders so
+        CROSS JOIN LATERAL jsonb_array_elements(
+            so.invoice_and_dispatch->'invoices'
+        ) AS inv
+        WHERE split_part(inv->>'invoice', '/', 2) = $1
+        ORDER BY so.id DESC
+        LIMIT 1;`
+      , [original_invoice_number]);
+
+
+      if (orderDetailsUsingInvoiceNumber.rows.length === 0) {
+        throw new Error(
+          `Could not find order details using invoice number: ${original_invoice_number}`,
+        );
+      }
+
+
+      const orderId = parseInt(orderDetailsUsingInvoiceNumber.rows[0]?.id, 10);
+
 
       if (!orderId || isNaN(orderId)) {
         throw new Error(
