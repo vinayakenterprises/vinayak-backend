@@ -2296,15 +2296,39 @@ class O2dService {
   async receiveInterestNoteDetailsFromTally(body) {
     try {
       // 1. Extract the order ID from bill_reference (e.g., "2026-27/391" -> 391)
-      if (!body.bill_reference) {
-        const error = new Error(
-          "bill_reference is missing in the request body",
+      // if (!body.bill_reference) {
+      //   const error = new Error(
+      //     "bill_reference is missing in the request body",
+      //   );
+      //   error.statusCode = 400;
+      //   throw error;
+      // }
+
+      // const orderId = parseInt(body.crn, 10);
+
+
+      const original_invoice_number = body.original_invoice_number;
+
+
+      const orderDetailsFromInvoice = await pool.query(`SELECT so.*
+        FROM sales_orders AS so
+        CROSS JOIN LATERAL jsonb_array_elements(
+            so.invoice_and_dispatch->'invoices'
+        ) AS inv
+        WHERE inv->>'invoice' = $1
+        ORDER BY so.id DESC
+        LIMIT 1;`
+      , [original_invoice_number]);
+
+
+      if (orderDetailsFromInvoice.rows.length === 0) {
+        throw new Error(
+          `Could not find order details using invoice number: ${original_invoice_number}`,
         );
-        error.statusCode = 400;
-        throw error;
       }
 
-      const orderId = parseInt(body.crn, 10);
+      const orderId = parseInt(orderDetailsFromInvoice.rows[0]?.id, 10);
+
 
       const orderDetails = await pool.query(
         `SELECT * FROM sales_orders WHERE id = $1`,
