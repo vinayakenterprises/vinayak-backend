@@ -937,7 +937,8 @@ class O2dController {
 
   receiveInterestNoteDetailsFromTally = async (req, res, next) => {
     try {
-      // console.log("req.body:", req.body);
+
+      console.log("kjsdlkfjdslk", req.body);
 
       const updateDetailsInDb =
         await o2dService.receiveInterestNoteDetailsFromTally(req.body);
