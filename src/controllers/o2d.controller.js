@@ -952,6 +952,27 @@ class O2dController {
     }
   };
 
+
+  updateInvoiceBillFromTally = async (req, res, next) => {
+    try{
+
+
+
+      const updateDetailsInDb = await o2dService.updateInvoiceBillFromTally(req.body);
+
+
+      return res.status(200).json({
+        status: "success",
+        message: "Invoice Bill updated from Tally successfully",
+        data: updateDetailsInDb,
+      });
+    }catch(error){
+      next(error);
+    }
+  }
+
+
+
   updateInvoicePdfUrl = async (req, res, next) => {
     try {
       const { order_id, invoice_number, invoice_url } = req.body;

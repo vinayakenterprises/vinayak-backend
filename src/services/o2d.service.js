@@ -756,7 +756,9 @@ class O2dService {
                 rod_size: order?.rod_size || "-",
                 delivery_date: formatEmailDate(order?.delivery_date),
                 dispatch_type: order?.dispatch_type || "-",
-                approval_status: credit_limit_request_approval_status ? "Approved" : "Rejected",
+                approval_status: credit_limit_request_approval_status
+                  ? "Approved"
+                  : "Rejected",
               },
             });
           }
@@ -842,7 +844,7 @@ class O2dService {
         const { rows } = await pool.query(approveQuery, [
           order_id,
           soGenerationStage,
-          remark, 
+          remark,
         ]);
 
         // sendNotificationToCrm(order_id);
@@ -2405,6 +2407,79 @@ class O2dService {
     }
   }
 
+  async updateInvoiceBillFromTally(body) {
+    try {
+      console.log("Received Invoice Bill Details from Tally: ", body);
+
+      const { date, party_name, voucher_number, bill_allocations } = body;
+
+      const invoiceNotFound = [];
+      const invoiceFound = [];
+
+      for (const allocation of bill_allocations) {
+        const { bill_name, bill_type, amount } = allocation;
+
+        const billNameData = await pool.query(
+          `
+        SELECT *
+        FROM overdue_summary_report
+        WHERE invoice_no = $1
+        ORDER BY id DESC
+        LIMIT 1
+        `,
+          [bill_name],
+        );
+
+        if (billNameData.rows.length === 0) {
+          console.log(`No record found for invoice_no: ${bill_name}`);
+          invoiceNotFound.push(bill_name);
+          continue;
+        }
+
+        invoiceFound.push(bill_name);
+
+        const { id } = billNameData.rows[0];
+
+        // Generate a unique ID for every transaction/payment
+        const billId = crypto.randomUUID();
+
+        const transaction = {
+          billId,
+          party_name,
+          voucher_number,
+          bill_type,
+          amount,
+          date,
+        };
+
+        await pool.query(
+          `
+          UPDATE overdue_summary_report
+          SET
+            transactions = COALESCE(transactions, '[]'::jsonb)
+                          || jsonb_build_array($1::jsonb),
+
+            balance = COALESCE(balance, 0) - $2,
+
+            updated_at = now()
+
+          WHERE id = $3
+        `,
+          [JSON.stringify(transaction), amount, id],
+        );
+      }
+
+      return {
+        invoiceFound,
+        invoiceNotFound,
+      }
+
+    } catch (error) {
+      console.log("Error updating invoice bill from Tally:", error);
+      throw error;
+    }
+  }
+
   async updateInvoicePdfUrl(orderId, invoiceNumber, invoiceUrl, userId) {
     try {
       // 1. Fetch current invoice_and_dispatch JSON from sales_orders
@@ -2821,7 +2896,9 @@ class O2dService {
                 client_name: orderDetails.rows[0].client_name,
                 quantity_mt: orderDetails.rows[0].quantity_mt,
                 rod_size: orderDetails.rows[0].rod_size || "-",
-                delivery_date: formatEmailDate(orderDetails.rows[0].delivery_date),
+                delivery_date: formatEmailDate(
+                  orderDetails.rows[0].delivery_date,
+                ),
                 dispatch_type: orderDetails.rows[0].dispatch_type || "-",
               },
             });
