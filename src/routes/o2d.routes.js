@@ -131,6 +131,7 @@ router.post('/so-orders-from-tally', documentUpload, o2dController.receiveSoOrde
 router.post('/invoice-details-from-tally', documentUpload, o2dController.receiveInvoiceDetailsFromTally);
 router.post('/get-credit-debit-note-from-tally', documentUpload, o2dController.getCreditDebitNoteFromTally);
 router.post('/interest-note-details-from-tally', documentUpload, o2dController.receiveInterestNoteDetailsFromTally);
+router.post('/invoice-bill-update-from-tally', o2dController.updateInvoiceBillFromTally);
 
 // this api is used to upload the pdf for the invoice
 router.post(
