@@ -28,4 +28,3 @@ router.get("/get-hr-visit-tracker-entries", hrController.getHRVisitTrackerEntrie
 router.delete("/delete-hr-visit-tracker-entry/:id", hrController.deleteHRVisitTrackerEntry);
 
 export default router;
-

@@ -326,7 +326,6 @@ class HrController {
     }
   };
 
-
   getHRVisitTrackerEntries = async (req, res, next) => {
     try {
       const { startDate, endDate } = req.query;
@@ -355,7 +354,6 @@ class HrController {
       next(error);
     }
   };
-
 
   updateActualDate = async (req, res, next) => {
     try {

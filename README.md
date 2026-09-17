@@ -78,6 +78,7 @@ curl http://localhost:3000/api/v1/health
 ```
 
 ### Sample Response (Healthy)
+
 ```json
 {
   "status": "success",
@@ -92,6 +93,7 @@ curl http://localhost:3000/api/v1/health
 ```
 
 ### Sample Response (DB Down / Connection Failed)
+
 ```json
 {
   "status": "error",

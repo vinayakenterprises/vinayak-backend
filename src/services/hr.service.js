@@ -13,8 +13,7 @@ const formatToYYYYMMDD = (dateInput) => {
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
   if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.substring(0, 10);
   const dmy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-  if (dmy)
-    return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
+  if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
   const dt = new Date(str);
   if (!isNaN(dt.getTime())) {
     return new Intl.DateTimeFormat("en-CA", {
@@ -29,7 +28,6 @@ const getMonthCode = (dateInput) => {
   if (formatted) return formatted.substring(0, 7);
   return null;
 };
-
 
 class HrService {
   async createHiringRecord(recordData) {
@@ -63,26 +61,16 @@ class HrService {
       finalJobId = `#${maxNum + 1}`;
     }
 
-    const finalPriority = priority !== undefined && priority !== null && priority !== ""
-      ? parseInt(priority, 10)
-      : 3;
+    const finalPriority =
+      priority !== undefined && priority !== null && priority !== "" ? parseInt(priority, 10) : 3;
 
     const cleanClosingDate = formatToYYYYMMDD(closing_date);
 
     const dateObj = created_at ? new Date(created_at) : new Date();
     const monthCode =
-      selected_month && selected_month !== "All"
-        ? selected_month
-        : getMonthCode(dateObj); // YYYY-MM
+      selected_month && selected_month !== "All" ? selected_month : getMonthCode(dateObj); // YYYY-MM
     const [yearStr, monthStr] = monthCode.split("-");
-    const targetDate = new Date(
-      parseInt(yearStr, 10),
-      parseInt(monthStr, 10) - 1,
-      1,
-      12,
-      0,
-      0,
-    );
+    const targetDate = new Date(parseInt(yearStr, 10), parseInt(monthStr, 10) - 1, 1, 12, 0, 0);
     const monthName = targetDate.toLocaleDateString("en-US", {
       month: "long",
       year: "numeric",
@@ -92,11 +80,7 @@ class HrService {
 
     // If the position closes in a future month, creation month status MUST be 'Open'
     let creationStatus = hiring_status;
-    if (
-      closingMonthCode &&
-      monthCode < closingMonthCode &&
-      hiring_status === "Closed"
-    ) {
+    if (closingMonthCode && monthCode < closingMonthCode && hiring_status === "Closed") {
       creationStatus = "Open";
     }
 
@@ -118,14 +102,7 @@ class HrService {
 
     if (closingMonthCode && closingMonthCode > monthCode) {
       const [yStr, mStr] = closingMonthCode.split("-");
-      const targetClosingDate = new Date(
-        parseInt(yStr, 10),
-        parseInt(mStr, 10) - 1,
-        1,
-        12,
-        0,
-        0,
-      );
+      const targetClosingDate = new Date(parseInt(yStr, 10), parseInt(mStr, 10) - 1, 1, 12, 0, 0);
       const closingMonthName = targetClosingDate.toLocaleDateString("en-US", {
         month: "long",
         year: "numeric",
@@ -215,8 +192,7 @@ class HrService {
       if (!str || str === "null" || str === "undefined") return null;
       if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.substring(0, 10);
       const dmy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-      if (dmy)
-        return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
+      if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
       const dt = new Date(str);
       if (!isNaN(dt.getTime())) {
         return new Intl.DateTimeFormat("en-CA", {
@@ -260,7 +236,7 @@ class HrService {
     // Apply filtering logic if a date range is selected (filter on position opening date: created_at)
     if (cleanStart && cleanEnd) {
       params.push(cleanStart); // $1
-      params.push(cleanEnd);   // $2
+      params.push(cleanEnd); // $2
       conditions.push(`created_at::date >= $1::date AND created_at::date <= $2::date`);
     } else if (cleanStart) {
       params.push(cleanStart);
@@ -284,12 +260,12 @@ class HrService {
         let history = Array.isArray(row.history)
           ? row.history
           : (() => {
-            try {
-              return JSON.parse(row.history || "[]");
-            } catch {
-              return [];
-            }
-          })();
+              try {
+                return JSON.parse(row.history || "[]");
+              } catch {
+                return [];
+              }
+            })();
 
         // Sort history ascending by month id (YYYY-MM)
         history.sort((a, b) => a.id.localeCompare(b.id));
@@ -301,8 +277,7 @@ class HrService {
 
         let finalClosedDate = formatToYYYYMMDD(row.final_closed_date);
         if (status === "Closed" && !finalClosedDate) {
-          finalClosedDate =
-            formatToYYYYMMDD(row.updated_at) || formatToYYYYMMDD(new Date());
+          finalClosedDate = formatToYYYYMMDD(row.updated_at) || formatToYYYYMMDD(new Date());
         }
 
         return {
@@ -331,9 +306,7 @@ class HrService {
               .filter((h) => h.id <= endMonth)
               .sort((a, b) => b.id.localeCompare(a.id));
 
-            const nonClosedIndex = historyUpToEnd.findIndex(
-              (h) => h.status !== "Closed",
-            );
+            const nonClosedIndex = historyUpToEnd.findIndex((h) => h.status !== "Closed");
             let closedMonth = null;
             if (nonClosedIndex > 0) {
               closedMonth = historyUpToEnd[nonClosedIndex - 1].id;
@@ -358,8 +331,7 @@ class HrService {
   }
 
   async getHiringRecordById(id) {
-    if (!id || isNaN(Number(id)))
-      throw new Error("A valid hiring record ID is required.");
+    if (!id || isNaN(Number(id))) throw new Error("A valid hiring record ID is required.");
 
     const query = "SELECT * FROM hiring_information WHERE id = $1";
 
@@ -382,8 +354,7 @@ class HrService {
 
       let finalClosedDate = formatToYYYYMMDD(row.final_closed_date);
       if (row.hiring_status === "Closed" && !finalClosedDate) {
-        finalClosedDate =
-          formatToYYYYMMDD(row.updated_at) || formatToYYYYMMDD(new Date());
+        finalClosedDate = formatToYYYYMMDD(row.updated_at) || formatToYYYYMMDD(new Date());
       }
 
       return {
@@ -416,9 +387,12 @@ class HrService {
     // Fetch existing record
     const existingRecord = await this.getHiringRecordById(id);
 
-    const finalPriority = priority !== undefined && priority !== null && priority !== ""
-      ? parseInt(priority, 10)
-      : (existingRecord.priority !== undefined && existingRecord.priority !== null ? Number(existingRecord.priority) : 3);
+    const finalPriority =
+      priority !== undefined && priority !== null && priority !== ""
+        ? parseInt(priority, 10)
+        : existingRecord.priority !== undefined && existingRecord.priority !== null
+          ? Number(existingRecord.priority)
+          : 3;
     const finalJobId = job_id?.trim() || existingRecord.job_id;
 
     // Parse history safely
@@ -431,13 +405,11 @@ class HrService {
       }
     }
 
-    const createdMonthCode =
-      getMonthCode(existingRecord.created_at) || getMonthCode(new Date());
+    const createdMonthCode = getMonthCode(existingRecord.created_at) || getMonthCode(new Date());
 
     const newStatus = hiring_status || existingRecord.hiring_status;
     const newClosingDate =
-      formatToYYYYMMDD(closing_date) ||
-      formatToYYYYMMDD(existingRecord.closing_date);
+      formatToYYYYMMDD(closing_date) || formatToYYYYMMDD(existingRecord.closing_date);
 
     // -----------------------------
     // Final Closed Date Logic
@@ -513,14 +485,7 @@ class HrService {
     // Target month snapshot
     const [yearStr, monthStr] = targetMonthCode.split("-");
 
-    const targetDate = new Date(
-      parseInt(yearStr, 10),
-      parseInt(monthStr, 10) - 1,
-      1,
-      12,
-      0,
-      0,
-    );
+    const targetDate = new Date(parseInt(yearStr, 10), parseInt(monthStr, 10) - 1, 1, 12, 0, 0);
 
     const monthName = targetDate.toLocaleDateString("en-US", {
       month: "long",
@@ -537,10 +502,7 @@ class HrService {
           interviewees_appeared !== undefined
             ? Number(interviewees_appeared)
             : history[idx].interviewees_appeared,
-        offers_given:
-          offers_given !== undefined
-            ? Number(offers_given)
-            : history[idx].offers_given,
+        offers_given: offers_given !== undefined ? Number(offers_given) : history[idx].offers_given,
         onboarded_candidates:
           onboarded_candidates !== undefined
             ? Number(onboarded_candidates)
@@ -551,8 +513,7 @@ class HrService {
 
       prevLogs.sort((a, b) => a.id.localeCompare(b.id));
 
-      const lastPrev =
-        prevLogs.length > 0 ? prevLogs[prevLogs.length - 1] : null;
+      const lastPrev = prevLogs.length > 0 ? prevLogs[prevLogs.length - 1] : null;
 
       history.push({
         id: targetMonthCode,
@@ -565,11 +526,7 @@ class HrService {
               ? lastPrev.interviewees_appeared
               : 0,
         offers_given:
-          offers_given !== undefined
-            ? Number(offers_given)
-            : lastPrev
-              ? lastPrev.offers_given
-              : 0,
+          offers_given !== undefined ? Number(offers_given) : lastPrev ? lastPrev.offers_given : 0,
         onboarded_candidates:
           onboarded_candidates !== undefined
             ? Number(onboarded_candidates)
@@ -622,13 +579,9 @@ class HrService {
         id,
         position_name || existingRecord.position_name,
         newClosingDate,
-        lastEntry
-          ? lastEntry.interviewees_appeared
-          : Number(interviewees_appeared || 0),
+        lastEntry ? lastEntry.interviewees_appeared : Number(interviewees_appeared || 0),
         lastEntry ? lastEntry.offers_given : Number(offers_given || 0),
-        lastEntry
-          ? lastEntry.onboarded_candidates
-          : Number(onboarded_candidates || 0),
+        lastEntry ? lastEntry.onboarded_candidates : Number(onboarded_candidates || 0),
         lastEntry ? lastEntry.status : newStatus,
         JSON.stringify(history),
         newFinalClosedDate,
@@ -648,8 +601,7 @@ class HrService {
   }
 
   async deleteHiringRecord(id) {
-    if (!id || isNaN(Number(id)))
-      throw new Error("A valid hiring record ID is required.");
+    if (!id || isNaN(Number(id))) throw new Error("A valid hiring record ID is required.");
 
     const query = "DELETE FROM hiring_information WHERE id = $1 RETURNING *;";
     try {
@@ -711,13 +663,7 @@ class HrService {
   // HIRING TASK SERVICES
 
   async createHiringTask(taskData) {
-    const {
-      task_name,
-      start_date,
-      end_date,
-      completed = false,
-      remarks = null,
-    } = taskData;
+    const { task_name, start_date, end_date, completed = false, remarks = null } = taskData;
 
     const query = `
       INSERT INTO hiring_tasks 
@@ -750,11 +696,17 @@ class HrService {
       return rows.map((row) => {
         let delay_days = 0;
         const targetDate = row.end_date ? new Date(row.end_date) : null;
-        const compDate = row.completed ? (row.updated_at ? new Date(row.updated_at) : new Date()) : new Date();
+        const compDate = row.completed
+          ? row.updated_at
+            ? new Date(row.updated_at)
+            : new Date()
+          : new Date();
         if (targetDate && !isNaN(targetDate.getTime())) {
           targetDate.setHours(0, 0, 0, 0);
           compDate.setHours(0, 0, 0, 0);
-          const diff = Math.ceil((compDate.getTime() - targetDate.getTime()) / (1000 * 60 * 60 * 24));
+          const diff = Math.ceil(
+            (compDate.getTime() - targetDate.getTime()) / (1000 * 60 * 60 * 24)
+          );
           if (diff > 0) delay_days = diff;
         }
         return { ...row, delay_days };
@@ -777,11 +729,17 @@ class HrService {
       return rows.map((row) => {
         let delay_days = 0;
         const targetDate = row.end_date ? new Date(row.end_date) : null;
-        const compDate = row.completed ? (row.updated_at ? new Date(row.updated_at) : new Date()) : new Date();
+        const compDate = row.completed
+          ? row.updated_at
+            ? new Date(row.updated_at)
+            : new Date()
+          : new Date();
         if (targetDate && !isNaN(targetDate.getTime())) {
           targetDate.setHours(0, 0, 0, 0);
           compDate.setHours(0, 0, 0, 0);
-          const diff = Math.ceil((compDate.getTime() - targetDate.getTime()) / (1000 * 60 * 60 * 24));
+          const diff = Math.ceil(
+            (compDate.getTime() - targetDate.getTime()) / (1000 * 60 * 60 * 24)
+          );
           if (diff > 0) delay_days = diff;
         }
         return { ...row, delay_days };
@@ -938,7 +896,9 @@ class HrService {
         if (plannedDate && !isNaN(plannedDate.getTime())) {
           plannedDate.setHours(0, 0, 0, 0);
           actualDate.setHours(0, 0, 0, 0);
-          const diff = Math.ceil((actualDate.getTime() - plannedDate.getTime()) / (1000 * 60 * 60 * 24));
+          const diff = Math.ceil(
+            (actualDate.getTime() - plannedDate.getTime()) / (1000 * 60 * 60 * 24)
+          );
           if (diff > 0) delay_days = diff;
         }
         return { ...row, delay_days };
@@ -992,8 +952,7 @@ class HrService {
         conditions.push(`start_date <= $${params.length}`);
       }
 
-      const whereClause =
-        conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
       const query = `
               SELECT

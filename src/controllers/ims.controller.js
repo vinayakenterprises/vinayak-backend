@@ -1,372 +1,347 @@
 import imsService from "../services/ims.service.js";
 
-
-
 class ImsController {
-    createCategory = async (req, res, next) => {
-        try {
-            const category = await imsService.createCategory(req.body);
+  createCategory = async (req, res, next) => {
+    try {
+      const category = await imsService.createCategory(req.body);
 
-            return res.status(201).json({
-                status: "success",
-                message: "Material category created successfully",
-                data: category,
-            });
-
-        } catch (error) {
-            next(error);
-        }
+      return res.status(201).json({
+        status: "success",
+        message: "Material category created successfully",
+        data: category,
+      });
+    } catch (error) {
+      next(error);
     }
+  };
 
-    getAllCategories = async (req, res, next) => {
-        try {
-            const categories = await imsService.getAllCategories();
+  getAllCategories = async (req, res, next) => {
+    try {
+      const categories = await imsService.getAllCategories();
 
-            return res.status(200).json({
-                status: "success",
-                message: "Categories retrieved successfully",
-                data: categories,
-            });
-
-        } catch (error) {
-            next(error);
-        }
+      return res.status(200).json({
+        status: "success",
+        message: "Categories retrieved successfully",
+        data: categories,
+      });
+    } catch (error) {
+      next(error);
     }
+  };
 
-    getCategoryById = async (req, res, next) => {
-        try {
-            const categoryId = req.params.id;
+  getCategoryById = async (req, res, next) => {
+    try {
+      const categoryId = req.params.id;
 
-            const category = await imsService.getCategoryById(categoryId);
+      const category = await imsService.getCategoryById(categoryId);
 
-            return res.status(200).json({
-                status: "success",
-                message: "Category retrieved successfully",
-                data: category,
-            });
-
-        } catch (error) {
-            next(error);
-        }
-    };
-
-    updateCategory = async (req, res, next) => {
-        try {
-            const categoryId = req.params.id;
-
-            const updatedCategory = await imsService.updateCategory(categoryId, req.body);
-
-            return res.status(200).json({
-                status: "success",
-                message: "Category updated successfully",
-                data: updatedCategory,
-            });
-
-        } catch (error) {
-            next(error);
-        }
-    };
-
-    removeCategory = async (req, res, next) => {
-        try {
-            const categoryId = req.params.id;
-
-            const deletedCategory = await imsService.removeCategory(categoryId);
-
-            // Return standard success response
-            return res.status(200).json({
-                status: "success",
-                message: "Category and all associated materials deleted successfully",
-                data: deletedCategory,
-            });
-
-        } catch (error) {
-            next(error);
-        }
-    };
-
-    createMaterial = async (req, res, next) => {
-        try {
-            const material = await imsService.createMaterial(req.body);
-
-            return res.status(201).json({
-                status: "success",
-                message: "Material created successfully",
-                data: material,
-            });
-
-        } catch (error) {
-            next(error);
-        }
-    };
-
-    getAllMaterials = async (req, res, next) => {
-        try {
-            const materials = await imsService.getAllMaterials();
-
-            return res.status(200).json({
-                status: "success",
-                message: "Materials retrieved successfully",
-                data: materials,
-            });
-
-        } catch (error) {
-            next(error);
-        }
-    };
-
-    getMaterialById = async (req, res, next) => {
-        try {
-            const materialId = req.params.id;
-
-            const material = await imsService.getMaterialById(materialId);
-
-            return res.status(200).json({
-                status: "success",
-                message: "Material retrieved successfully",
-                data: material,
-            });
-
-        } catch (error) {
-            next(error);
-        }
-    };
-
-    updateMaterial = async (req, res, next) => {
-        try {
-            const materialId = req.params.id;
-
-            const updatedMaterial = await imsService.updateMaterial(materialId, req.body);
-
-            return res.status(200).json({
-                status: "success",
-                message: "Material updated successfully",
-                data: updatedMaterial,
-            });
-        } catch (error) {
-            next(error)
-        }
+      return res.status(200).json({
+        status: "success",
+        message: "Category retrieved successfully",
+        data: category,
+      });
+    } catch (error) {
+      next(error);
     }
+  };
 
-    removeMaterial = async (req, res, next) => {
-        try {
-            const materialId = req.params.id;
+  updateCategory = async (req, res, next) => {
+    try {
+      const categoryId = req.params.id;
 
-            const deletedMaterial = await imsService.removeMaterial(materialId);
+      const updatedCategory = await imsService.updateCategory(categoryId, req.body);
 
-            // Return standard JSON response
-            return res.status(200).json({
-                status: "success",
-                message: "Material deleted successfully",
-                data: deletedMaterial,
-            });
+      return res.status(200).json({
+        status: "success",
+        message: "Category updated successfully",
+        data: updatedCategory,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
-        } catch (error) {
-            next(error);
-        }
-    };
+  removeCategory = async (req, res, next) => {
+    try {
+      const categoryId = req.params.id;
 
-    receiveNewShipment = async (req, res, next) => {
-        try {
-            const payload = {
-                ...req.body,
-                created_by: req.user?.id
-            };
+      const deletedCategory = await imsService.removeCategory(categoryId);
 
-            const newShipment = await imsService.receiveNewShipment(payload);
+      // Return standard success response
+      return res.status(200).json({
+        status: "success",
+        message: "Category and all associated materials deleted successfully",
+        data: deletedCategory,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
-            return res.status(201).json({
-                status: "success",
-                message: "Shipment received and moved to Pending Quality.",
-                data: newShipment,
-            });
+  createMaterial = async (req, res, next) => {
+    try {
+      const material = await imsService.createMaterial(req.body);
 
-        } catch (error) {
-            next(error);
-        }
-    };
+      return res.status(201).json({
+        status: "success",
+        message: "Material created successfully",
+        data: material,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
-    getPendingQualityData = async (req, res, next) => {
-        try {
-            const pendingData = await imsService.getPendingQualityData();
+  getAllMaterials = async (req, res, next) => {
+    try {
+      const materials = await imsService.getAllMaterials();
 
-            return res.status(200).json({
-                status: "success",
-                message: "Pending quality data retrieved successfully",
-                data: pendingData,
-            });
+      return res.status(200).json({
+        status: "success",
+        message: "Materials retrieved successfully",
+        data: materials,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
-        } catch (error) {
-            next(error);
-        }
-    };
+  getMaterialById = async (req, res, next) => {
+    try {
+      const materialId = req.params.id;
 
-    processQualityCheck = async (req, res, next) => {
-        try {
-            const payload = {
-                ...req.body,
-                updated_by: req.user?.id
-            };
+      const material = await imsService.getMaterialById(materialId);
 
-            const result = await imsService.processQualityCheck(payload);
+      return res.status(200).json({
+        status: "success",
+        message: "Material retrieved successfully",
+        data: material,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
-            return res.status(200).json({
-                status: "success",
-                message: result.message,
-            });
+  updateMaterial = async (req, res, next) => {
+    try {
+      const materialId = req.params.id;
 
-        } catch (error) {
-            next(error);
-        }
-    };
+      const updatedMaterial = await imsService.updateMaterial(materialId, req.body);
 
-    getInventoryMatrixData = async (req, res, next) => {
-        try {
-            // 1. Fetch the pivoted data from the service
-            const matrixData = await imsService.getInventoryMatrixData();
+      return res.status(200).json({
+        status: "success",
+        message: "Material updated successfully",
+        data: updatedMaterial,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
-            // 2. Return standard JSON response
-            return res.status(200).json({
-                status: "success",
-                message: "Inventory matrix data retrieved successfully",
-                data: matrixData,
-            });
+  removeMaterial = async (req, res, next) => {
+    try {
+      const materialId = req.params.id;
 
-        } catch (error) {
-            next(error);
-        }
-    };
+      const deletedMaterial = await imsService.removeMaterial(materialId);
 
-    getRejectedMaterialData = async (req, res, next) => {
-        try {
-            const rejectedData = await imsService.getRejectedMaterialData();
+      // Return standard JSON response
+      return res.status(200).json({
+        status: "success",
+        message: "Material deleted successfully",
+        data: deletedMaterial,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
-            return res.status(200).json({
-                status: "success",
-                message: "Rejected material data retrieved successfully",
-                data: rejectedData,
-            });
+  receiveNewShipment = async (req, res, next) => {
+    try {
+      const payload = {
+        ...req.body,
+        created_by: req.user?.id,
+      };
 
-        } catch (error) {
-            next(error);
-        }
-    };
+      const newShipment = await imsService.receiveNewShipment(payload);
 
-    getDailySummaryMetrics = async (req, res, next) => {
-        try {
-            // 1. Fetch data from the service
-            const metrics = await imsService.getDailySummaryMetrics();
+      return res.status(201).json({
+        status: "success",
+        message: "Shipment received and moved to Pending Quality.",
+        data: newShipment,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
-            // 2. Return standard JSON response
-            return res.status(200).json({
-                status: "success",
-                message: "Summary metrics retrieved successfully",
-                data: metrics,
-            });
+  getPendingQualityData = async (req, res, next) => {
+    try {
+      const pendingData = await imsService.getPendingQualityData();
 
-        } catch (error) {
-            next(error);
-        }
-    };
+      return res.status(200).json({
+        status: "success",
+        message: "Pending quality data retrieved successfully",
+        data: pendingData,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
-    updateDailyStockCount = async (req, res, next) => {
-        try {
-            const payload = {
-                ...req.body,
-                updated_by: req.user?.id
-            };
+  processQualityCheck = async (req, res, next) => {
+    try {
+      const payload = {
+        ...req.body,
+        updated_by: req.user?.id,
+      };
 
-            const updatedStock = await imsService.updateDailyStockCount(payload);
+      const result = await imsService.processQualityCheck(payload);
 
-            return res.status(200).json({
-                status: "success",
-                message: "Stock count manually adjusted successfully.",
-                data: updatedStock,
-            });
+      return res.status(200).json({
+        status: "success",
+        message: result.message,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
-        } catch (error) {
-            next(error);
-        }
-    };
+  getInventoryMatrixData = async (req, res, next) => {
+    try {
+      // 1. Fetch the pivoted data from the service
+      const matrixData = await imsService.getInventoryMatrixData();
 
-    getFilteredInventory = async (req, res, next) => {
-        try {
-            // Extract the query parameters sent by the React frontend
-            const { filter, date, startDate, endDate } = req.query;
+      // 2. Return standard JSON response
+      return res.status(200).json({
+        status: "success",
+        message: "Inventory matrix data retrieved successfully",
+        data: matrixData,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
-            // Pass the parameters to the service logic
-            const matrixData = await imsService.getFilteredInventory({
-                filter,
-                date,
-                startDate,
-                endDate
-            });
+  getRejectedMaterialData = async (req, res, next) => {
+    try {
+      const rejectedData = await imsService.getRejectedMaterialData();
 
-            return res.status(200).json({
-                status: "success",
-                message: `Inventory data for ${filter || 'all time'} retrieved successfully`,
-                data: matrixData,
-            });
+      return res.status(200).json({
+        status: "success",
+        message: "Rejected material data retrieved successfully",
+        data: rejectedData,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
-        } catch (error) {
-            next(error);
-        }
-    };
+  getDailySummaryMetrics = async (req, res, next) => {
+    try {
+      // 1. Fetch data from the service
+      const metrics = await imsService.getDailySummaryMetrics();
 
-    logPastData = async (req, res, next) => {
-        try {
-            const payload = {
-                ...req.body,
-                created_by: req.user?.id
-            };
+      // 2. Return standard JSON response
+      return res.status(200).json({
+        status: "success",
+        message: "Summary metrics retrieved successfully",
+        data: metrics,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
-            const result = await imsService.logPastData(payload);
+  updateDailyStockCount = async (req, res, next) => {
+    try {
+      const payload = {
+        ...req.body,
+        updated_by: req.user?.id,
+      };
 
-            return res.status(201).json({
-                status: "success",
-                message: "Past data logged successfully.",
-                data: result,
-            });
+      const updatedStock = await imsService.updateDailyStockCount(payload);
 
-        } catch (error) {
-            next(error);
-        }
-    };
+      return res.status(200).json({
+        status: "success",
+        message: "Stock count manually adjusted successfully.",
+        data: updatedStock,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
-    importPurchaseData = async (req, res, next) => {
-        try {
+  getFilteredInventory = async (req, res, next) => {
+    try {
+      // Extract the query parameters sent by the React frontend
+      const { filter, date, startDate, endDate } = req.query;
 
-            const data = req.body;
+      // Pass the parameters to the service logic
+      const matrixData = await imsService.getFilteredInventory({
+        filter,
+        date,
+        startDate,
+        endDate,
+      });
 
-            const result = await imsService.importPurchaseData(data);
+      return res.status(200).json({
+        status: "success",
+        message: `Inventory data for ${filter || "all time"} retrieved successfully`,
+        data: matrixData,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
-            return res.status(200).json({
-                status: "success",
-                message: "Purchase data imported successfully.",
-                data: result
-            });
+  logPastData = async (req, res, next) => {
+    try {
+      const payload = {
+        ...req.body,
+        created_by: req.user?.id,
+      };
 
-        } catch (error) {
-            next(error);
-        }
-    };
+      const result = await imsService.logPastData(payload);
 
-    getPurchaseHistory = async (req, res, next) => {
-        try {
+      return res.status(201).json({
+        status: "success",
+        message: "Past data logged successfully.",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 
-            const data = await imsService.getPurchaseHistory();
-            `   `
-            return res.status(200).json({
-                status: "success",
-                message: "Purchase history retrieved successfully.",
-                data: data
-            });
+  importPurchaseData = async (req, res, next) => {
+    try {
+      const data = req.body;
 
-        } catch (error) {
+      const result = await imsService.importPurchaseData(data);
 
-            next(error);
-        }
-    };
+      return res.status(200).json({
+        status: "success",
+        message: "Purchase data imported successfully.",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getPurchaseHistory = async (req, res, next) => {
+    try {
+      const data = await imsService.getPurchaseHistory();
+      `   `;
+      return res.status(200).json({
+        status: "success",
+        message: "Purchase history retrieved successfully.",
+        data: data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 }
 
 export default new ImsController();

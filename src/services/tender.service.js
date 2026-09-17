@@ -1,9 +1,5 @@
 import pool from "../config/database.js";
-import {
-  BadRequestError,
-  ForbiddenError,
-  NotFoundError,
-} from "../errors/customErrors.js";
+import { BadRequestError, ForbiddenError, NotFoundError } from "../errors/customErrors.js";
 import { emitToUser } from "../utils/socket.js";
 
 import { sendMail } from "./mail.service.js";
@@ -62,19 +58,17 @@ class TenderService {
 
     if (typeof paymentType !== "object" || Array.isArray(paymentType)) {
       throw new BadRequestError(
-        'payment_type must be an object with { url: string, type: "dd" | "bg" | "online_payment" }',
+        'payment_type must be an object with { url: string, type: "dd" | "bg" | "online_payment" }'
       );
     }
 
     if (!paymentType.url || typeof paymentType.url !== "string") {
-      throw new BadRequestError(
-        "payment_type.url is required and must be a string",
-      );
+      throw new BadRequestError("payment_type.url is required and must be a string");
     }
 
     if (!VALID_PAYMENT_TYPES.includes(paymentType.type)) {
       throw new BadRequestError(
-        `payment_type.type must be one of: ${VALID_PAYMENT_TYPES.join(", ")}`,
+        `payment_type.type must be one of: ${VALID_PAYMENT_TYPES.join(", ")}`
       );
     }
   }
@@ -83,7 +77,7 @@ class TenderService {
   async getAllTenders(userId) {
     const { rows } = await pool.query(
       "SELECT * FROM tender_information where createdBy = $1 ORDER BY id DESC",
-      [userId],
+      [userId]
     );
     return rows;
   }
@@ -112,9 +106,7 @@ class TenderService {
   async getPendingMDApprovalTenders(userId) {
     try {
       const getPendingMDApprovalTendersQuery = `select * from tender_information where send_for_approval = true and approved is null and createdBy = $1 order by id desc`;
-      const { rows } = await pool.query(getPendingMDApprovalTendersQuery, [
-        userId,
-      ]);
+      const { rows } = await pool.query(getPendingMDApprovalTendersQuery, [userId]);
       return rows;
     } catch (error) {
       throw error;
@@ -125,9 +117,7 @@ class TenderService {
     try {
       const getRejectedTendersForTenderAgentQuery = `select *, publish_date::text AS publish_date,
         closing_date::text AS closing_date from tender_information where approved = false and createdBy = $1 order by id desc`;
-      const { rows } = await pool.query(getRejectedTendersForTenderAgentQuery, [
-        userId,
-      ]);
+      const { rows } = await pool.query(getRejectedTendersForTenderAgentQuery, [userId]);
       return rows;
     } catch (error) {
       throw error;
@@ -148,10 +138,7 @@ class TenderService {
   async getCompletedTendersForTenderAgent(userId) {
     try {
       const getCompletedTendersForTenderAgentQuery = `select * from tender_information where tender_completed_at is not null and createdBy = $1 order by id desc`;
-      const { rows } = await pool.query(
-        getCompletedTendersForTenderAgentQuery,
-        [userId],
-      );
+      const { rows } = await pool.query(getCompletedTendersForTenderAgentQuery, [userId]);
       return rows;
     } catch (error) {
       throw error;
@@ -161,9 +148,7 @@ class TenderService {
   async getApprovedTendersForTenderAgent(userId) {
     try {
       const getApprovedTendersForTenderAgentQuery = `select * from tender_information where approved = true and createdBy = $1 and tender_completed_at is null order by id desc`;
-      const { rows } = await pool.query(getApprovedTendersForTenderAgentQuery, [
-        userId,
-      ]);
+      const { rows } = await pool.query(getApprovedTendersForTenderAgentQuery, [userId]);
 
       // console.log("rows: ", rows);
 
@@ -176,10 +161,7 @@ class TenderService {
   async getCounterOfferRejectedTenderAgent(userId) {
     try {
       const getCounterOfferRejectedTenderAgentQuery = `select * from tender_information where counter_offer->>'counter_offer_approve_by_md' = 'false' and tender_completed_at is not null and createdBy = $1 order by id desc`;
-      const { rows } = await pool.query(
-        getCounterOfferRejectedTenderAgentQuery,
-        [userId],
-      );
+      const { rows } = await pool.query(getCounterOfferRejectedTenderAgentQuery, [userId]);
       return rows;
     } catch (error) {
       throw error;
@@ -204,7 +186,7 @@ class TenderService {
         const notif = await createNotification(
           mdIdResult,
           `Tender Title as ${rows[0].tender_title} has been marked as complete.`,
-          "tender_completed_notification",
+          "tender_completed_notification"
         );
         emitToUser(mdIdResult, "new_notification", notif);
       } catch (error) {
@@ -253,10 +235,7 @@ class TenderService {
   }
 
   async getTenderById(id) {
-    const { rows } = await pool.query(
-      "SELECT * FROM tender_information WHERE id = $1",
-      [id],
-    );
+    const { rows } = await pool.query("SELECT * FROM tender_information WHERE id = $1", [id]);
     if (!rows[0]) throw new NotFoundError(`Tender with id ${id} not found`);
     return rows[0];
   }
@@ -267,7 +246,7 @@ class TenderService {
 
       const tenderInformationFromDB = await pool.query(
         `SELECT * FROM tender_information WHERE id = $1`,
-        [id],
+        [id]
       );
 
       const createdById = tenderInformationFromDB.rows[0].createdby;
@@ -299,11 +278,7 @@ class TenderService {
         SET approved = $1, approved_at = $2 where id = $3
         `;
 
-        const { rows } = await pool.query(updateQuery, [
-          approveStatus,
-          approvedAt,
-          id,
-        ]);
+        const { rows } = await pool.query(updateQuery, [approveStatus, approvedAt, id]);
 
         finalRows = rows;
       }
@@ -339,8 +314,7 @@ class TenderService {
             // ── tender data (same for both) ──
             tender_ref_no: tenderInformationFromDB.rows[0].tender_ref_no,
             tender_title: tenderInformationFromDB.rows[0].tender_title,
-            tender_organization:
-              tenderInformationFromDB.rows[0].tender_organization,
+            tender_organization: tenderInformationFromDB.rows[0].tender_organization,
             cable_length_km: tenderInformationFromDB.rows[0].cable_length_km,
             tender_value_cr: tenderInformationFromDB.rows[0].tender_value_cr,
             approved_at: approvedAt.toLocaleString("en-IN"),
@@ -352,7 +326,7 @@ class TenderService {
         const notif = await createNotification(
           createdById,
           `Your Tender with Tender Title as ${tenderInformationFromDB?.rows[0]?.tender_title} ${isApproved ? "has been approved." : "has been rejected."}.`,
-          "tender_approval_status",
+          "tender_approval_status"
         );
         emitToUser(createdById, "new_notification", notif);
       } catch (error) {
@@ -375,10 +349,7 @@ class TenderService {
     WHERE id = $2
     RETURNING *;`;
 
-      const { rows } = await pool.query(counterOfferApproveQuery, [
-        approveStatus,
-        id,
-      ]);
+      const { rows } = await pool.query(counterOfferApproveQuery, [approveStatus, id]);
 
       const tenderData = rows[0];
 
@@ -405,9 +376,7 @@ class TenderService {
             // -----------------------------------------------------
             header_bg_color: isApproved ? "#27ae60" : "#c0392b", // Green vs Red
             header_icon: isApproved ? "✅" : "❌",
-            status_heading: isApproved
-              ? "Counter Offer Approved"
-              : "Counter Offer Rejected",
+            status_heading: isApproved ? "Counter Offer Approved" : "Counter Offer Rejected",
 
             banner_bg_color: isApproved ? "#e8f8f5" : "#fdecea",
             banner_border_color: isApproved ? "#27ae60" : "#c0392b",
@@ -421,9 +390,7 @@ class TenderService {
             action_time: actionTime,
 
             cta_bg_color: isApproved ? "#2ecc71" : "#e74c3c",
-            cta_button_text: isApproved
-              ? "Proceed to Submission"
-              : "Review Details",
+            cta_button_text: isApproved ? "Proceed to Submission" : "Review Details",
             // action_url: isApproved
             //   ? `https://your-frontend-domain.com/tenders/submission/${tenderData.id}`
             //   : `https://your-frontend-domain.com/tenders/counter-offer/${tenderData.id}`, // Change these routes to match your frontend architecture
@@ -443,9 +410,7 @@ class TenderService {
             tender_fee_inr: tenderData.tender_fee_inr
               ? Number(tenderData.tender_fee_inr).toLocaleString("en-IN")
               : "0",
-            emd_inr: tenderData.emd_inr
-              ? Number(tenderData.emd_inr).toLocaleString("en-IN")
-              : "0",
+            emd_inr: tenderData.emd_inr ? Number(tenderData.emd_inr).toLocaleString("en-IN") : "0",
 
             // Formatted Dates
             publish_date: tenderData.publish_date
@@ -463,7 +428,7 @@ class TenderService {
         const notif = await createNotification(
           tenderData.createdby,
           `Your Counter Offer Request with Tender Title as ${tenderData?.tender_title} ${isApproved ? "has been approved." : "has been rejected."}.`,
-          "counter_offer_approval_status",
+          "counter_offer_approval_status"
         );
 
         emitToUser(tenderData.createdby, "new_notification", notif);
@@ -498,7 +463,7 @@ class TenderService {
       tender_fee_inr,
       emd_inr,
       state,
-      processing_fee_inr
+      processing_fee_inr,
     } = body;
 
     const query = `
@@ -549,7 +514,7 @@ class TenderService {
       userId,
       product_name,
       product_type,
-      processing_fee_inr
+      processing_fee_inr,
     ];
 
     const result = await pool.query(query, values);
@@ -573,9 +538,7 @@ class TenderService {
 
       case "md":
         if (currentStage !== "2") {
-          throw new ForbiddenError(
-            "MD can only update tenders at tender_stage 2",
-          );
+          throw new ForbiddenError("MD can only update tenders at tender_stage 2");
         }
         // Appending 'tender_stage' so the MD can transition the tender to stage 3 or back to 1
         allowedColumns = [...MD_COLUMNS, "tender_stage"];
@@ -583,18 +546,14 @@ class TenderService {
 
       case "accounts":
         if (currentStage !== "3") {
-          throw new ForbiddenError(
-            "Accounts can only update tenders at tender_stage 3",
-          );
+          throw new ForbiddenError("Accounts can only update tenders at tender_stage 3");
         }
         // Appending 'tender_stage' so Accounts can transition the tender to stage 4
         allowedColumns = [...ACCOUNTS_COLUMNS, "tender_stage"];
         break;
 
       default:
-        throw new ForbiddenError(
-          "Your role does not have permission to update tenders",
-        );
+        throw new ForbiddenError("Your role does not have permission to update tenders");
     }
 
     // 3. Filter the incoming body using your predefined allowed columns list
@@ -632,9 +591,7 @@ class TenderService {
     const values = Object.values(updateData);
 
     // Wraps column names in double quotes to remain perfectly safe from any SQL keywords
-    const setClause = keys
-      .map((key, index) => `"${key}" = $${index + 1}`)
-      .join(", ");
+    const setClause = keys.map((key, index) => `"${key}" = $${index + 1}`).join(", ");
 
     // Push the ID to the end of the values array for the WHERE clause position
     values.push(id);
@@ -653,14 +610,10 @@ class TenderService {
   async sendForApproval(id, role, userId, userName) {
     try {
       if (role !== "tender_agent") {
-        throw new ForbiddenError(
-          "Your role does not have permission to send tenders for approval",
-        );
+        throw new ForbiddenError("Your role does not have permission to send tenders for approval");
       }
 
-      const mdUserData = await pool.query(
-        `SELECT id, email_id FROM users WHERE role = 'MD'`,
-      );
+      const mdUserData = await pool.query(`SELECT id, email_id FROM users WHERE role = 'MD'`);
       const mdId = mdUserData.rows[0].id;
       const emailId = mdUserData.rows[0].email_id;
 
@@ -669,13 +622,7 @@ class TenderService {
         SET send_for_approval = $1, send_for_approval_at = $2,tender_stage = $3, assigned_to = $5  where id = $4 returning *
         `;
 
-      const { rows } = await pool.query(updateQuery, [
-        true,
-        new Date(),
-        2,
-        id,
-        mdId,
-      ]);
+      const { rows } = await pool.query(updateQuery, [true, new Date(), 2, id, mdId]);
 
       const tenderData = rows[0];
 
@@ -700,7 +647,7 @@ class TenderService {
         const notif = await createNotification(
           mdId,
           `Tender Executive ${userName} sent you a Tender for Approval.`,
-          "tender_approval_request",
+          "tender_approval_request"
         );
         emitToUser(mdId, "new_notification", notif);
       } catch (error) {
@@ -731,10 +678,7 @@ class TenderService {
         WHERE counter_offer->>'sent_for_approval' = 'true' and counter_offer->>'counter_offer_approve_by_md_at' is null
         ORDER BY id DESC
       `;
-      const { rows } = await pool.query(
-        getCounterOfferApprovalRequestTendersQuery,
-        [],
-      );
+      const { rows } = await pool.query(getCounterOfferApprovalRequestTendersQuery, []);
       return rows;
     } catch (error) {
       throw error;
@@ -748,10 +692,7 @@ class TenderService {
         WHERE counter_offer->>'counter_offer_approve_by_md' = 'false'
         ORDER BY id DESC
       `;
-      const { rows } = await pool.query(
-        getCounterOfferRejectedTendersQuery,
-        [],
-      );
+      const { rows } = await pool.query(getCounterOfferRejectedTendersQuery, []);
       return rows;
     } catch (error) {
       throw error;
@@ -765,10 +706,7 @@ class TenderService {
         WHERE counter_offer->>'counter_offer_approve_by_md' = 'true'
         ORDER BY id DESC
       `;
-      const { rows } = await pool.query(
-        getCounterOfferApprovedTendersQuery,
-        [],
-      );
+      const { rows } = await pool.query(getCounterOfferApprovedTendersQuery, []);
       return rows;
     } catch (error) {
       throw error;
@@ -809,9 +747,7 @@ class TenderService {
         ORDER BY id DESC
       `;
 
-      const { rows } = await pool.query(getTendersForAccountsTeamQuery, [
-        userId,
-      ]);
+      const { rows } = await pool.query(getTendersForAccountsTeamQuery, [userId]);
       return rows;
     } catch (error) {
       throw error;
@@ -826,10 +762,7 @@ class TenderService {
         ORDER BY id DESC
       `;
 
-      const { rows } = await pool.query(
-        getCompletedTendersForAccountsTeamQuery,
-        [],
-      );
+      const { rows } = await pool.query(getCompletedTendersForAccountsTeamQuery, []);
       return rows;
     } catch (error) {
       throw error;
@@ -845,35 +778,18 @@ class TenderService {
       const rejectedTendersCountQuery = `select count(*) from tender_information where approved = false`;
 
       const totalTendersCountResult = await pool.query(totalTendersCountQuery);
-      const totalActiveTendersCountResult = await pool.query(
-        totalActiveTendersCountQuery,
-      );
-      const totalApprovedTendersCountResult = await pool.query(
-        totalApprovedTendersCountQuery,
-      );
+      const totalActiveTendersCountResult = await pool.query(totalActiveTendersCountQuery);
+      const totalApprovedTendersCountResult = await pool.query(totalApprovedTendersCountQuery);
 
-      const completedTendersCountResult = await pool.query(
-        completedTendersCountQuery,
-      );
-      const rejectedTendersCountResult = await pool.query(
-        rejectedTendersCountQuery,
-      );
+      const completedTendersCountResult = await pool.query(completedTendersCountQuery);
+      const rejectedTendersCountResult = await pool.query(rejectedTendersCountQuery);
 
       return {
         totalTenders: parseInt(totalTendersCountResult.rows[0].count, 0),
-        totalActiveTenders: parseInt(
-          totalActiveTendersCountResult.rows[0].count,
-          0,
-        ),
-        totalApprovedTenders: parseInt(
-          totalApprovedTendersCountResult.rows[0].count,
-          0,
-        ),
+        totalActiveTenders: parseInt(totalActiveTendersCountResult.rows[0].count, 0),
+        totalApprovedTenders: parseInt(totalApprovedTendersCountResult.rows[0].count, 0),
 
-        completedTenders: parseInt(
-          completedTendersCountResult.rows[0].count,
-          0,
-        ),
+        completedTenders: parseInt(completedTendersCountResult.rows[0].count, 0),
         rejectedTenders: parseInt(rejectedTendersCountResult.rows[0].count, 0),
       };
     } catch (error) {
@@ -889,9 +805,7 @@ class TenderService {
         ORDER BY id DESC
       `;
 
-      const { rows } = await pool.query(getTendersAssignedByAccountsTeamQuery, [
-        userId,
-      ]);
+      const { rows } = await pool.query(getTendersAssignedByAccountsTeamQuery, [userId]);
       return rows;
     } catch (error) {
       throw error;
@@ -908,10 +822,7 @@ class TenderService {
         WHERE id = $2;
       `;
 
-      const { rows } = await pool.query(updateQuery, [
-        JSON.stringify(payment_type),
-        id,
-      ]);
+      const { rows } = await pool.query(updateQuery, [JSON.stringify(payment_type), id]);
       return rows[0];
     } catch (error) {
       throw error;
@@ -922,10 +833,9 @@ class TenderService {
     try {
       const tenderId = body.id;
 
-      const createdBy = await pool.query(
-        `SELECT createdby FROM tender_information WHERE id = $1`,
-        [tenderId],
-      );
+      const createdBy = await pool.query(`SELECT createdby FROM tender_information WHERE id = $1`, [
+        tenderId,
+      ]);
 
       const updateQuery = `
         UPDATE tender_information
@@ -975,9 +885,7 @@ class TenderService {
         throw new Error("Tender ID is required for updating.");
       }
 
-      const mdIdResult = await pool.query(
-        `SELECT id FROM users WHERE role = 'MD'`,
-      );
+      const mdIdResult = await pool.query(`SELECT id FROM users WHERE role = 'MD'`);
       const mdId = mdIdResult.rows[0].id;
 
       // Verify ownership
@@ -990,9 +898,7 @@ class TenderService {
       const tenderData = await pool.query(checkQuery, [id, String(userId)]);
 
       if (tenderData.rowCount === 0) {
-        throw new Error(
-          "Tender not found or you do not have permission to update it.",
-        );
+        throw new Error("Tender not found or you do not have permission to update it.");
       }
 
       const allowedColumns = [
@@ -1034,7 +940,7 @@ class TenderService {
         "insurance",
         "npv_bond",
         "immediate_processing_document_completed_at",
-        "processing_fee_inr"
+        "processing_fee_inr",
       ];
 
       const jsonColumns = [
@@ -1068,7 +974,7 @@ class TenderService {
         const notif = await createNotification(
           mdId,
           `Tender Title - ${tenderData.rows[0].tender_title} related documents has been submitted to Government Portal.`,
-          "submit_to_govt_portal_notification",
+          "submit_to_govt_portal_notification"
         );
         emitToUser(mdId, "new_notification", notif);
         // We don't need to manually set notified_to_md here anymore,
@@ -1094,7 +1000,7 @@ class TenderService {
         const notif = await createNotification(
           mdId,
           `Tender Title - ${tenderData.rows[0].tender_title} needs your approval for counter offer.`,
-          "counter_offer_approval_request_notification",
+          "counter_offer_approval_request_notification"
         );
         emitToUser(mdId, "new_notification", notif);
       }
@@ -1171,8 +1077,7 @@ class TenderService {
 
       const { rows } = await pool.query(updateQuery, values);
 
-      const isSentForApproval =
-        rows[0].counter_offer?.sent_for_approval === true;
+      const isSentForApproval = rows[0].counter_offer?.sent_for_approval === true;
 
       if (isSentForApproval) {
         const tenderData = rows[0];
@@ -1188,12 +1093,8 @@ class TenderService {
               tender_title: tenderData.tender_title,
               tender_organization: tenderData.tender_organization,
               cable_length_km: tenderData.cable_length_km,
-              publish_date: new Date(
-                tenderData.publish_date,
-              ).toLocaleDateString("en-IN"),
-              closing_date: new Date(
-                tenderData.closing_date,
-              ).toLocaleDateString("en-IN"),
+              publish_date: new Date(tenderData.publish_date).toLocaleDateString("en-IN"),
+              closing_date: new Date(tenderData.closing_date).toLocaleDateString("en-IN"),
               tender_value_cr: tenderData.tender_value_cr,
               tender_fee_inr: tenderData.tender_fee_inr.toLocaleString("en-IN"),
               emd_inr: tenderData.emd_inr.toLocaleString("en-IN"),

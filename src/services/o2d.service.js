@@ -11,11 +11,9 @@ const emailDateFormatter = new Intl.DateTimeFormat("en-IN", {
   month: "short",
   year: "numeric",
 });
-const formatEmailDate = (value) =>
-  value ? emailDateFormatter.format(new Date(value)) : "-";
+const formatEmailDate = (value) => (value ? emailDateFormatter.format(new Date(value)) : "-");
 
 class O2dService {
-
   async createSaleOrder(data, userId) {
     const {
       client_name,
@@ -60,7 +58,7 @@ class O2dService {
       // send notification to sales lead for credit limit approval
       try {
         const salesLeadIdResult = await pool.query(
-          `SELECT id, email_id FROM users WHERE role = 'Sales Executive Lead' AND department = 'Sales'`,
+          `SELECT id, email_id FROM users WHERE role = 'Sales Executive Lead' AND department = 'Sales'`
         );
 
         const salesLead = salesLeadIdResult.rows[0];
@@ -73,7 +71,7 @@ class O2dService {
         const notif = await createNotification(
           salesLeadId,
           `Sale Order for ${client_name} requires your approval for credit limit.`,
-          "credit_limit_approval_request_notification",
+          "credit_limit_approval_request_notification"
         );
         emitToUser(salesLeadId, "new_notification", notif);
 
@@ -116,7 +114,7 @@ class O2dService {
       // send notification to sale order generator executive
       try {
         const getSoGenerationExecutive = await pool.query(
-          `SELECT id, email_id FROM users WHERE role = 'Sale Order Executive' AND department = 'Accounts'`,
+          `SELECT id, email_id FROM users WHERE role = 'Sale Order Executive' AND department = 'Accounts'`
         );
 
         const soGenerationExecutive = getSoGenerationExecutive.rows[0];
@@ -130,7 +128,7 @@ class O2dService {
         const notif = await createNotification(
           soGenerationExecutiveId,
           `Please create SO for ${client_name}.`,
-          "so_generation_notification",
+          "so_generation_notification"
         );
         emitToUser(soGenerationExecutiveId, "new_notification", notif);
       } catch (error) {
@@ -145,7 +143,7 @@ class O2dService {
           const notif = await createNotification(
             crmId,
             `Sale Order for ${client_name} is created and sent to sale order generator executive.`,
-            "so_generation_notification_to_crm",
+            "so_generation_notification_to_crm"
           );
           emitToUser(crmId, "new_notification", notif);
         } catch (error) {
@@ -157,13 +155,11 @@ class O2dService {
     }
 
     let originalCreatorId;
-    const orderSplitRelatedData = splitted_from
-      ? JSON.stringify({ splitted_from })
-      : null;
+    const orderSplitRelatedData = splitted_from ? JSON.stringify({ splitted_from }) : null;
     if (splitted_from) {
       const originalCreatedBy = await pool.query(
         `select created_by from sales_orders where id = $1`,
-        [splitted_from],
+        [splitted_from]
       );
 
       if (originalCreatedBy.rows.length === 0) {
@@ -243,7 +239,7 @@ class O2dService {
             order_id: createdOrder.id,
             client_name: createdOrder.client_name,
             quantity_mt: createdOrder.quantity_mt,
-          },
+          }
         );
 
         emitToUser(crmId, "new_notification", notif);
@@ -372,7 +368,7 @@ class O2dService {
       const userIds = [...userIdsSet];
 
       const userDetails = await pool.query(
-        `select id, username from users where id in (${userIds.join(",")})`,
+        `select id, username from users where id in (${userIds.join(",")})`
       );
 
       return [rows, userDetails?.rows];
@@ -623,7 +619,7 @@ class O2dService {
 
       const clientCreditLimit = await pool.query(
         `select credit_limit from customers where company_name = $1 or $1::text = any(child_companies)`,
-        [client_name],
+        [client_name]
       );
 
       if (clientCreditLimit.rows.length === 0) {
@@ -643,10 +639,9 @@ class O2dService {
           FROM sales_orders 
           WHERE client_name = $1 
             AND (payment_status is null or (payment_status->>'payment_status')::boolean = false)`,
-          [client_name],
+          [client_name]
         );
-        const totalPendingOrderQuantity =
-          totalPendingOrder.rows[0]?.total_pending_quantity || 0;
+        const totalPendingOrderQuantity = totalPendingOrder.rows[0]?.total_pending_quantity || 0;
 
         if (totalPendingOrderQuantity + quantity_mt >= creditLimit) {
           response.credit_limit = creditLimit;
@@ -661,7 +656,6 @@ class O2dService {
         }
       }
       return response;
-
     } catch (error) {
       console.log("error in checking credit limit: ", error);
       throw error;
@@ -726,13 +720,10 @@ class O2dService {
           const crmIdResult = await pool.query(
             `select c.sales_person from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
           where so.id = $1`,
-            [order_id],
+            [order_id]
           );
 
-          if (
-            crmIdResult.rows.length === 0 ||
-            crmIdResult.rows[0].sales_person === null
-          ) {
+          if (crmIdResult.rows.length === 0 || crmIdResult.rows[0].sales_person === null) {
             throw new Error("Please Assign Sales Executive First");
           }
           const salesPersonId = crmIdResult.rows[0].sales_person;
@@ -740,14 +731,13 @@ class O2dService {
           const notif = await createNotification(
             salesPersonId,
             `Credit Limit Request for Order ID: ${order_id} has been ${credit_limit_request_approval_status ? "approved" : "rejected"} by Sales Lead.`,
-            "credit_limit_request_result_notification_to_sales_executive",
+            "credit_limit_request_result_notification_to_sales_executive"
           );
           emitToUser(salesPersonId, "new_notification", notif);
 
-          const salesExecutiveUser = await pool.query(
-            `SELECT email_id FROM users WHERE id = $1`,
-            [salesPersonId],
-          );
+          const salesExecutiveUser = await pool.query(`SELECT email_id FROM users WHERE id = $1`, [
+            salesPersonId,
+          ]);
 
           const salesExecutiveEmail = salesExecutiveUser.rows[0]?.email_id;
           if (salesExecutiveEmail) {
@@ -762,17 +752,12 @@ class O2dService {
                 rod_size: order?.rod_size || "-",
                 delivery_date: formatEmailDate(order?.delivery_date),
                 dispatch_type: order?.dispatch_type || "-",
-                approval_status: credit_limit_request_approval_status
-                  ? "Approved"
-                  : "Rejected",
+                approval_status: credit_limit_request_approval_status ? "Approved" : "Rejected",
               },
             });
           }
         } catch (error) {
-          console.log(
-            "error while sending notification to sales executive: ",
-            error,
-          );
+          console.log("error while sending notification to sales executive: ", error);
         }
       };
 
@@ -784,7 +769,7 @@ class O2dService {
                FROM users
                WHERE role = 'Sale Order Executive'
                  AND department = 'Accounts'
-               LIMIT 1`,
+               LIMIT 1`
             );
 
             const soGenerationExecutive = getSoGenerationExecutive.rows[0];
@@ -797,7 +782,7 @@ class O2dService {
             const notif = await createNotification(
               soGenerationExecutiveId,
               `Please create SO for Order ID: ${order_id}.`,
-              "so_generation_notification",
+              "so_generation_notification"
             );
             emitToUser(soGenerationExecutiveId, "new_notification", notif);
 
@@ -820,10 +805,7 @@ class O2dService {
             console.log("error while sending notification: ", error);
           }
         } catch (error) {
-          console.log(
-            "error while sending notification to so executive: ",
-            error,
-          );
+          console.log("error while sending notification to so executive: ", error);
         }
       };
 
@@ -847,11 +829,7 @@ class O2dService {
         RETURNING *;
       `;
 
-        const { rows } = await pool.query(approveQuery, [
-          order_id,
-          soGenerationStage,
-          remark,
-        ]);
+        const { rows } = await pool.query(approveQuery, [order_id, soGenerationStage, remark]);
 
         // sendNotificationToCrm(order_id);
         sendNotificationToSoExecutive(order_id, rows[0]);
@@ -863,7 +841,7 @@ class O2dService {
         const crmIdResult = await pool.query(
           `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
           where so.id = $1`,
-          [order_id],
+          [order_id]
         );
 
         if (crmIdResult.rows.length === 0 || crmIdResult.rows[0].crm === null) {
@@ -874,7 +852,7 @@ class O2dService {
           const notif = await createNotification(
             crmId,
             `Please upload the PO for Order ID: ${order.id}. Client: ${order.client_name}. Qty: ${order.quantity_mt} MT.`,
-            "po_upload_notification_to_crm_after_credit_limit_approval",
+            "po_upload_notification_to_crm_after_credit_limit_approval"
           );
 
           emitToUser(crmId, "new_notification", notif);
@@ -901,11 +879,7 @@ class O2dService {
         RETURNING *;
       `;
 
-        const { rows } = await pool.query(rejectQuery, [
-          order_id,
-          soGenerationStage,
-          remark,
-        ]);
+        const { rows } = await pool.query(rejectQuery, [order_id, soGenerationStage, remark]);
 
         // sendNotificationToCrm(order_id);
         sendNotificationSaleExecutive(order_id, rows[0]);
@@ -921,8 +895,7 @@ class O2dService {
   async generateSaleOrderSlip(body, userId) {
     try {
       // 1. Destructure the order_id and ONLY the allowed fields from the body
-      const { order_id, sent_for_so, sent_for_so_at, so_order_completed_at } =
-        body;
+      const { order_id, sent_for_so, sent_for_so_at, so_order_completed_at } = body;
 
       if (!order_id) {
         throw new Error("Order ID is required");
@@ -930,7 +903,7 @@ class O2dService {
 
       const customerNameOfSo = await pool.query(
         `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name OR so.client_name::text = ANY(c.child_companies) where so.id = $1`,
-        [order_id],
+        [order_id]
       );
 
       if (customerNameOfSo.rows[0].crm === null) {
@@ -968,13 +941,11 @@ class O2dService {
 
       // If no valid fields were provided, you might want to stop the update to save DB calls
       if (Object.keys(sanitizedSlipData).length === 0) {
-        throw new Error(
-          "No valid sale order generation fields provided to update",
-        );
+        throw new Error("No valid sale order generation fields provided to update");
       }
 
       const getSaleOrdersExecutiveId = await pool.query(
-        `select id from users where role = 'Sale Order Executive' and department = 'Accounts'`,
+        `select id from users where role = 'Sale Order Executive' and department = 'Accounts'`
       );
       const salesOrdersExecutiveId = getSaleOrdersExecutiveId.rows[0].id;
 
@@ -1029,11 +1000,7 @@ class O2dService {
         WHERE id = $1
         RETURNING *;
       `;
-      const { rows } = await pool.query(query, [
-        id,
-        JSON.stringify(po_data),
-        userId,
-      ]);
+      const { rows } = await pool.query(query, [id, JSON.stringify(po_data), userId]);
       return rows[0] || null;
     } catch (error) {
       console.error("Error in updatePoRelated: ", error);
@@ -1093,7 +1060,7 @@ class O2dService {
         const notif = await createNotification(
           crmId,
           `Sale Order for Order ID: ${id} is created from Accounts Team!`,
-          "so_generation_completion_notification",
+          "so_generation_completion_notification"
         );
         emitToUser(crmId, "new_notification", notif);
       } catch (error) {
@@ -1154,7 +1121,7 @@ class O2dService {
     dispatch_status,
     userId,
     dispatch_at,
-    delay_reason,
+    delay_reason
   ) {
     try {
       // 1. Use jsonb_build_object to construct your new dispatch_info column
@@ -1190,8 +1157,7 @@ class O2dService {
 
   async updateInvoiceAndDispatchInfo(orderId, dispatchData, userId) {
     try {
-      const { actual_dispatch_date, invoices, invoice_completed_at } =
-        dispatchData;
+      const { actual_dispatch_date, invoices, invoice_completed_at } = dispatchData;
 
       // 1. Fetch current invoice_and_dispatch from the database
       const fetchQuery = `SELECT invoice_and_dispatch, client_name FROM public.sales_orders WHERE id = $1`;
@@ -1220,8 +1186,7 @@ class O2dService {
 
       if (invoice_completed_at) {
         // const invoiceGenerationCompletedStage = ORDER_STAGES.invoice_generation_completed_stage;
-        const thankYouAndIntimationStage =
-          ORDER_STAGES.thank_you_and_intimation_stage;
+        const thankYouAndIntimationStage = ORDER_STAGES.thank_you_and_intimation_stage;
         currentDispatchInfo.invoice_completed_at = invoice_completed_at;
         assignToStr = `,assigned_to = (SELECT crm FROM public.customers WHERE company_name = public.sales_orders.client_name OR public.sales_orders.client_name::text = ANY(child_companies) LIMIT 1), order_status = '${thankYouAndIntimationStage}'`;
 
@@ -1230,13 +1195,10 @@ class O2dService {
             const crmIdResult = await pool.query(
               `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
           where so.id = $1`,
-              [order_id],
+              [order_id]
             );
 
-            if (
-              crmIdResult.rows.length === 0 ||
-              crmIdResult.rows[0].crm === null
-            ) {
+            if (crmIdResult.rows.length === 0 || crmIdResult.rows[0].crm === null) {
               throw new Error("Please Assign CRM First");
             }
             const crmId = crmIdResult.rows[0].crm;
@@ -1244,7 +1206,7 @@ class O2dService {
             const notif = await createNotification(
               crmId,
               `Invoice & Dispatch Phase Completed for Order ID: ${orderId}.`,
-              "invoice_and_dispatch_completed_notification_to_crm",
+              "invoice_and_dispatch_completed_notification_to_crm"
             );
             emitToUser(crmId, "new_notification", notif);
           } catch (error) {
@@ -1282,18 +1244,9 @@ class O2dService {
             $5
         )`;
 
-        await pool.query(insertQuery, [
-          orderId,
-          invoiceDate,
-          invoiceNo,
-          clientName,
-          invoiceUrl,
-        ]);
+        await pool.query(insertQuery, [orderId, invoiceDate, invoiceNo, clientName, invoiceUrl]);
 
-        currentDispatchInfo.invoices = [
-          ...currentDispatchInfo.invoices,
-          ...invoices,
-        ];
+        currentDispatchInfo.invoices = [...currentDispatchInfo.invoices, ...invoices];
       }
 
       // 4. Save the merged data back to the database
@@ -1362,7 +1315,7 @@ class O2dService {
       FROM sales_orders
       WHERE id = $1
       `,
-        [saleOrderId],
+        [saleOrderId]
       );
 
       if (!orderExists.rows.length) {
@@ -1398,7 +1351,7 @@ class O2dService {
           remark || null,
           userId,
           userId,
-        ],
+        ]
       );
 
       return rows[0];
@@ -1417,7 +1370,7 @@ class O2dService {
       WHERE sale_order_id = $1
       ORDER BY created_at DESC
       `,
-        [saleOrderId],
+        [saleOrderId]
       );
 
       return rows;
@@ -1436,7 +1389,7 @@ class O2dService {
       WHERE complaint_id = $1
       AND sale_order_id = $2
       `,
-        [complaintId, saleOrderId],
+        [complaintId, saleOrderId]
       );
 
       if (!rows.length) {
@@ -1450,12 +1403,7 @@ class O2dService {
     }
   }
 
-  async updateComplaintDetailsForSaleOrder(
-    saleOrderId,
-    complaintId,
-    data,
-    userId,
-  ) {
+  async updateComplaintDetailsForSaleOrder(saleOrderId, complaintId, data, userId) {
     try {
       const {
         description,
@@ -1474,7 +1422,7 @@ class O2dService {
       WHERE complaint_id = $1
       AND sale_order_id = $2
       `,
-        [complaintId, saleOrderId],
+        [complaintId, saleOrderId]
       );
 
       if (!complaintExists.rows.length) {
@@ -1509,7 +1457,7 @@ class O2dService {
           complaintId,
           saleOrderId,
           remark_final || null,
-        ],
+        ]
       );
 
       return rows[0];
@@ -1527,7 +1475,7 @@ class O2dService {
       WHERE complaint_id = $1
       AND sale_order_id = $2
       `,
-        [complaintId, saleOrderId],
+        [complaintId, saleOrderId]
       );
 
       if (!rowCount) {
@@ -1623,13 +1571,8 @@ class O2dService {
 
   async updatePlantVisitInformation(id, userId, body) {
     try {
-      const {
-        plant_visit_done_at,
-        documents,
-        solution,
-        person_met_at_site,
-        quantity_replaced,
-      } = body;
+      const { plant_visit_done_at, documents, solution, person_met_at_site, quantity_replaced } =
+        body;
 
       // Dynamically build the payload so we only update provided fields
       const visitActionPayload = {};
@@ -1639,9 +1582,7 @@ class O2dService {
       }
       if (documents !== undefined) {
         // Ensure documents is stored as an array
-        visitActionPayload.documents = Array.isArray(documents)
-          ? documents
-          : [];
+        visitActionPayload.documents = Array.isArray(documents) ? documents : [];
       }
       if (solution !== undefined) {
         visitActionPayload.solution = solution;
@@ -1788,10 +1729,7 @@ class O2dService {
       const { rows } = await pool.query(query, []);
       return rows;
     } catch (error) {
-      console.error(
-        "Error in getting interest note issue work history: ",
-        error,
-      );
+      console.error("Error in getting interest note issue work history: ", error);
       throw error;
     }
   }
@@ -1868,10 +1806,7 @@ class O2dService {
 
       return rows;
     } catch (error) {
-      console.error(
-        "Error in getting active sale orders admin dashboard data:",
-        error,
-      );
+      console.error("Error in getting active sale orders admin dashboard data:", error);
       throw error;
     }
   }
@@ -1948,20 +1883,12 @@ class O2dService {
       const { rows } = await pool.query(query, values);
       return rows[0]; // Returning the single updated row
     } catch (error) {
-      console.error(
-        "Error in updating overdue summary report information: ",
-        error,
-      );
+      console.error("Error in updating overdue summary report information: ", error);
       throw error;
     }
   }
 
-  async completeSOGenerationRequestFromTally(
-    id,
-    userId,
-    document_url,
-    sale_order,
-  ) {
+  async completeSOGenerationRequestFromTally(id, userId, document_url, sale_order) {
     try {
       const crmQuery = `
       SELECT c.crm 
@@ -1999,7 +1926,7 @@ class O2dService {
         const notif = await createNotification(
           crmId,
           `Sale Order for Order ID: ${id} is created from Accounts Team!`,
-          "so_generation_completion_notification",
+          "so_generation_completion_notification"
         );
         emitToUser(crmId, "new_notification", notif);
       } catch (error) {
@@ -2016,7 +1943,7 @@ class O2dService {
       ]);
 
       const soExecutiveResult = await pool.query(
-        `SELECT id FROM users WHERE role = 'Sale Order Executive' AND department = 'Accounts' LIMIT 1`,
+        `SELECT id FROM users WHERE role = 'Sale Order Executive' AND department = 'Accounts' LIMIT 1`
       );
       const soExecutiveId = soExecutiveResult.rows[0]?.id;
 
@@ -2024,11 +1951,11 @@ class O2dService {
         const notif = await createNotification(
           soExecutiveId,
           `Tally data has been fetched for Order ID: ${id}. Please refresh the page.`,
-          "tally_so_data_fetched_notification",
+          "tally_so_data_fetched_notification"
         );
         emitToUser(soExecutiveId, "new_notification", notif);
         console.log(
-          `Tally refresh notification ${notif.id} sent to Sale Order Executive ${soExecutiveId} for Order ID ${id}`,
+          `Tally refresh notification ${notif.id} sent to Sale Order Executive ${soExecutiveId} for Order ID ${id}`
         );
       } else {
         console.error("Sale Order Executive not found for Tally notification");
@@ -2036,10 +1963,7 @@ class O2dService {
 
       return rows[0];
     } catch (error) {
-      console.log(
-        "error in completing so generation request from tally: ",
-        error,
-      );
+      console.log("error in completing so generation request from tally: ", error);
       throw error;
     }
   }
@@ -2067,9 +1991,9 @@ class O2dService {
             orderId,
             5,
             pdfUrl, // <-- Pass the S3 URL here
-            sale_order,
+            sale_order
           );
-        }),
+        })
       );
 
       return {
@@ -2082,15 +2006,9 @@ class O2dService {
     }
   }
 
-  async updateInvoiceAndDispatchInfoFromTally(
-    orderId,
-    dispatchData,
-    userId,
-    total_invoice_amount,
-  ) {
+  async updateInvoiceAndDispatchInfoFromTally(orderId, dispatchData, userId, total_invoice_amount) {
     try {
-      const { actual_dispatch_date, invoices, invoice_completed_at } =
-        dispatchData;
+      const { actual_dispatch_date, invoices, invoice_completed_at } = dispatchData;
 
       // 1. Fetch current invoice_and_dispatch from the database
       const fetchQuery = `SELECT invoice_and_dispatch, client_name FROM public.sales_orders WHERE id = $1`;
@@ -2111,12 +2029,12 @@ class O2dService {
       if (invoices && invoices.length > 0) {
         const incomingInvoiceNo = invoices[0].invoice;
         const invoiceExists = currentDispatchInfo.invoices.some(
-          (inv) => inv.invoice === incomingInvoiceNo,
+          (inv) => inv.invoice === incomingInvoiceNo
         );
 
         if (invoiceExists) {
           console.log(
-            `Invoice ${incomingInvoiceNo} already exists for Order ID: ${orderId}. Aborting update to maintain single invoice rule.`,
+            `Invoice ${incomingInvoiceNo} already exists for Order ID: ${orderId}. Aborting update to maintain single invoice rule.`
           );
           // Return immediately. No data is changed, no notifications sent.
           return rows[0];
@@ -2131,8 +2049,7 @@ class O2dService {
       let assignToStr = ``;
 
       if (invoice_completed_at) {
-        const thankYouAndIntimationStage =
-          ORDER_STAGES.thank_you_and_intimation_stage;
+        const thankYouAndIntimationStage = ORDER_STAGES.thank_you_and_intimation_stage;
         currentDispatchInfo.invoice_completed_at = invoice_completed_at;
         currentDispatchInfo.total_invoice_amount = total_invoice_amount;
         assignToStr = `,assigned_to = (SELECT crm FROM public.customers WHERE company_name = public.sales_orders.client_name OR public.sales_orders.client_name::text = ANY(child_companies) LIMIT 1), order_status = '${thankYouAndIntimationStage}'`;
@@ -2142,13 +2059,10 @@ class O2dService {
             const crmIdResult = await pool.query(
               `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
           where so.id = $1`,
-              [order_id],
+              [order_id]
             );
 
-            if (
-              crmIdResult.rows.length === 0 ||
-              crmIdResult.rows[0].crm === null
-            ) {
+            if (crmIdResult.rows.length === 0 || crmIdResult.rows[0].crm === null) {
               throw new Error("Please Assign CRM First");
             }
             const crmId = crmIdResult.rows[0].crm;
@@ -2156,7 +2070,7 @@ class O2dService {
             const notif = await createNotification(
               crmId,
               `Invoice & Dispatch Phase Completed for Order ID: ${orderId}.`,
-              "invoice_and_dispatch_completed_notification_to_crm",
+              "invoice_and_dispatch_completed_notification_to_crm"
             );
             emitToUser(crmId, "new_notification", notif);
           } catch (error) {
@@ -2202,10 +2116,7 @@ class O2dService {
         //   total_invoice_amount,
         // ]);
 
-        currentDispatchInfo.invoices = [
-          ...currentDispatchInfo.invoices,
-          ...invoices,
-        ];
+        currentDispatchInfo.invoices = [...currentDispatchInfo.invoices, ...invoices];
       }
 
       // 6. Save the merged data back to the database
@@ -2239,7 +2150,7 @@ class O2dService {
     quantity,
     total_invoice_amount,
     userId = 10,
-    crn,
+    crn
   ) {
     try {
       // console.log("Received Invoice Details from Tally: ", {
@@ -2280,12 +2191,10 @@ class O2dService {
         orderId,
         dispatchData,
         userId,
-        total_invoice_amount,
+        total_invoice_amount
       );
 
-      console.log(
-        `Successfully updated invoice & dispatch info for Order ID: ${orderId}`,
-      );
+      console.log(`Successfully updated invoice & dispatch info for Order ID: ${orderId}`);
       return updateResult;
     } catch (error) {
       console.error("Error in processing invoice details from Tally: ", error);
@@ -2306,34 +2215,29 @@ class O2dService {
 
       // const orderId = parseInt(body.crn, 10);
 
-
       const original_invoice_number = body.original_invoice_number;
 
-
-      const orderDetailsFromInvoice = await pool.query(`SELECT so.*
+      const orderDetailsFromInvoice = await pool.query(
+        `SELECT so.*
         FROM sales_orders AS so
         CROSS JOIN LATERAL jsonb_array_elements(
             so.invoice_and_dispatch->'invoices'
         ) AS inv
         WHERE inv->>'invoice' = $1
         ORDER BY so.id DESC
-        LIMIT 1;`
-      , [original_invoice_number]);
-
+        LIMIT 1;`,
+        [original_invoice_number]
+      );
 
       if (orderDetailsFromInvoice.rows.length === 0) {
         throw new Error(
-          `Could not find order details using invoice number: ${original_invoice_number}`,
+          `Could not find order details using invoice number: ${original_invoice_number}`
         );
       }
 
       const orderId = parseInt(orderDetailsFromInvoice.rows[0]?.id, 10);
 
-
-      const orderDetails = await pool.query(
-        `SELECT * FROM sales_orders WHERE id = $1`,
-        [orderId],
-      );
+      const orderDetails = await pool.query(`SELECT * FROM sales_orders WHERE id = $1`, [orderId]);
 
       if (orderDetails.rows.length === 0) {
         const error = new Error(`Sales order not found for ID: ${orderId}`);
@@ -2345,17 +2249,13 @@ class O2dService {
         orderDetails.rows[0].payment_status?.collect_interest_from_client;
 
       if (collect_interest_from_client === false) {
-        const error = new Error(
-          `Interest Note is rejected for Order ID: ${orderId}`,
-        );
+        const error = new Error(`Interest Note is rejected for Order ID: ${orderId}`);
         error.statusCode = 422;
         throw error;
-      }  
+      }
 
       if (collect_interest_from_client === undefined) {
-        const error = new Error(
-          `Interest Note is not Approved for Order ID: ${orderId}`,
-        );
+        const error = new Error(`Interest Note is not Approved for Order ID: ${orderId}`);
         error.statusCode = 400;
         throw error;
       }
@@ -2367,9 +2267,7 @@ class O2dService {
       // const orderId = parseInt(idString, 10);
 
       if (isNaN(orderId)) {
-        const error = new Error(
-          `Invalid ID extracted from bill_reference: ${body.bill_reference}`,
-        );
+        const error = new Error(`Invalid ID extracted from bill_reference: ${body.bill_reference}`);
         error.statusCode = 400;
         throw error;
       }
@@ -2390,16 +2288,11 @@ class O2dService {
             `SELECT c.crm FROM sales_orders so 
            INNER JOIN customers c ON so.client_name = c.company_name OR so.client_name = ANY(c.child_companies)
            WHERE so.id = $1`,
-            [order_id],
+            [order_id]
           );
 
-          if (
-            crmIdResult.rows.length === 0 ||
-            crmIdResult.rows[0].crm === null
-          ) {
-            console.log(
-              `Notification skipped: No CRM assigned for Order ID ${order_id}`,
-            );
+          if (crmIdResult.rows.length === 0 || crmIdResult.rows[0].crm === null) {
+            console.log(`Notification skipped: No CRM assigned for Order ID ${order_id}`);
             return;
           }
 
@@ -2409,7 +2302,7 @@ class O2dService {
           const notif = await createNotification(
             crmId,
             `Interest Note Work has been completed for Order ID: ${order_id}.`,
-            "interest_note_issue_completed_notification_to_crm",
+            "interest_note_issue_completed_notification_to_crm"
           );
           emitToUser(crmId, "new_notification", notif);
         } catch (error) {
@@ -2447,7 +2340,6 @@ class O2dService {
 
   async updateInvoiceBillFromTally(body) {
     try {
-
       const { date, party_name, voucher_number, bill_allocations } = body;
 
       const invoiceNotFound = [];
@@ -2464,7 +2356,7 @@ class O2dService {
         ORDER BY id DESC
         LIMIT 1
         `,
-          [bill_name],
+          [bill_name]
         );
 
         if (billNameData.rows.length === 0) {
@@ -2502,15 +2394,14 @@ class O2dService {
 
           WHERE id = $3
         `,
-          [JSON.stringify(transaction), amount, id],
+          [JSON.stringify(transaction), amount, id]
         );
       }
 
       return {
         invoiceFound,
         invoiceNotFound,
-      }
-
+      };
     } catch (error) {
       console.log("Error updating invoice bill from Tally:", error);
       throw error;
@@ -2531,26 +2422,19 @@ class O2dService {
 
       // 2. Find the specific invoice in the JSON array and update the URL
       let invoiceFound = false;
-      if (
-        currentDispatchInfo.invoices &&
-        Array.isArray(currentDispatchInfo.invoices)
-      ) {
-        currentDispatchInfo.invoices = currentDispatchInfo.invoices.map(
-          (inv) => {
-            if (inv.invoice === invoiceNumber) {
-              invoiceFound = true;
-              // Append the new invoice_url to this specific invoice object
-              return { ...inv, invoice_url: invoiceUrl };
-            }
-            return inv;
-          },
-        );
+      if (currentDispatchInfo.invoices && Array.isArray(currentDispatchInfo.invoices)) {
+        currentDispatchInfo.invoices = currentDispatchInfo.invoices.map((inv) => {
+          if (inv.invoice === invoiceNumber) {
+            invoiceFound = true;
+            // Append the new invoice_url to this specific invoice object
+            return { ...inv, invoice_url: invoiceUrl };
+          }
+          return inv;
+        });
       }
 
       if (!invoiceFound) {
-        throw new Error(
-          `Invoice number ${invoiceNumber} not found in Order ID ${orderId}.`,
-        );
+        throw new Error(`Invoice number ${invoiceNumber} not found in Order ID ${orderId}.`);
       }
 
       // 3. Update the sales_orders table with the modified JSON array
@@ -2577,11 +2461,7 @@ class O2dService {
       WHERE sale_order_id = $2 AND invoice_no = $3
     `;
 
-      await pool.query(updateOverdueQuery, [
-        invoiceUrl,
-        orderId,
-        invoiceNumber,
-      ]);
+      await pool.query(updateOverdueQuery, [invoiceUrl, orderId, invoiceNumber]);
 
       // Return the updated sales order record
       return updateResult.rows[0];
@@ -2617,9 +2497,7 @@ class O2dService {
       }
       if (weight_difference_in_kg !== undefined) {
         // Map the input variable to the specific DB column key and ensure it's a float
-        deliveryPayload.weight_difference_in_kg = parseFloat(
-          weight_difference_in_kg,
-        );
+        deliveryPayload.weight_difference_in_kg = parseFloat(weight_difference_in_kg);
       }
       if (settlement !== undefined) {
         deliveryPayload.settlement = settlement;
@@ -2627,7 +2505,7 @@ class O2dService {
         const sendNotificationToJuniorAccountant = async (order_id) => {
           try {
             const juniorAccountantIdResult = await pool.query(
-              `select id, email_id from users where role = 'Junior Accountant' and department = 'Accounts' LIMIT 1`,
+              `select id, email_id from users where role = 'Junior Accountant' and department = 'Accounts' LIMIT 1`
             );
 
             const juniorAccountantId = juniorAccountantIdResult.rows[0]?.id;
@@ -2640,21 +2518,18 @@ class O2dService {
             const notif = await createNotification(
               juniorAccountantId,
               `Please Create ${settlement === "CN Issue" ? "Credit" : "Debit"} Note for Order ID: ${order_id}.`,
-              "cn_dn_issue_notification_to_junior_accountant",
+              "cn_dn_issue_notification_to_junior_accountant"
             );
             emitToUser(juniorAccountantId, "new_notification", notif);
 
             if (juniorAccountantEmail) {
               const orderDetails = await pool.query(
                 `SELECT client_name, quantity_mt, rod_size, delivery_date, dispatch_type FROM sales_orders WHERE id = $1`,
-                [order_id],
+                [order_id]
               );
             }
           } catch (error) {
-            console.log(
-              "error while sending notification to junior accountant: ",
-              error,
-            );
+            console.log("error while sending notification to junior accountant: ", error);
           }
         };
 
@@ -2677,13 +2552,10 @@ class O2dService {
             const crmIdResult = await pool.query(
               `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
           where so.id = $1`,
-              [order_id],
+              [order_id]
             );
 
-            if (
-              crmIdResult.rows.length === 0 ||
-              crmIdResult.rows[0].crm === null
-            ) {
+            if (crmIdResult.rows.length === 0 || crmIdResult.rows[0].crm === null) {
               throw new Error("Please Assign CRM First");
             }
             const crmId = crmIdResult.rows[0].crm;
@@ -2691,7 +2563,7 @@ class O2dService {
             const notif = await createNotification(
               crmId,
               `CN/DN has been issued for Order ID: ${order_id}.`,
-              "cn_dn_issue_completed_notification_to_crm",
+              "cn_dn_issue_completed_notification_to_crm"
             );
             emitToUser(crmId, "new_notification", notif);
           } catch (error) {
@@ -2707,12 +2579,10 @@ class O2dService {
         deliveryPayload.cn_or_dn_issue_timestamp = cn_or_dn_issue_timestamp;
       }
       if (quality_confirmation_status !== undefined) {
-        deliveryPayload.quality_confirmation_status =
-          quality_confirmation_status;
+        deliveryPayload.quality_confirmation_status = quality_confirmation_status;
       }
       if (quality_confirmation_timestamp !== undefined) {
-        deliveryPayload.quality_confirmation_timestamp =
-          quality_confirmation_timestamp;
+        deliveryPayload.quality_confirmation_timestamp = quality_confirmation_timestamp;
       }
       if (cn_dn_document_url !== undefined) {
         deliveryPayload.cn_dn_document_url = cn_dn_document_url;
@@ -2732,10 +2602,7 @@ class O2dService {
 
       return rows.length ? rows[0] : null;
     } catch (error) {
-      console.error(
-        "error in updating delivery and weight information: ",
-        error,
-      );
+      console.error("error in updating delivery and weight information: ", error);
       throw error;
     }
   }
@@ -2746,7 +2613,7 @@ class O2dService {
     credit_debit_note_amount,
     credit_debit_note_quantity,
     pdfUrl,
-    original_invoice_number,
+    original_invoice_number
   ) {
     try {
       // 1. Extract Order ID from the credit note number (e.g., 'CN/666' -> 666)
@@ -2760,30 +2627,29 @@ class O2dService {
       //   );
       // }
 
-      const orderDetailsUsingInvoiceNumber = await pool.query(`SELECT so.*
+      const orderDetailsUsingInvoiceNumber = await pool.query(
+        `SELECT so.*
         FROM sales_orders so
         CROSS JOIN LATERAL jsonb_array_elements(
             so.invoice_and_dispatch->'invoices'
         ) AS inv
         WHERE split_part(inv->>'invoice', '/', 2) = $1
         ORDER BY so.id DESC
-        LIMIT 1;`
-      , [original_invoice_number]);
-
+        LIMIT 1;`,
+        [original_invoice_number]
+      );
 
       if (orderDetailsUsingInvoiceNumber.rows.length === 0) {
         throw new Error(
-          `Could not find order details using invoice number: ${original_invoice_number}`,
+          `Could not find order details using invoice number: ${original_invoice_number}`
         );
       }
 
-
       const orderId = parseInt(orderDetailsUsingInvoiceNumber.rows[0]?.id, 10);
-
 
       if (!orderId || isNaN(orderId)) {
         throw new Error(
-          `Invalid credit_debit_note_number format. Could not extract Order ID from: ${credit_debit_note_number}`,
+          `Invalid credit_debit_note_number format. Could not extract Order ID from: ${credit_debit_note_number}`
         );
       }
 
@@ -2803,12 +2669,11 @@ class O2dService {
       };
 
       // 4. Call the update function
-      const updatedOrder =
-        await this.updateDeliveryAndWeightInformationFromTally(
-          orderId,
-          userId,
-          body,
-        );
+      const updatedOrder = await this.updateDeliveryAndWeightInformationFromTally(
+        orderId,
+        userId,
+        body
+      );
 
       return updatedOrder;
     } catch (error) {
@@ -2917,7 +2782,7 @@ class O2dService {
     try {
       // Get vehicle executive id
       const getVehicleExecutiveId = await pool.query(
-        `SELECT id FROM users WHERE role = 'Vehicle Executive' AND department = 'Transport' LIMIT 1`,
+        `SELECT id FROM users WHERE role = 'Vehicle Executive' AND department = 'Transport' LIMIT 1`
       );
 
       // FIX 1: Safely check if the array is empty to prevent a Node.js crash
@@ -2936,7 +2801,7 @@ class O2dService {
       // get order details
       const orderDetails = await pool.query(
         `select client_name, quantity_mt, rod_size, delivery_date, dispatch_type from sales_orders where id = $1`,
-        [id],
+        [id]
       );
 
       if (!orderDetails.rows.length) {
@@ -2948,13 +2813,13 @@ class O2dService {
           const notif = await createNotification(
             vehicleExecutiveId,
             `Please arrange a vehicle for Order #${order_id} (${orderDetails?.rows?.[0]?.client_name}) - Quantity: ${orderDetails?.rows?.[0]?.quantity_mt} MT.`,
-            "vehicle_arrangement_request_notification",
+            "vehicle_arrangement_request_notification"
           );
           emitToUser(vehicleExecutiveId, "new_notification", notif);
 
           const vehicleExecutiveUser = await pool.query(
             `SELECT email_id FROM users WHERE id = $1`,
-            [vehicleExecutiveId],
+            [vehicleExecutiveId]
           );
 
           const vehicleExecutiveEmail = vehicleExecutiveUser.rows[0]?.email_id;
@@ -2968,18 +2833,13 @@ class O2dService {
                 client_name: orderDetails.rows[0].client_name,
                 quantity_mt: orderDetails.rows[0].quantity_mt,
                 rod_size: orderDetails.rows[0].rod_size || "-",
-                delivery_date: formatEmailDate(
-                  orderDetails.rows[0].delivery_date,
-                ),
+                delivery_date: formatEmailDate(orderDetails.rows[0].delivery_date),
                 dispatch_type: orderDetails.rows[0].dispatch_type || "-",
               },
             });
           }
         } catch (error) {
-          console.log(
-            "error while sending notification to vehicle executive: ",
-            error,
-          );
+          console.log("error while sending notification to vehicle executive: ", error);
         }
       };
 
@@ -2993,11 +2853,7 @@ class O2dService {
       RETURNING *;
       `;
 
-      const { rows } = await pool.query(query, [
-        id,
-        vehicleExecutiveId,
-        vehicleArrangeMentStage,
-      ]);
+      const { rows } = await pool.query(query, [id, vehicleExecutiveId, vehicleArrangeMentStage]);
 
       sendNotificationToVehicleExecutive(id);
 
@@ -3040,21 +2896,17 @@ class O2dService {
 
   async markAsDeliveredByTransportExecutive(id, userId, body) {
     try {
-      const vehicleArrangementCompletedStage =
-        ORDER_STAGES.vehicle_arrangement_completed_stage;
+      const vehicleArrangementCompletedStage = ORDER_STAGES.vehicle_arrangement_completed_stage;
 
       const sendNotificationToCrm = async (order_id) => {
         try {
           const crmIdResult = await pool.query(
             `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
           where so.id = $1`,
-            [order_id],
+            [order_id]
           );
 
-          if (
-            crmIdResult.rows.length === 0 ||
-            crmIdResult.rows[0].crm === null
-          ) {
+          if (crmIdResult.rows.length === 0 || crmIdResult.rows[0].crm === null) {
             throw new Error("Please Assign CRM First");
           }
           const crmId = crmIdResult.rows[0].crm;
@@ -3065,7 +2917,7 @@ class O2dService {
           const notif = await createNotification(
             crmId,
             `Vehicle has been arranged for Order ID: ${order_id}.`,
-            "vehicle_arrangement_completed_notification_to_crm",
+            "vehicle_arrangement_completed_notification_to_crm"
           );
           emitToUser(crmId, "new_notification", notif);
         } catch (error) {
@@ -3077,8 +2929,7 @@ class O2dService {
       const additionalVehicleData = {};
       if (body.vehicle_no) additionalVehicleData.vehicle_no = body.vehicle_no;
       if (body.bilty_url) additionalVehicleData.bilty_url = body.bilty_url;
-      if (body.loaded_proof_urls)
-        additionalVehicleData.loaded_proof_urls = body.loaded_proof_urls;
+      if (body.loaded_proof_urls) additionalVehicleData.loaded_proof_urls = body.loaded_proof_urls;
 
       // 2. Merge actual_deliver_date with the dynamic JSON payload ($4)
       const query = `
@@ -3113,10 +2964,7 @@ class O2dService {
 
       return rows[0];
     } catch (error) {
-      console.error(
-        "Error in marking as delivered by transport executive: ",
-        error,
-      );
+      console.error("Error in marking as delivered by transport executive: ", error);
       throw error;
     }
   }
@@ -3125,7 +2973,7 @@ class O2dService {
     try {
       // get invoice executive id
       const getInvoiceExecutiveId = await pool.query(
-        `SELECT id FROM users WHERE role = 'Invoice Executive' AND department = 'Accounts' LIMIT 1`,
+        `SELECT id FROM users WHERE role = 'Invoice Executive' AND department = 'Accounts' LIMIT 1`
       );
 
       // FIX 1: Safely check if the array is empty to prevent a Node.js crash
@@ -3162,20 +3010,20 @@ class O2dService {
           const notif = await createNotification(
             invoiceExecutiveId,
             `Order with Order ID: ${id} has been assigned to You.`,
-            "order_assigned_to_invoice_executive",
+            "order_assigned_to_invoice_executive"
           );
           emitToUser(invoiceExecutiveId, "new_notification", notif);
 
           const invoiceExecutiveUser = await pool.query(
             `SELECT email_id FROM users WHERE id = $1`,
-            [invoiceExecutiveId],
+            [invoiceExecutiveId]
           );
 
           const invoiceExecutiveEmail = invoiceExecutiveUser.rows[0]?.email_id;
           if (invoiceExecutiveEmail) {
             const orderDetails = await pool.query(
               `SELECT client_name, quantity_mt, rod_size, delivery_date, dispatch_type FROM sales_orders WHERE id = $1`,
-              [id],
+              [id]
             );
 
             const order = orderDetails.rows[0];
@@ -3196,10 +3044,7 @@ class O2dService {
             }
           }
         } catch (error) {
-          console.log(
-            "error in sending notification to invoice executive: ",
-            error,
-          );
+          console.log("error in sending notification to invoice executive: ", error);
         }
       }
 
@@ -3254,7 +3099,7 @@ class O2dService {
 
       const saleOrderInformation = await pool.query(
         `select invoice_and_dispatch, payment_status from sales_orders where id = $1`,
-        [id],
+        [id]
       );
 
       if (saleOrderInformation.rows.length === 0) {
@@ -3269,12 +3114,10 @@ class O2dService {
       if (payment_status !== undefined) {
         paymentPayload.payment_status = payment_status;
 
-        const interestNoteAssignStatus =
-          saleOrder?.payment_status?.is_interest_note_issue;
+        const interestNoteAssignStatus = saleOrder?.payment_status?.is_interest_note_issue;
 
         if (payment_status === true && interestNoteAssignStatus === undefined) {
-          const invoiceDate =
-            saleOrder.invoice_and_dispatch?.actual_dispatch_date;
+          const invoiceDate = saleOrder.invoice_and_dispatch?.actual_dispatch_date;
 
           if (!invoiceDate) {
             const error = new Error("Invoice Date is required");
@@ -3287,11 +3130,10 @@ class O2dService {
           dueDate.setDate(dueDate.getDate() + 10);
           const complaintInformation = await pool.query(
             `select * from complaint_info where sale_order_id = $1`,
-            [id],
+            [id]
           );
 
-          const complaintStatus =
-            complaintInformation.rows[0]?.complaint_status;
+          const complaintStatus = complaintInformation.rows[0]?.complaint_status;
           if (complaintStatus === "Closed") {
             dueDate = new Date(complaintInformation.rows[0]?.updated_at);
             dueDate.setDate(dueDate.getDate() + 10);
@@ -3304,7 +3146,7 @@ class O2dService {
             const sendNotificationToJuniorAccountant = async (order_id) => {
               try {
                 const juniorAccountantIdResult = await pool.query(
-                  `select id, email_id from users where role = 'Junior Accountant' and department = 'Accounts' LIMIT 1`,
+                  `select id, email_id from users where role = 'Junior Accountant' and department = 'Accounts' LIMIT 1`
                 );
 
                 const juniorAccountantId = juniorAccountantIdResult.rows[0]?.id;
@@ -3317,14 +3159,14 @@ class O2dService {
                 const notif = await createNotification(
                   juniorAccountantId,
                   `Please Issue Interest Note for Order ID: ${order_id}.`,
-                  "interest_note_issue_notification_to_junior_accountant",
+                  "interest_note_issue_notification_to_junior_accountant"
                 );
                 emitToUser(juniorAccountantId, "new_notification", notif);
 
                 if (juniorAccountantEmail) {
                   const orderDetails = await pool.query(
                     `SELECT client_name, quantity_mt, rod_size, delivery_date, dispatch_type FROM sales_orders WHERE id = $1`,
-                    [order_id],
+                    [order_id]
                   );
                   const order = orderDetails.rows[0];
                   if (order) {
@@ -3346,10 +3188,7 @@ class O2dService {
                   }
                 }
               } catch (error) {
-                console.log(
-                  "error while sending notification to junior accountant: ",
-                  error,
-                );
+                console.log("error while sending notification to junior accountant: ", error);
               }
             };
 
@@ -3395,21 +3234,17 @@ class O2dService {
         // }
       }
       if (interest_note_issued_on_timestamp !== undefined) {
-        paymentPayload.interest_note_issued_on_timestamp =
-          interest_note_issued_on_timestamp;
+        paymentPayload.interest_note_issued_on_timestamp = interest_note_issued_on_timestamp;
 
         const sendNotificationToCrm = async (order_id) => {
           try {
             const crmIdResult = await pool.query(
               `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
           where so.id = $1`,
-              [order_id],
+              [order_id]
             );
 
-            if (
-              crmIdResult.rows.length === 0 ||
-              crmIdResult.rows[0].crm === null
-            ) {
+            if (crmIdResult.rows.length === 0 || crmIdResult.rows[0].crm === null) {
               throw new Error("Please Assign CRM First");
             }
             const crmId = crmIdResult.rows[0].crm;
@@ -3417,7 +3252,7 @@ class O2dService {
             const notif = await createNotification(
               crmId,
               `Interest Note Work has been completed for Order ID: ${id}.`,
-              "interest_note_issue_completed_notification_to_crm",
+              "interest_note_issue_completed_notification_to_crm"
             );
             emitToUser(crmId, "new_notification", notif);
           } catch (error) {
@@ -3427,13 +3262,11 @@ class O2dService {
         sendNotificationToCrm(id);
       }
       if (interest_note_collected_on_timestamp !== undefined) {
-        paymentPayload.interest_note_collected_on_timestamp =
-          interest_note_collected_on_timestamp;
+        paymentPayload.interest_note_collected_on_timestamp = interest_note_collected_on_timestamp;
       }
 
       if (collect_interest_from_client !== undefined) {
-        paymentPayload.collect_interest_from_client =
-          collect_interest_from_client;
+        paymentPayload.collect_interest_from_client = collect_interest_from_client;
       }
 
       // if (cn_or_dn_issue_status !== undefined) {
@@ -3492,9 +3325,7 @@ class O2dService {
       }
       if (weight_difference_in_kg !== undefined) {
         // Map the input variable to the specific DB column key and ensure it's a float
-        deliveryPayload.weight_difference_in_kg = parseFloat(
-          weight_difference_in_kg,
-        );
+        deliveryPayload.weight_difference_in_kg = parseFloat(weight_difference_in_kg);
       }
       if (settlement !== undefined) {
         deliveryPayload.settlement = settlement;
@@ -3502,7 +3333,7 @@ class O2dService {
         const sendNotificationToJuniorAccountant = async (order_id) => {
           try {
             const juniorAccountantIdResult = await pool.query(
-              `select id, email_id from users where role = 'Junior Accountant' and department = 'Accounts' LIMIT 1`,
+              `select id, email_id from users where role = 'Junior Accountant' and department = 'Accounts' LIMIT 1`
             );
 
             const juniorAccountantId = juniorAccountantIdResult.rows[0]?.id;
@@ -3515,14 +3346,14 @@ class O2dService {
             const notif = await createNotification(
               juniorAccountantId,
               `Please Create ${settlement === "CN Issue" ? "Credit" : "Debit"} Note for Order ID: ${order_id}.`,
-              "cn_dn_issue_notification_to_junior_accountant",
+              "cn_dn_issue_notification_to_junior_accountant"
             );
             emitToUser(juniorAccountantId, "new_notification", notif);
 
             if (juniorAccountantEmail) {
               const orderDetails = await pool.query(
                 `SELECT client_name, quantity_mt, rod_size, delivery_date, dispatch_type FROM sales_orders WHERE id = $1`,
-                [order_id],
+                [order_id]
               );
               const order = orderDetails.rows[0];
               if (order) {
@@ -3544,10 +3375,7 @@ class O2dService {
               }
             }
           } catch (error) {
-            console.log(
-              "error while sending notification to junior accountant: ",
-              error,
-            );
+            console.log("error while sending notification to junior accountant: ", error);
           }
         };
 
@@ -3563,13 +3391,10 @@ class O2dService {
             const crmIdResult = await pool.query(
               `select c.crm from sales_orders so inner join customers c on so.client_name = c.company_name or so.client_name = any(c.child_companies)
           where so.id = $1`,
-              [order_id],
+              [order_id]
             );
 
-            if (
-              crmIdResult.rows.length === 0 ||
-              crmIdResult.rows[0].crm === null
-            ) {
+            if (crmIdResult.rows.length === 0 || crmIdResult.rows[0].crm === null) {
               throw new Error("Please Assign CRM First");
             }
             const crmId = crmIdResult.rows[0].crm;
@@ -3577,7 +3402,7 @@ class O2dService {
             const notif = await createNotification(
               crmId,
               `CN/DN has been issued for Order ID: ${order_id}.`,
-              "cn_dn_issue_completed_notification_to_crm",
+              "cn_dn_issue_completed_notification_to_crm"
             );
             emitToUser(crmId, "new_notification", notif);
           } catch (error) {
@@ -3594,8 +3419,7 @@ class O2dService {
       }
 
       if (quality_confirmation_status !== undefined) {
-        deliveryPayload.quality_confirmation_status =
-          quality_confirmation_status;
+        deliveryPayload.quality_confirmation_status = quality_confirmation_status;
 
         // If quality confirmation is true, push data to overdue_summary_report
         if (true) {
@@ -3608,8 +3432,7 @@ class O2dService {
             const clientName = orderData.client_name;
             const invoiceAndDispatch = orderData.invoice_and_dispatch || {};
             const invoices = invoiceAndDispatch.invoices || [];
-            const totalInvoiceAmount =
-              invoiceAndDispatch.total_invoice_amount || null;
+            const totalInvoiceAmount = invoiceAndDispatch.total_invoice_amount || null;
 
             // Ensure an invoice actually exists before trying to insert
             if (invoices.length > 0) {
@@ -3619,14 +3442,11 @@ class O2dService {
 
               // 2. Check if the record already exists for this sale_order_id
               const checkDuplicateQuery = `SELECT 1 FROM public.overdue_summary_report WHERE sale_order_id = $1 LIMIT 1`;
-              const duplicateCheckResult = await pool.query(
-                checkDuplicateQuery,
-                [id],
-              );
+              const duplicateCheckResult = await pool.query(checkDuplicateQuery, [id]);
 
               if (duplicateCheckResult.rows.length > 0) {
                 console.log(
-                  `Overdue summary report already exists for Order ID: ${id}. Skipping insertion.`,
+                  `Overdue summary report already exists for Order ID: ${id}. Skipping insertion.`
                 );
               } else {
                 // 3. Insert into overdue_summary_report if not already present
@@ -3651,12 +3471,12 @@ class O2dService {
                   invoiceUrl,
                 ]);
                 console.log(
-                  `Successfully inserted into overdue_summary_report for Order ID: ${id}`,
+                  `Successfully inserted into overdue_summary_report for Order ID: ${id}`
                 );
               }
             } else {
               console.log(
-                `No invoice found in invoice_and_dispatch for Order ID: ${id}. Skipping overdue summary report insertion.`,
+                `No invoice found in invoice_and_dispatch for Order ID: ${id}. Skipping overdue summary report insertion.`
               );
             }
           }
@@ -3664,8 +3484,7 @@ class O2dService {
       }
 
       if (quality_confirmation_timestamp !== undefined) {
-        deliveryPayload.quality_confirmation_timestamp =
-          quality_confirmation_timestamp;
+        deliveryPayload.quality_confirmation_timestamp = quality_confirmation_timestamp;
       }
 
       const query = `
@@ -3683,10 +3502,7 @@ class O2dService {
 
       return rows.length ? rows[0] : null;
     } catch (error) {
-      console.error(
-        "error in updating delivery and weight information: ",
-        error,
-      );
+      console.error("error in updating delivery and weight information: ", error);
       throw error;
     }
   }
@@ -3705,7 +3521,7 @@ class O2dService {
       FROM sales_orders
       WHERE id = $1
       `,
-        [orderId],
+        [orderId]
       );
 
       if (!rows.length) {
@@ -3730,7 +3546,7 @@ class O2dService {
           updated_at = NOW()
       WHERE id = $3
       `,
-        [JSON.stringify(remarks), userId, orderId],
+        [JSON.stringify(remarks), userId, orderId]
       );
 
       return remarks;
@@ -3748,7 +3564,7 @@ class O2dService {
       FROM sales_orders
       WHERE id = $1
       `,
-        [orderId],
+        [orderId]
       );
 
       if (!rows.length) {
@@ -3776,7 +3592,7 @@ class O2dService {
       FROM sales_orders
       WHERE id = $1
       `,
-        [orderId],
+        [orderId]
       );
 
       if (!rows.length) {
@@ -3805,7 +3621,7 @@ class O2dService {
           updated_at = NOW()
       WHERE id = $3
       `,
-        [JSON.stringify(remarks), userId, orderId],
+        [JSON.stringify(remarks), userId, orderId]
       );
 
       return remarks[index];
@@ -3823,7 +3639,7 @@ class O2dService {
       FROM sales_orders
       WHERE id = $1
       `,
-        [orderId],
+        [orderId]
       );
 
       if (!rows.length) {
@@ -3848,7 +3664,7 @@ class O2dService {
           updated_at = NOW()
       WHERE id = $3
       `,
-        [JSON.stringify(remarks), userId, orderId],
+        [JSON.stringify(remarks), userId, orderId]
       );
 
       return remarks;
@@ -3925,10 +3741,7 @@ class O2dService {
       const { rows } = await pool.query(query, [userId]);
       return rows;
     } catch (error) {
-      console.error(
-        "Error in getting invoice generation request data: ",
-        error,
-      );
+      console.error("Error in getting invoice generation request data: ", error);
       throw error;
     }
   }

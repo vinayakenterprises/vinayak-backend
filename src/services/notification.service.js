@@ -19,15 +19,9 @@ export const getNotifications = async (userId) => {
 };
 
 export const markAllRead = async (userId) => {
-  await pool.query(
-    `UPDATE notifications SET is_read = TRUE WHERE user_id = $1`,
-    [userId]
-  );
+  await pool.query(`UPDATE notifications SET is_read = TRUE WHERE user_id = $1`, [userId]);
 };
 
 export const markOneRead = async (id) => {
-  await pool.query(
-    `UPDATE notifications SET is_read = TRUE WHERE id = $1`,
-    [id]
-  );
+  await pool.query(`UPDATE notifications SET is_read = TRUE WHERE id = $1`, [id]);
 };

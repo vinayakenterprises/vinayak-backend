@@ -4,11 +4,8 @@ import logger from "../utils/logger.js";
 
 const { Pool, types } = pg;
 
-
-
 // OID 1114 = timestamp without time zone
 types.setTypeParser(1114, (str) => str);
-
 
 const pool = new Pool({
   user: config.db.user,
