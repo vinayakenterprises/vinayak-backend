@@ -41,9 +41,7 @@ class O2dController {
 
   createNewCustomerProfile = async (req, res, next) => {
     try {
-      const newCustomerProfile = await o2dService.createNewCustomerProfile(
-        req.body,
-      );
+      const newCustomerProfile = await o2dService.createNewCustomerProfile(req.body);
 
       return res.status(201).json({
         status: "success",
@@ -98,8 +96,7 @@ class O2dController {
     try {
       const { id } = req.params;
 
-      const updatedCustomerDetails =
-        await o2dService.updateExistingCustomerDetails(id, req.body);
+      const updatedCustomerDetails = await o2dService.updateExistingCustomerDetails(id, req.body);
 
       if (!updatedCustomerDetails) {
         return res.status(404).json({
@@ -129,10 +126,7 @@ class O2dController {
         });
       }
 
-      const customerDetails = await o2dService.getCrmAndSalesPerson(
-        crm,
-        sales_person,
-      );
+      const customerDetails = await o2dService.getCrmAndSalesPerson(crm, sales_person);
 
       if (!customerDetails) {
         return res.status(404).json({
@@ -158,7 +152,7 @@ class O2dController {
       const updatedCustomerDetails = await o2dService.updateCrmAndSalesPerson(
         id,
         crm,
-        sales_person,
+        sales_person
       );
 
       if (!updatedCustomerDetails) {
@@ -181,8 +175,7 @@ class O2dController {
   removeCustomerRecordById = async (req, res, next) => {
     try {
       const { id } = req.params;
-      const deletedCustomerRecord =
-        await o2dService.removeCustomerRecordById(id);
+      const deletedCustomerRecord = await o2dService.removeCustomerRecordById(id);
 
       if (!deletedCustomerRecord) {
         return res.status(404).json({
@@ -205,9 +198,7 @@ class O2dController {
       const userId = req.user?.id || null;
 
       if (!userId) {
-        return res
-          .status(401)
-          .json({ status: "error", message: "Unauthorized" });
+        return res.status(401).json({ status: "error", message: "Unauthorized" });
       }
 
       const orders = await o2dService.getAllSaleOrder(userId);
@@ -249,11 +240,7 @@ class O2dController {
       const { id } = req.params;
       const userId = req.user?.id || null;
 
-      const updatedOrder = await o2dService.updateSaleOrder(
-        id,
-        req.body,
-        userId,
-      );
+      const updatedOrder = await o2dService.updateSaleOrder(id, req.body, userId);
 
       if (!updatedOrder) {
         return res.status(404).json({
@@ -313,10 +300,7 @@ class O2dController {
     try {
       const userId = req.user?.id || null;
 
-      const order = await o2dService.getCreditLimitReachedData(
-        req.body,
-        userId,
-      );
+      const order = await o2dService.getCreditLimitReachedData(req.body, userId);
       return res.status(200).json({
         status: "success",
         message: "Credit limit reached data retrieved successfully",
@@ -331,10 +315,7 @@ class O2dController {
     try {
       const userId = req.user?.id || null;
 
-      const order = await o2dService.approveCreditLimitExceededSale(
-        req.body,
-        userId,
-      );
+      const order = await o2dService.approveCreditLimitExceededSale(req.body, userId);
       return res.status(200).json({
         status: "success",
         message: "Credit limit exceeded sale approved successfully",
@@ -369,8 +350,7 @@ class O2dController {
 
       return res.status(200).json({
         status: "success",
-        message:
-          "Sales order slip generation request data retrieved successfully",
+        message: "Sales order slip generation request data retrieved successfully",
         data: order,
       });
     } catch (error) {
@@ -384,11 +364,7 @@ class O2dController {
       const role = req.user?.role;
       const userId = req.user?.id;
 
-      const order = await o2dService.completeSOGenerationRequest(
-        id,
-        userId,
-        document_url,
-      );
+      const order = await o2dService.completeSOGenerationRequest(id, userId, document_url);
 
       return res.status(200).json({
         status: "success",
@@ -403,8 +379,7 @@ class O2dController {
   getCompletedSOGenerationRequestData = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
-      const order =
-        await o2dService.getCompletedSOGenerationRequestData(userId);
+      const order = await o2dService.getCompletedSOGenerationRequestData(userId);
       return res.status(200).json({
         status: "success",
         message: "Sales order slip generation request completed successfully",
@@ -432,8 +407,7 @@ class O2dController {
   updateDispatchInformation = async (req, res, next) => {
     try {
       // 1. Extract both status and type from the request body
-      const { id, dispatch_status, dispatch_type, dispatch_at, delay_reason } =
-        req.body;
+      const { id, dispatch_status, dispatch_type, dispatch_at, delay_reason } = req.body;
       const userId = req.user?.id || null;
 
       // 2. Pass the new parameters to the service
@@ -443,7 +417,7 @@ class O2dController {
         dispatch_status,
         userId,
         dispatch_at,
-        delay_reason,
+        delay_reason
       );
 
       return res.status(200).json({
@@ -459,8 +433,7 @@ class O2dController {
   updateInvoiceAndDispatchInfo = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
-      const { order_id, actual_dispatch_date, invoices, invoice_completed_at } =
-        req.body;
+      const { order_id, actual_dispatch_date, invoices, invoice_completed_at } = req.body;
 
       if (!order_id) {
         return res.status(400).json({
@@ -472,7 +445,7 @@ class O2dController {
       const updatedOrder = await o2dService.updateInvoiceAndDispatchInfo(
         order_id,
         { actual_dispatch_date, invoices, invoice_completed_at },
-        userId,
+        userId
       );
 
       return res.status(200).json({
@@ -504,11 +477,7 @@ class O2dController {
       const userId = req.user?.id || null;
       const saleOrderId = req.params.id;
 
-      const complaint = await o2dService.createComplaintForSaleOrder(
-        saleOrderId,
-        req.body,
-        userId,
-      );
+      const complaint = await o2dService.createComplaintForSaleOrder(saleOrderId, req.body, userId);
 
       return res.status(201).json({
         status: "success",
@@ -524,8 +493,7 @@ class O2dController {
     try {
       const saleOrderId = req.params.id;
 
-      const complaints =
-        await o2dService.getAllComplaintsForSaleOrder(saleOrderId);
+      const complaints = await o2dService.getAllComplaintsForSaleOrder(saleOrderId);
 
       return res.status(200).json({
         status: "success",
@@ -541,10 +509,7 @@ class O2dController {
     try {
       const { id, complaintId } = req.params;
 
-      const complaint = await o2dService.getComplaintDetailsForSaleOrder(
-        id,
-        complaintId,
-      );
+      const complaint = await o2dService.getComplaintDetailsForSaleOrder(id, complaintId);
 
       return res.status(200).json({
         status: "success",
@@ -566,7 +531,7 @@ class O2dController {
         id,
         complaintId,
         req.body,
-        userId,
+        userId
       );
 
       return res.status(200).json({
@@ -599,11 +564,7 @@ class O2dController {
       const { id } = req.body;
       const userId = req.user?.id || null;
 
-      const updatedOrder = await o2dService.updateCallActionInformation(
-        id,
-        userId,
-        req.body,
-      );
+      const updatedOrder = await o2dService.updateCallActionInformation(id, userId, req.body);
 
       return res.status(200).json({
         status: "success",
@@ -635,11 +596,7 @@ class O2dController {
     try {
       const { id } = req.body;
       const userId = req.user?.id || null;
-      const updatedOrder = await o2dService.updatePlantVisitInformation(
-        id,
-        userId,
-        req.body,
-      );
+      const updatedOrder = await o2dService.updatePlantVisitInformation(id, userId, req.body);
       return res.status(200).json({
         status: "success",
         message: "Plant Visit Information updated successfully",
@@ -655,10 +612,7 @@ class O2dController {
       const { complaint_id } = req.body;
       const userId = req.user?.id || null;
 
-      const updatedOrder = await o2dService.updateComplaintClosureInformation(
-        complaint_id,
-        userId,
-      );
+      const updatedOrder = await o2dService.updateComplaintClosureInformation(complaint_id, userId);
 
       return res.status(200).json({
         status: "success",
@@ -774,12 +728,11 @@ class O2dController {
       const order = await o2dService.getActiveSaleOrdersAdminDashboard(
         userId,
         start_date,
-        end_date,
+        end_date
       );
       return res.status(200).json({
         status: "success",
-        message:
-          "Active Sale Orders Admin Dashboard Data retrieved successfully",
+        message: "Active Sale Orders Admin Dashboard Data retrieved successfully",
         data: order,
       });
     } catch (error) {
@@ -809,12 +762,11 @@ class O2dController {
       const { id } = req.body;
       const userId = req.user?.id || null;
 
-      const updatedOrder =
-        await o2dService.updateOverdueSummaryReportInformation(
-          id,
-          userId,
-          req.body,
-        );
+      const updatedOrder = await o2dService.updateOverdueSummaryReportInformation(
+        id,
+        userId,
+        req.body
+      );
 
       res.status(200).json({
         status: "success",
@@ -868,16 +820,12 @@ class O2dController {
       if (!salesOrdersData || !Array.isArray(salesOrdersData.salesOrders)) {
         return res.status(400).json({
           status: "fail",
-          message:
-            "Invalid payload: 'salesOrders' array is missing or invalid.",
+          message: "Invalid payload: 'salesOrders' array is missing or invalid.",
         });
       }
 
       // 4. Pass parsed data and S3 PDF URL to the service
-      const updatedOrder = await o2dService.receiveSoOrdersFromTally(
-        salesOrdersData,
-        pdfUrl,
-      );
+      const updatedOrder = await o2dService.receiveSoOrdersFromTally(salesOrdersData, pdfUrl);
 
       return res.status(200).json({
         status: "success",
@@ -901,13 +849,7 @@ class O2dController {
 
       const crn = terms_of_delivery;
 
-      if (
-        !actual_dispatch_date ||
-        !invoice_number ||
-        !quantity ||
-        !total_invoice_amount ||
-        !crn
-      ) {
+      if (!actual_dispatch_date || !invoice_number || !quantity || !total_invoice_amount || !crn) {
         return res.status(400).json({
           status: "fail",
           message:
@@ -922,7 +864,7 @@ class O2dController {
         quantity,
         total_invoice_amount,
         10,
-        crn,
+        crn
       );
 
       return res.status(200).json({
@@ -937,11 +879,9 @@ class O2dController {
 
   receiveInterestNoteDetailsFromTally = async (req, res, next) => {
     try {
-
       // console.log("kjsdlkfjdslk", req.body);
 
-      const updateDetailsInDb =
-        await o2dService.receiveInterestNoteDetailsFromTally(req.body);
+      const updateDetailsInDb = await o2dService.receiveInterestNoteDetailsFromTally(req.body);
 
       return res.status(200).json({
         status: "success",
@@ -953,26 +893,19 @@ class O2dController {
     }
   };
 
-
   updateInvoiceBillFromTally = async (req, res, next) => {
-    try{
-
-
-
+    try {
       const updateDetailsInDb = await o2dService.updateInvoiceBillFromTally(req.body);
-
 
       return res.status(200).json({
         status: "success",
         message: "Invoice Bill updated from Tally successfully",
         data: updateDetailsInDb,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
-
+  };
 
   updateInvoicePdfUrl = async (req, res, next) => {
     try {
@@ -983,8 +916,7 @@ class O2dController {
       if (!order_id || !invoice_number || !invoice_url) {
         return res.status(400).json({
           status: "error",
-          message:
-            "order_id, invoice_number, and invoice_url are required fields.",
+          message: "order_id, invoice_number, and invoice_url are required fields.",
         });
       }
 
@@ -992,7 +924,7 @@ class O2dController {
         order_id,
         invoice_number,
         invoice_url,
-        userId,
+        userId
       );
 
       return res.status(200).json({
@@ -1012,9 +944,8 @@ class O2dController {
         credit_debit_note_number,
         credit_debit_note_amount,
         credit_debit_note_quantity,
-        original_invoice_number
+        original_invoice_number,
       } = req.body;
-
 
       if (
         !document_type ||
@@ -1072,13 +1003,11 @@ class O2dController {
     try {
       const userId = req.user?.id || null;
 
-      const orders =
-        await o2dService.getSalesTeamDashboardPendingOrdersData(userId);
+      const orders = await o2dService.getSalesTeamDashboardPendingOrdersData(userId);
 
       return res.status(200).json({
         status: "success",
-        message:
-          "Sales team dashboard pending orders data retrieved successfully",
+        message: "Sales team dashboard pending orders data retrieved successfully",
         data: orders,
       });
     } catch (error) {
@@ -1090,13 +1019,11 @@ class O2dController {
     try {
       const userId = req.user?.id || null;
 
-      const orders =
-        await o2dService.getSalesTeamDashboardDelayDispatchTillDate(userId);
+      const orders = await o2dService.getSalesTeamDashboardDelayDispatchTillDate(userId);
 
       return res.status(200).json({
         status: "success",
-        message:
-          "Sales team dashboard delay dispatch till date retrieved successfully",
+        message: "Sales team dashboard delay dispatch till date retrieved successfully",
         data: orders,
       });
     } catch (error) {
@@ -1108,13 +1035,11 @@ class O2dController {
     try {
       const userId = req.user?.id || null;
 
-      const orders =
-        await o2dService.getSalesTeamDashboardPendingDispatchOverview(userId);
+      const orders = await o2dService.getSalesTeamDashboardPendingDispatchOverview(userId);
 
       return res.status(200).json({
         status: "success",
-        message:
-          "Sales team dashboard pending dispatch overview retrieved successfully",
+        message: "Sales team dashboard pending dispatch overview retrieved successfully",
         data: orders,
       });
     } catch (error) {
@@ -1136,11 +1061,7 @@ class O2dController {
         });
       }
 
-      const updatedOrder = await o2dService.updateReceivingDetails(
-        orderId,
-        documents,
-        userId,
-      );
+      const updatedOrder = await o2dService.updateReceivingDetails(orderId, documents, userId);
 
       return res.status(200).json({
         status: "success",
@@ -1163,10 +1084,7 @@ class O2dController {
       const { id } = req.body;
       const userId = req.user?.id || null;
 
-      const updatedOrder = await o2dService.assignToVehicleExecutive(
-        id,
-        userId,
-      );
+      const updatedOrder = await o2dService.assignToVehicleExecutive(id, userId);
       return res.status(200).json({
         status: "success",
         message: "Vehicle Executive assigned successfully",
@@ -1213,7 +1131,7 @@ class O2dController {
       const updatedOrder = await o2dService.markAsDeliveredByTransportExecutive(
         id,
         userId,
-        req.body,
+        req.body
       );
       return res.status(200).json({
         status: "success",
@@ -1230,10 +1148,7 @@ class O2dController {
       const { id } = req.body;
       const userId = req.user?.id || null;
 
-      const updatedOrder = await o2dService.assignOrderToInvoiceExecutive(
-        id,
-        userId,
-      );
+      const updatedOrder = await o2dService.assignOrderToInvoiceExecutive(id, userId);
       return res.status(200).json({
         status: "success",
         message: "Order assigned to invoice executive successfully",
@@ -1264,17 +1179,12 @@ class O2dController {
         screenshot_url: screenshot_url || "",
       };
 
-      const updatedOrder = await o2dService.intimationAndThankYouData(
-        orderId,
-        userId,
-        payload,
-      );
+      const updatedOrder = await o2dService.intimationAndThankYouData(orderId, userId, payload);
 
       if (!updatedOrder) {
         return res.status(404).json({
           status: "error",
-          message:
-            "Order not found, not assigned to you, or already completed.",
+          message: "Order not found, not assigned to you, or already completed.",
         });
       }
 
@@ -1293,11 +1203,7 @@ class O2dController {
       const { id } = req.body;
       const userId = req.user?.id || null;
 
-      const updatedOrder = await o2dService.updatePaymentInformation(
-        id,
-        userId,
-        req.body,
-      );
+      const updatedOrder = await o2dService.updatePaymentInformation(id, userId, req.body);
 
       return res.status(200).json({
         status: "success",
@@ -1317,7 +1223,7 @@ class O2dController {
       const updatedOrder = await o2dService.updateDeliveryAndWeightInformation(
         id,
         userId,
-        req.body,
+        req.body
       );
 
       return res.status(200).json({
@@ -1335,11 +1241,7 @@ class O2dController {
       const userId = req.user?.id;
       const orderId = req.params.id;
 
-      const result = await o2dService.addRemarksToOrder(
-        orderId,
-        req.body,
-        userId,
-      );
+      const result = await o2dService.addRemarksToOrder(orderId, req.body, userId);
 
       return res.status(200).json({
         status: "success",
@@ -1373,12 +1275,7 @@ class O2dController {
 
       const { id, remarkId } = req.params;
 
-      const result = await o2dService.updateRemarksForOrder(
-        id,
-        remarkId,
-        req.body,
-        userId,
-      );
+      const result = await o2dService.updateRemarksForOrder(id, remarkId, req.body, userId);
 
       return res.status(200).json({
         status: "success",
@@ -1411,10 +1308,7 @@ class O2dController {
     try {
       const userId = req.user?.id || null;
       const { id } = req.body;
-      const order = await o2dService.getSpecificSaleOrderInformation(
-        userId,
-        id,
-      );
+      const order = await o2dService.getSpecificSaleOrderInformation(userId, id);
       return res.status(200).json({
         status: "success",
         message: "Sale order information retrieved successfully",
@@ -1437,10 +1331,7 @@ class O2dController {
         });
       }
 
-      const order = await o2dService.splitOrderIntoMultipleOrders(
-        order_id,
-        userId,
-      );
+      const order = await o2dService.splitOrderIntoMultipleOrders(order_id, userId);
 
       return res.status(200).json({
         status: "success",
@@ -1471,11 +1362,7 @@ class O2dController {
       const { id, ...po_data } = req.body;
       const userId = req.user?.id || null;
 
-      const updatedOrder = await o2dService.updatePoRelated(
-        id,
-        po_data,
-        userId,
-      );
+      const updatedOrder = await o2dService.updatePoRelated(id, po_data, userId);
 
       return res.status(200).json({
         status: "success",

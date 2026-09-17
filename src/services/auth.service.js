@@ -1,21 +1,20 @@
-import jwt from 'jsonwebtoken';
-import config from '../config/env.js';
-import userService from './user.service.js';
-import { UnauthorizedError } from '../errors/customErrors.js';
+import jwt from "jsonwebtoken";
+import config from "../config/env.js";
+import userService from "./user.service.js";
+import { UnauthorizedError } from "../errors/customErrors.js";
 
 class AuthService {
   async login(email_id, password) {
     // 1. Fetch user by email
     const user = await userService.getUserByEmail(email_id);
 
-
     if (!user) {
-      throw new UnauthorizedError('Invalid email or password');
+      throw new UnauthorizedError("Invalid email or password");
     }
 
     // 2. Verify password (plain text comparison, as requested)
     if (user.password !== password) {
-      throw new UnauthorizedError('Invalid email or password');
+      throw new UnauthorizedError("Invalid email or password");
     }
 
     // 3. Generate JWT Token

@@ -1,11 +1,11 @@
-import tenderService from '../services/tender.service.js';
-import { BadRequestError } from '../errors/customErrors.js';
-import config from '../config/env.js';
-import { uploadToS3 } from '../utils/s3.js';
+import tenderService from "../services/tender.service.js";
+import { BadRequestError } from "../errors/customErrors.js";
+import config from "../config/env.js";
+import { uploadToS3 } from "../utils/s3.js";
 
 function safeParse(val, fallback = null) {
   if (val === undefined || val === null) return fallback;
-  if (typeof val === 'object') return val;
+  if (typeof val === "object") return val;
   try {
     return JSON.parse(val);
   } catch (e) {
@@ -17,14 +17,13 @@ class TenderController {
   // GET /api/v1/tenders
   getAll = async (req, res, next) => {
     try {
-
       const userId = req.user?.id;
 
       const tenders = await tenderService.getAllTenders(userId);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Tenders retrieved successfully',
+        status: "success",
+        message: "Tenders retrieved successfully",
         data: tenders,
       });
     } catch (error) {
@@ -32,311 +31,301 @@ class TenderController {
     }
   };
 
-
   getActiveTenders = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
 
       const tenders = await tenderService.getActiveTenders(userId);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Active tenders retrieved successfully',
+        status: "success",
+        message: "Active tenders retrieved successfully",
         data: tenders,
       });
-
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getPendingMDApprovalTenders = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
       const tenders = await tenderService.getPendingMDApprovalTenders(userId);
       return res.status(200).json({
-        status: 'success',
-        message: 'Pending MD approval tenders retrieved successfully',
+        status: "success",
+        message: "Pending MD approval tenders retrieved successfully",
         data: tenders,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getRejectedTendersForTenderAgent = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
-
 
       const tenders = await tenderService.getRejectedTendersForTenderAgent(userId);
       return res.status(200).json({
-        status: 'success',
-        message: 'Rejected tenders retrieved successfully',
+        status: "success",
+        message: "Rejected tenders retrieved successfully",
         data: tenders,
       });
-
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
 
   getShortfallTenders = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
-
 
       const tenders = await tenderService.getShortfallTenders(userId);
       return res.status(200).json({
-        status: 'success',
-        message: 'Shortfall tenders retrieved successfully',
+        status: "success",
+        message: "Shortfall tenders retrieved successfully",
         data: tenders,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
 
   getCompletedTendersForTenderAgent = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
       const tenders = await tenderService.getCompletedTendersForTenderAgent(userId);
       return res.status(200).json({
-        status: 'success',
-        message: 'Completed tenders retrieved successfully',
+        status: "success",
+        message: "Completed tenders retrieved successfully",
         data: tenders,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getApprovedTendersForTenderAgent = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
       const tenders = await tenderService.getApprovedTendersForTenderAgent(userId);
       return res.status(200).json({
-        status: 'success',
-        message: 'Approved tenders retrieved successfully',
+        status: "success",
+        message: "Approved tenders retrieved successfully",
         data: tenders,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getCounterOfferRejectedTenderAgent = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
       const role = req.user?.role;
 
-      if(role !== 'tender_agent'){
-        throw new BadRequestError('Only Tender Agent can view counter offer rejected tenders');
+      if (role !== "tender_agent") {
+        throw new BadRequestError("Only Tender Agent can view counter offer rejected tenders");
       }
 
       const tenders = await tenderService.getCounterOfferRejectedTenderAgent(userId);
       return res.status(200).json({
-        status: 'success',
-        message: 'Counter offer rejected tenders retrieved successfully',
+        status: "success",
+        message: "Counter offer rejected tenders retrieved successfully",
         data: tenders,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
 
   markAsCompleteTenderAfterApprovedByMD = async (req, res, next) => {
-    try{
+    try {
       const { id } = req.params;
       const role = req.user?.role;
       const userId = req.user?.id;
-      
+
       const tender = await tenderService.markAsCompleteTenderAfterApprovedByMD(id, userId);
       return res.status(200).json({
-        status: 'success',
-        message: 'Tender marked as complete successfully',
+        status: "success",
+        message: "Tender marked as complete successfully",
         data: tender,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getTendersForMD = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
       const role = req.user?.role;
 
-      if(role !== 'MD'){
-        throw new BadRequestError('Only MD can view tenders assigned to them');
+      if (role !== "MD") {
+        throw new BadRequestError("Only MD can view tenders assigned to them");
       }
 
       const tenders = await tenderService.getTendersForMD(userId);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Tenders retrieved successfully',
+        status: "success",
+        message: "Tenders retrieved successfully",
         data: tenders,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   deleteTender = async (req, res, next) => {
-    try{
+    try {
       const { id } = req.params;
 
-      if(!id){
-        throw new BadRequestError('Tender ID is required');
+      if (!id) {
+        throw new BadRequestError("Tender ID is required");
       }
 
       await tenderService.deleteTender(id);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Tender deleted successfully',
+        status: "success",
+        message: "Tender deleted successfully",
       });
-
-
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
 
   getRepetitiveTenderDocuments = async (req, res, next) => {
-    try{
+    try {
       const documents = {
-        "pan_card": {
-          "title": "PAN Card",
-          "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/PAN_Mittalu.pdf"
+        pan_card: {
+          title: "PAN Card",
+          url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/PAN_Mittalu.pdf",
         },
-        "gst_dausa": {
-          "title": "GST Certificate - Dausa",
-          "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/GST+RC+Dausa+MPL.pdf"
+        gst_dausa: {
+          title: "GST Certificate - Dausa",
+          url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/GST+RC+Dausa+MPL.pdf",
         },
-        "moa": {
-          "title": "Memorandum of Association",
-          "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/MOA+.pdf"
+        moa: {
+          title: "Memorandum of Association",
+          url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/MOA+.pdf",
         },
-        "audit_and_balance_sheet": {
-          "title": "Audit & Balance Sheet",
-          "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/Audit+%26+Balance+Sheet+2024-25.pdf"
+        audit_and_balance_sheet: {
+          title: "Audit & Balance Sheet",
+          url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/Audit+%26+Balance+Sheet+2024-25.pdf",
         },
-        "list_of_manpower": {
-          "title": "List of Manpower",
-          "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/LIST+OF+MAN+POWER+(1).pdf"
+        list_of_manpower: {
+          title: "List of Manpower",
+          url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/LIST+OF+MAN+POWER+(1).pdf",
         },
-        "list_of_plant_and_machinery": {
-          "title": "List of Plant & Machinery",
-          "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/LIST+OF+P+%26+M.pdf"
+        list_of_plant_and_machinery: {
+          title: "List of Plant & Machinery",
+          url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/LIST+OF+P+%26+M.pdf",
         },
-        "bis": {
-          "cables": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/bis/Gol_14255.pdf",
-          "acsr_conductor": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/bis/Gol+398+Pt+2.pdf",
-          "aaa_conductor": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/bis/Gol+398+Pt+4.pdf"
+        bis: {
+          cables:
+            "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/bis/Gol_14255.pdf",
+          acsr_conductor:
+            "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/bis/Gol+398+Pt+2.pdf",
+          aaa_conductor:
+            "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/bis/Gol+398+Pt+4.pdf",
         },
-        "type_test_reports": {
-          "acsr_conductor": [
+        type_test_reports: {
+          acsr_conductor: [
             {
-              "file_name": "ACSR Dog Conductor",
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/acsr_conductor/ACSR+Dog+Conductor.pdf"
+              file_name: "ACSR Dog Conductor",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/acsr_conductor/ACSR+Dog+Conductor.pdf",
             },
             {
-              "file_name": "ACSR Dog Type Test New",
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/acsr_conductor/ACSR+Dog+Type+Test+New.pdf"
+              file_name: "ACSR Dog Type Test New",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/acsr_conductor/ACSR+Dog+Type+Test+New.pdf",
             },
             {
-              "file_name": "ACSR Rabbit conductor",
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/acsr_conductor/ACSR+Rabbit+conductor.pdf"
+              file_name: "ACSR Rabbit conductor",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/acsr_conductor/ACSR+Rabbit+conductor.pdf",
             },
             {
-              "file_name": "ACSR Weasel conductor",
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/acsr_conductor/ACSR+Weasel+conductor.pdf"
-            }
+              file_name: "ACSR Weasel conductor",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/acsr_conductor/ACSR+Weasel+conductor.pdf",
+            },
           ],
-          "aaa_conductor": [
+          aaa_conductor: [
             {
-              "file_name": "ELMEF TTR AAAC Dog Conductor",
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/aaa_conductor/ELMEF+TTR+AAAC+Dog+Conductor.pdf"
+              file_name: "ELMEF TTR AAAC Dog Conductor",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/aaa_conductor/ELMEF+TTR+AAAC+Dog+Conductor.pdf",
             },
             {
-              "file_name": "ELMEF TTR AAAC Rabbit Conductor",
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/aaa_conductor/ELMEF+TTR+AAAC+Rabbit+Conductor.pdf"
+              file_name: "ELMEF TTR AAAC Rabbit Conductor",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/aaa_conductor/ELMEF+TTR+AAAC+Rabbit+Conductor.pdf",
             },
             {
-              "file_name": "ELMEF TTR AAAC Weasel Conductor",
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/aaa_conductor/ELMEF+TTR+AAAC+Weasel+Conductor.pdf"
-            }
+              file_name: "ELMEF TTR AAAC Weasel Conductor",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/aaa_conductor/ELMEF+TTR+AAAC+Weasel+Conductor.pdf",
+            },
           ],
-          "cable": [
+          cable: [
             {
-              "file_name": "3C X 120+16+70", 
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/3C+X+120%2B16%2B70.pdf"
+              file_name: "3C X 120+16+70",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/3C+X+120%2B16%2B70.pdf",
             },
             {
-              "file_name": "3C X 150+35+95", 
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/3C+X+150%2B35%2B95.pdf"
-            }, 
-            {
-              "file_name": "3C X 25+25",
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/3C+X+25%2B25.pdf"
-            }, 
-            {
-              "file_name": "3C X 70+16+50", 
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/3C+X+70%2B16%2B50.pdf"
+              file_name: "3C X 150+35+95",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/3C+X+150%2B35%2B95.pdf",
             },
             {
-              "file_name": "3cX 50 mm2 LT ABC", 
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/3cX+50+mm2+LT+ABC.pdf"
+              file_name: "3C X 25+25",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/3C+X+25%2B25.pdf",
             },
             {
-              "file_name": "ELMEF TTR 3CX35", 
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/ELMEF+TTR+3CX35.pdf"
+              file_name: "3C X 70+16+50",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/3C+X+70%2B16%2B50.pdf",
             },
             {
-              "file_name": "ELMEF TTR 3CX50+35+25sqmm Bare Massenger",
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/ELMEF+TTR+3CX50%2B35%2B25sqmm+Bare+Massenger.pdf"
+              file_name: "3cX 50 mm2 LT ABC",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/3cX+50+mm2+LT+ABC.pdf",
             },
             {
-              "file_name": "ELMEF TTR IC X 35+35 Insulated Massenger",
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/ELMEF+TTR+IC+X+35%2B35+Insulated+Massenger.pdf"
+              file_name: "ELMEF TTR 3CX35",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/ELMEF+TTR+3CX35.pdf",
             },
             {
-              "file_name": "IC X 25+25",
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/IC+X+25%2B25.pdf"
+              file_name: "ELMEF TTR 3CX50+35+25sqmm Bare Massenger",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/ELMEF+TTR+3CX50%2B35%2B25sqmm+Bare+Massenger.pdf",
             },
             {
-              "file_name": "TTR 1Cx25+25 New",
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/TTR+1Cx25%2B25+New.pdf"
+              file_name: "ELMEF TTR IC X 35+35 Insulated Massenger",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/ELMEF+TTR+IC+X+35%2B35+Insulated+Massenger.pdf",
             },
             {
-              "file_name": "TTR 1cx25+25",
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/TTR+1cx25%2B25.pdf"
+              file_name: "IC X 25+25",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/IC+X+25%2B25.pdf",
             },
             {
-              "file_name": "Type Test Notarized",
-              "url": "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/Type+Test+Notarized.pdf"
-            }
-          ]
-        }
-      }
+              file_name: "TTR 1Cx25+25 New",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/TTR+1Cx25%2B25+New.pdf",
+            },
+            {
+              file_name: "TTR 1cx25+25",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/TTR+1cx25%2B25.pdf",
+            },
+            {
+              file_name: "Type Test Notarized",
+              url: "https://vinayak-erp-storage.s3.ap-south-1.amazonaws.com/tenders/repetitive_docs/type_test_report/cable/Type+Test+Notarized.pdf",
+            },
+          ],
+        },
+      };
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Repetitive tender documents retrieved successfully',
+        status: "success",
+        message: "Repetitive tender documents retrieved successfully",
         data: documents,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
 
   // GET /api/v1/tenders/:id
   getById = async (req, res, next) => {
@@ -345,8 +334,8 @@ class TenderController {
       const tender = await tenderService.getTenderById(id);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Tender retrieved successfully',
+        status: "success",
+        message: "Tender retrieved successfully",
         data: tender,
       });
     } catch (error) {
@@ -354,58 +343,55 @@ class TenderController {
     }
   };
 
-
   approveTender = async (req, res, next) => {
     try {
       const { id } = req.params;
       const role = req.user?.role;
       const approveStatus = req.body.approveStatus;
-      if (role !== 'MD') {
-        throw new BadRequestError('Only MD can approve tenders');
+      if (role !== "MD") {
+        throw new BadRequestError("Only MD can approve tenders");
       }
 
-      if(approveStatus === undefined){
-        throw new BadRequestError('approveStatus field is required in request body');
+      if (approveStatus === undefined) {
+        throw new BadRequestError("approveStatus field is required in request body");
       }
 
       const tender = await tenderService.approveTender(id, approveStatus);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Tender approved successfully',
+        status: "success",
+        message: "Tender approved successfully",
         data: tender,
       });
-
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   approveCounterOfferTender = async (req, res, next) => {
-    try{
+    try {
       const { id } = req.params;
       const role = req.user?.role;
       const approveStatus = req.body.approveStatus;
-      if (role !== 'MD') {
-        throw new BadRequestError('Only MD can approve counter offer tenders');
+      if (role !== "MD") {
+        throw new BadRequestError("Only MD can approve counter offer tenders");
       }
 
-      if(approveStatus === undefined){
-        throw new BadRequestError('approveStatus field is required in request body');
+      if (approveStatus === undefined) {
+        throw new BadRequestError("approveStatus field is required in request body");
       }
 
       const tender = await tenderService.approveCounterOfferTender(id, approveStatus);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Counter offer tender approved successfully',
+        status: "success",
+        message: "Counter offer tender approved successfully",
         data: tender,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
 
   // _processRequestData = async (req) => {
   //   // 1. Convert empty string inputs to null for numeric/date fields
@@ -512,10 +498,8 @@ class TenderController {
 
   // POST /api/v1/tenders
 
-
   createTender = async (req, res, next) => {
     try {
-
       const role = req.user?.role;
       const userId = req.user?.id;
 
@@ -524,8 +508,8 @@ class TenderController {
       // console.log("tender data -> ", tender);
 
       return res.status(201).json({
-        status: 'success',
-        message: 'Tender created successfully',
+        status: "success",
+        message: "Tender created successfully",
         data: tender,
       });
     } catch (error) {
@@ -540,23 +524,21 @@ class TenderController {
       const role = req.user?.role;
 
       if (!id) {
-        throw new BadRequestError('Tender ID is required');
+        throw new BadRequestError("Tender ID is required");
       }
 
       await this._processRequestData(req);
       const tender = await tenderService.updateTender(id, req.body, role);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Tender updated successfully',
+        status: "success",
+        message: "Tender updated successfully",
         data: tender,
       });
     } catch (error) {
       next(error);
     }
   };
-
-
 
   sendForApproval = async (req, res, next) => {
     try {
@@ -566,24 +548,23 @@ class TenderController {
       const userName = req.user?.username;
 
       if (!id) {
-        throw new BadRequestError('Tender ID is required');
+        throw new BadRequestError("Tender ID is required");
       }
 
       const tender = await tenderService.sendForApproval(id, role, userId, userName);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Tender sent for approval successfully',
+        status: "success",
+        message: "Tender sent for approval successfully",
         data: tender,
       });
     } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getApprovalRequestTenders = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
       const role = req.user?.role;
 
@@ -594,18 +575,17 @@ class TenderController {
       const tenders = await tenderService.getApprovalRequestTenders(userId);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Tenders retrieved successfully',
+        status: "success",
+        message: "Tenders retrieved successfully",
         data: tenders,
       });
-
-    } catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
 
   getCounterOfferApprovalRequestTenders = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
       const role = req.user?.role;
       // if(role !== 'MD'){
@@ -613,17 +593,17 @@ class TenderController {
       // }
       const tenders = await tenderService.getCounterOfferApprovalRequestTenders(userId);
       return res.status(200).json({
-        status: 'success',
-        message: 'Tenders retrieved successfully',
+        status: "success",
+        message: "Tenders retrieved successfully",
         data: tenders,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
 
   getCounterOfferRejectedTenders = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
       const role = req.user?.role;
       // if(role !== 'MD'){
@@ -631,17 +611,17 @@ class TenderController {
       // }
       const tenders = await tenderService.getCounterOfferRejectedTenders(userId);
       return res.status(200).json({
-        status: 'success',
-        message: 'Counter offer rejected tenders retrieved successfully',
+        status: "success",
+        message: "Counter offer rejected tenders retrieved successfully",
         data: tenders,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
 
   getCounterOfferApprovedTenders = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
       const role = req.user?.role;
       // if(role !== 'MD'){
@@ -649,249 +629,223 @@ class TenderController {
       // }
       const tenders = await tenderService.getCounterOfferApprovedTenders(userId);
       return res.status(200).json({
-        status: 'success',
-        message: 'Counter offer approved tenders retrieved successfully',
+        status: "success",
+        message: "Counter offer approved tenders retrieved successfully",
         data: tenders,
       });
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getApprovedTenders = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
       const role = req.user?.role;
-      if(role !== 'MD'){
-        throw new BadRequestError('Only MD can view approved tenders');
+      if (role !== "MD") {
+        throw new BadRequestError("Only MD can view approved tenders");
       }
-
 
       const tenders = await tenderService.getApprovedTenders(userId);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Approved tenders retrieved successfully',
+        status: "success",
+        message: "Approved tenders retrieved successfully",
         data: tenders,
       });
-
-
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getRejectedTenders = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
       const role = req.user?.role;
 
-      if(role !== 'MD'){
-        throw new BadRequestError('Only MD can view rejected tenders');
+      if (role !== "MD") {
+        throw new BadRequestError("Only MD can view rejected tenders");
       }
 
       const tenders = await tenderService.getRejectedTenders(userId);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Rejected tenders retrieved successfully',
+        status: "success",
+        message: "Rejected tenders retrieved successfully",
         data: tenders,
       });
-
-
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getTendersForAccountsTeam = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
       const role = req.user?.role;
-      if(role !== 'tender_handler_accounts'){
-        throw new BadRequestError('Only Accounts Team can view tenders assigned to them');
+      if (role !== "tender_handler_accounts") {
+        throw new BadRequestError("Only Accounts Team can view tenders assigned to them");
       }
 
       const tenders = await tenderService.getTendersForAccountsTeam(userId);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Tenders for Accounts Team retrieved successfully',
+        status: "success",
+        message: "Tenders for Accounts Team retrieved successfully",
         data: tenders,
       });
-
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getCompletedTendersForAccountsTeam = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
       const role = req.user?.role;
-      if(role !== 'tender_handler_accounts'){
-        throw new BadRequestError('Only Accounts Team can view completed tenders assigned to them');
+      if (role !== "tender_handler_accounts") {
+        throw new BadRequestError("Only Accounts Team can view completed tenders assigned to them");
       }
 
       const tenders = await tenderService.getCompletedTendersForAccountsTeam(userId);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Completed Tenders for Accounts Team retrieved successfully',
+        status: "success",
+        message: "Completed Tenders for Accounts Team retrieved successfully",
         data: tenders,
       });
-
-
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getTenderCardsCountData = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
       const role = req.user?.role;
 
-      if(role !== 'MD'){
-        throw new BadRequestError('Only MD and Tender Agent can view tender cards count data');
+      if (role !== "MD") {
+        throw new BadRequestError("Only MD and Tender Agent can view tender cards count data");
       }
 
       const analysis = await tenderService.getTenderCardsCountData(userId);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Tender cards count data retrieved successfully',
+        status: "success",
+        message: "Tender cards count data retrieved successfully",
         data: analysis,
       });
-
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   getTendersAssignedByAccountsTeam = async (req, res, next) => {
-    try{
+    try {
       const userId = req.user?.id;
       const role = req.user?.role;
 
       // console.log("role and userId in getTendersAssignedByAccountsTeam -> ", role, userId);
 
-      if(role !== 'tender_agent'){
-        throw new BadRequestError('Only Accounts Team can view tenders assigned by them');
+      if (role !== "tender_agent") {
+        throw new BadRequestError("Only Accounts Team can view tenders assigned by them");
       }
 
       const tenders = await tenderService.getTendersAssignedByAccountsTeam(userId);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Tenders assigned by Accounts Team retrieved successfully',
+        status: "success",
+        message: "Tenders assigned by Accounts Team retrieved successfully",
         data: tenders,
       });
-
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   updateTenderByAccountsTeam = async (req, res, next) => {
-    try{
-
+    try {
       const role = req.user?.role;
       const userId = req.user?.id;
 
-      if(role !== 'tender_handler_accounts'){
-        throw new BadRequestError('Only Accounts Team can update tender details assigned to them');
+      if (role !== "tender_handler_accounts") {
+        throw new BadRequestError("Only Accounts Team can update tender details assigned to them");
       }
 
       const tender = await tenderService.updateTenderByAccountsTeam(req.body, userId);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Tender updated successfully by Accounts Team',
+        status: "success",
+        message: "Tender updated successfully by Accounts Team",
         data: tender,
       });
-
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
+  };
 
   markTenderCompleteByAccountsTeam = async (req, res, next) => {
-    try{
+    try {
       const role = req.user?.role;
       const userId = req.user?.id;
 
-      if(role !== 'tender_handler_accounts'){
-        throw new BadRequestError('Only Accounts Team can mark tender as complete assigned to them');
+      if (role !== "tender_handler_accounts") {
+        throw new BadRequestError(
+          "Only Accounts Team can mark tender as complete assigned to them"
+        );
       }
-      
+
       const tender = await tenderService.markTenderCompleteByAccountsTeam(req.body, userId);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Tender marked as complete successfully by Accounts Team',
+        status: "success",
+        message: "Tender marked as complete successfully by Accounts Team",
         data: tender,
       });
-
-      
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
+  };
 
   updateTenderDetails = async (req, res, next) => {
-    try{
+    try {
       const role = req.user?.role;
       const userId = req.user?.id;
 
-      if(role !== 'tender_agent'){
-        throw new BadRequestError('Only Tender Agent can update tender details assigned to them');
+      if (role !== "tender_agent") {
+        throw new BadRequestError("Only Tender Agent can update tender details assigned to them");
       }
-
-
-
 
       const tender = await tenderService.updateTenderDetails(req.body, userId);
 
       return res.status(200).json({
-        status: 'success',
-        message: 'Tender details updated successfully by Tender Agent',
+        status: "success",
+        message: "Tender details updated successfully by Tender Agent",
         data: tender,
       });
-
-    }catch(error){
+    } catch (error) {
       next(error);
     }
-  }
-
-
+  };
 
   uploadFileToS3 = async (req, res, next) => {
     try {
-      const file = req.files?.['pdf-file']?.[0];
+      const file = req.files?.["pdf-file"]?.[0];
       if (!file) {
-        throw new BadRequestError('File is required');
+        throw new BadRequestError("File is required");
       }
       const folder = req.body.folder;
 
       console.log("folder: ", req.body.folder);
 
       let path = `documents/path_not_provided`;
-      if(folder){
+      if (folder) {
         path = `documents/${folder}`;
       }
       const s3Url = await uploadToS3(file, config.s3.bucketName, path);
       return res.status(200).json({
-        status: 'success',
-        message: 'File uploaded successfully',
+        status: "success",
+        message: "File uploaded successfully",
         data: { url: s3Url },
       });
     } catch (error) {
@@ -899,8 +853,5 @@ class TenderController {
     }
   };
 }
-
-
-
 
 export default new TenderController();

@@ -9,9 +9,7 @@ export const initCronJobs = () => {
   // "0 */6 * * *" → every 6 hours
   // "*/2 * * * *" -> every 2 minutes
   cron.schedule("0 */6 * * *", async () => {
-    console.log(
-      "CRON: Checking for missing PO documents with accepted counter offers...",
-    );
+    console.log("CRON: Checking for missing PO documents with accepted counter offers...");
 
     try {
       // 1. Fetch only tenders that haven't been notified yet
@@ -47,11 +45,7 @@ export const initCronJobs = () => {
           const type = "missing_po";
 
           // 2. Save notification to database
-          const notif = await createNotification(
-            tender.createdby,
-            message,
-            type,
-          );
+          const notif = await createNotification(tender.createdby, message, type);
 
           // 3. Push real-time via Socket.io
           emitToUser(tender.createdby, "new_notification", notif);
@@ -59,7 +53,7 @@ export const initCronJobs = () => {
           // 4. IMPORTANT: Mark this specific tender as notified in the database
           await pool.query(
             `UPDATE public.tender_information SET po_missing_notified_at = NOW() WHERE id = $1`,
-            [tender.id],
+            [tender.id]
           );
 
           try {
@@ -74,22 +68,19 @@ export const initCronJobs = () => {
               },
             });
           } catch (mailError) {
-            console.log(
-              `Error sending missing PO mail to ${tender.user_email}:`,
-              mailError,
-            );
+            console.log(`Error sending missing PO mail to ${tender.user_email}:`, mailError);
           }
         } catch (innerError) {
           // Catch errors for individual tenders so one failure doesn't break the whole loop
           console.error(
             `Failed to process notification for tender ID ${tender.id}:`,
-            innerError.message,
+            innerError.message
           );
         }
       }
 
       console.log(
-        `CRON: Successfully sent ${missingPoTenders.length} one-time missing PO notifications.`,
+        `CRON: Successfully sent ${missingPoTenders.length} one-time missing PO notifications.`
       );
     } catch (error) {
       console.error("CRON Error checking missing POs:", error.message);

@@ -1,15 +1,15 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import transporter from '../config/mailer.js';
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import transporter from "../config/mailer.js";
 
 // __dirname doesn't exist in ES modules, so recreate it
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const loadTemplate = (templateName, replacements) => {
-  const filePath = path.join(__dirname, '../templates', `${templateName}.html`);
-  let html = fs.readFileSync(filePath, 'utf-8');
+  const filePath = path.join(__dirname, "../templates", `${templateName}.html`);
+  let html = fs.readFileSync(filePath, "utf-8");
 
   Object.entries(replacements).forEach(([key, val]) => {
     html = html.replaceAll(`{{${key}}}`, val);

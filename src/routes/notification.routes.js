@@ -3,22 +3,25 @@ import {
   getNotifications,
   markAllRead,
   markOneRead,
-  createNotification
+  createNotification,
 } from "../services/notification.service.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
-
 // ⚠️ REMOVE THIS AFTER TESTING
-router.post('/test', authMiddleware, async (req, res) => {
+router.post("/test", authMiddleware, async (req, res) => {
   try {
     const { message, type } = req.body;
-    const notif = await createNotification(req.user.id, message || 'Test notification', type || 'test');
-    
+    const notif = await createNotification(
+      req.user.id,
+      message || "Test notification",
+      type || "test"
+    );
+
     // Also push real-time
-    const { emitToUser } = await import('../utils/socket.js');
-    emitToUser(req.user.id, 'new_notification', notif);
+    const { emitToUser } = await import("../utils/socket.js");
+    emitToUser(req.user.id, "new_notification", notif);
 
     res.json({ success: true, data: notif });
   } catch (err) {

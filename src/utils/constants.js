@@ -8,16 +8,15 @@ export const HTTP_STATUS = {
   INTERNAL_SERVER_ERROR: 500,
 };
 
-
 export const ORDER_STAGES = {
-    credit_limit_approval_stage: "Credit Limit Approval Stage",
-    so_generation_stage: "So Generation Stage",
-    order_completed_stage: "Order Completed",
-    so_generation_completed_stage: "So Generation Completed",
-    vehicle_arrangement_stage: "Vehicle Arrangement Stage",
-    vehicle_arrangement_completed_stage: "Vehicle Arrangement Completed",
-    invoice_generation_stage: "Invoice Generation Stage",
-    invoice_generation_completed_stage: "Invoice Generation Completed",
-    thank_you_and_intimation_stage: "Thank You and Intimation Stage",
-    order_splitted: "Order Splitted!"
-}
+  credit_limit_approval_stage: "Credit Limit Approval Stage",
+  so_generation_stage: "So Generation Stage",
+  order_completed_stage: "Order Completed",
+  so_generation_completed_stage: "So Generation Completed",
+  vehicle_arrangement_stage: "Vehicle Arrangement Stage",
+  vehicle_arrangement_completed_stage: "Vehicle Arrangement Completed",
+  invoice_generation_stage: "Invoice Generation Stage",
+  invoice_generation_completed_stage: "Invoice Generation Completed",
+  thank_you_and_intimation_stage: "Thank You and Intimation Stage",
+  order_splitted: "Order Splitted!",
+};
