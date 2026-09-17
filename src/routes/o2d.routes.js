@@ -129,6 +129,8 @@ router.post(
   o2dController.markAsDeliveredByTransportExecutive
 );
 
+router.post("/update-bilty-document", authMiddleware, o2dController.updateBiltyDocument);
+
 // invoice generation phase
 router.get(
   "/get-invoice-generation-request-data",

@@ -2969,6 +2969,33 @@ class O2dService {
     }
   }
 
+  async updateBiltyDocument(id, bilty_url, userId) {
+    try {
+      const query = `
+        UPDATE public.sales_orders
+        SET vehicle_arrangement = jsonb_set(
+              COALESCE(vehicle_arrangement, '{}'::jsonb),
+              '{bilty_url}',
+              to_jsonb($1::text),
+              true
+            ),
+            updated_at = now(),
+            updated_by = $2
+        WHERE id = $3
+        RETURNING *;
+      `;
+
+      const values = [bilty_url, userId, id];
+
+      const { rows } = await pool.query(query, values);
+
+      return rows[0];
+    } catch (error) {
+      console.error("Error in updating bilty document: ", error);
+      throw error;
+    }
+  }
+
   async assignOrderToInvoiceExecutive(id, userId) {
     try {
       // get invoice executive id

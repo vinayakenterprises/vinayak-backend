@@ -1143,6 +1143,22 @@ class O2dController {
     }
   };
 
+  updateBiltyDocument = async (req, res, next) => {
+    try {
+      const { id, bilty_url } = req.body;
+      const userId = req.user?.id || null;
+
+      const updatedOrder = await o2dService.updateBiltyDocument(id, bilty_url, userId);
+      return res.status(200).json({
+        status: "success",
+        message: "Bilty document updated successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   assignOrderToInvoiceExecutive = async (req, res, next) => {
     try {
       const { id } = req.body;
