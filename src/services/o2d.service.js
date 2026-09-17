@@ -324,7 +324,7 @@ class O2dService {
     try {
       let whereCondition = "WHERE c.sales_person = $1 or c.crm = $1";
       let inputArray = [userId];
-      if (userId === 15 || userId === 9 || userId === 16) {
+      if (userId === 15 || userId === 9 || userId === 16 || userId === 17) {
         whereCondition = "";
         inputArray = [];
       }
@@ -2344,9 +2344,17 @@ class O2dService {
       const collect_interest_from_client =
         orderDetails.rows[0].payment_status?.collect_interest_from_client;
 
+      if (collect_interest_from_client === false) {
+        const error = new Error(
+          `Interest Note is rejected for Order ID: ${orderId}`,
+        );
+        error.statusCode = 422;
+        throw error;
+      }  
+
       if (collect_interest_from_client === undefined) {
         const error = new Error(
-          `Collect Interest from Client is not selected for Order ID: ${orderId}`,
+          `Interest Note is not Approved for Order ID: ${orderId}`,
         );
         error.statusCode = 400;
         throw error;
