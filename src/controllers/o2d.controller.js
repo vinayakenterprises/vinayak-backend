@@ -801,7 +801,7 @@ class O2dController {
       if (req.files?.["pdf-file"]?.[0]) {
         const pdfFile = req.files["pdf-file"][0];
         const year = new Date().getFullYear();
-        const s3Path = `sales-orders/${year}/tally_batch_${Date.now()}`;
+        const s3Path = `sales-orders/${year}`;
 
         pdfUrl = await uploadPdfToS3(pdfFile, s3Path);
         console.log("PDF uploaded to S3: ", pdfUrl);
@@ -967,7 +967,7 @@ class O2dController {
       if (req.files?.["pdf-file"]?.[0]) {
         const pdfFile = req.files["pdf-file"][0];
         const year = new Date().getFullYear();
-        const s3Path = `credit-notes/${year}/tally_batch_${Date.now()}`;
+        const s3Path = `credit-notes/${year}`;
 
         pdfUrl = await uploadPdfToS3(pdfFile, s3Path);
         console.log("PDF uploaded to S3: ", pdfUrl);
