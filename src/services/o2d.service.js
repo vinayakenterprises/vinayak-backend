@@ -1968,6 +1968,21 @@ class O2dService {
     }
   }
 
+  async findMissingTallyOrderCrns(crn) {
+    const orderId = Number(crn);
+
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      return [crn];
+    }
+
+    const { rowCount } = await pool.query(
+      `SELECT 1 FROM public.sales_orders WHERE id = $1`,
+      [orderId]
+    );
+
+    return rowCount === 0 ? [orderId] : [];
+  }
+
   async receiveSoOrdersFromTally(so_orders, pdfUrl) {
     try {
       const soOrders = so_orders.salesOrders;
@@ -1979,10 +1994,9 @@ class O2dService {
       // before returning the success response
       await Promise.all(
         soOrders.map(async (sale_order) => {
-          // const lastNumber = sale_order?.orderno?.split("/").pop();
-          const orderId = parseInt(soOrders[0]?.terms_of_delivery);
+          const orderId = parseInt(sale_order?.terms_of_delivery, 10);
 
-          if (!orderId) {
+          if (!Number.isInteger(orderId)) {
             throw new Error("Order ID is required");
           }
 

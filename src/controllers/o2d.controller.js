@@ -793,11 +793,39 @@ class O2dController {
 
   receiveSoOrdersFromTally = async (req, res, next) => {
     try {
-      // console.log("req.body:", req.body);
+      // 1. Flexibly parse the JSON payload
+      let salesOrdersData = req.body;
+
+      if (typeof req.body.so_orders_data === "string") {
+        salesOrdersData = JSON.parse(req.body.so_orders_data);
+      } else if (typeof req.body.salesOrders === "string") {
+        salesOrdersData = { salesOrders: JSON.parse(req.body.salesOrders) };
+      }
+
+      // 2. Validation Guard
+      if (!salesOrdersData || !Array.isArray(salesOrdersData.salesOrders)) {
+        return res.status(400).json({
+          status: "fail",
+          message: "Invalid payload: 'salesOrders' array is missing or invalid.",
+        });
+      }
+
+      // Reject the complete payload before uploading its PDF when any CRN is unknown.
+      const missingCrns = await o2dService.findMissingTallyOrderCrns(
+        salesOrdersData.salesOrders[0]?.terms_of_delivery
+      );
+
+      if (missingCrns.length > 0) {
+        return res.status(400).json({
+          status: "rejected",
+          message: "SO order rejected because the CRN does not exist in the database.",
+          missingCrns,
+        });
+      }
 
       let pdfUrl = null;
 
-      // 1. Upload PDF to S3 if attached
+      // 3. Upload PDF to S3 only after all CRNs have been accepted.
       if (req.files?.["pdf-file"]?.[0]) {
         const pdfFile = req.files["pdf-file"][0];
         const year = new Date().getFullYear();
@@ -807,30 +835,13 @@ class O2dController {
         console.log("PDF uploaded to S3: ", pdfUrl);
       }
 
-      // 2. Flexibly parse the JSON payload
-      let salesOrdersData = req.body;
-
-      if (typeof req.body.so_orders_data === "string") {
-        salesOrdersData = JSON.parse(req.body.so_orders_data);
-      } else if (typeof req.body.salesOrders === "string") {
-        salesOrdersData = { salesOrders: JSON.parse(req.body.salesOrders) };
-      }
-
-      // 3. Validation Guard
-      if (!salesOrdersData || !Array.isArray(salesOrdersData.salesOrders)) {
-        return res.status(400).json({
-          status: "fail",
-          message: "Invalid payload: 'salesOrders' array is missing or invalid.",
-        });
-      }
-
       // 4. Pass parsed data and S3 PDF URL to the service
       const updatedOrder = await o2dService.receiveSoOrdersFromTally(salesOrdersData, pdfUrl);
 
       return res.status(200).json({
         status: "success",
         message: "SO orders and PDF received from Tally successfully",
-        // data: updatedOrder,
+        data: updatedOrder,
       });
     } catch (error) {
       next(error);
