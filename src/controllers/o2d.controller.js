@@ -406,18 +406,18 @@ class O2dController {
 
   updateDispatchInformation = async (req, res, next) => {
     try {
-      // 1. Extract both status and type from the request body
       const { id, dispatch_status, dispatch_type, dispatch_at, delay_reason } = req.body;
       const userId = req.user?.id || null;
+      const userName = req.user?.name || req.user?.username || null;
 
-      // 2. Pass the new parameters to the service
       const updatedOrder = await o2dService.updateDispatchInformation(
         id,
         dispatch_type,
         dispatch_status,
         userId,
         dispatch_at,
-        delay_reason
+        delay_reason,
+        userName
       );
 
       return res.status(200).json({

@@ -1121,17 +1121,74 @@ class O2dService {
     dispatch_status,
     userId,
     dispatch_at,
-    delay_reason
+    delay_reason,
+    userName = null
   ) {
     try {
-      // 1. Use jsonb_build_object to construct your new dispatch_info column
       const query = `
       UPDATE public.sales_orders
-      SET dispatch_info = COALESCE(dispatch_info, '{}'::jsonb) || jsonb_build_object(
-          'dispatch_status', $2::boolean,
-          'dispatch_at', $5::timestamp,
+      SET dispatch_info = (
+        -- Step 1: Ensure history array exists, preserving past state if history was empty
+        jsonb_set(
+          COALESCE(dispatch_info, '{}'::jsonb),
+          '{history}',
+          CASE 
+            -- Case 1: History already exists -> append new entry
+            WHEN (dispatch_info->'history') IS NOT NULL AND jsonb_typeof(dispatch_info->'history') = 'array' THEN
+              (dispatch_info->'history') || jsonb_build_array(
+                jsonb_build_object(
+                  'dispatch_type', $3::text,
+                  'delay_reason', $6::text,
+                  'dispatch_status', $2::boolean,
+                  'dispatch_at', $5::timestamp,
+                  'updated_by', $4::integer,
+                  'updated_by_name', $7::text,
+                  'updated_at', now()
+                )
+              )
+            -- Case 2: History doesn't exist, but an old dispatch_type existed -> archive old + append new
+            WHEN dispatch_info->>'dispatch_type' IS NOT NULL THEN
+              jsonb_build_array(
+                jsonb_build_object(
+                  'dispatch_type', dispatch_info->>'dispatch_type',
+                  'delay_reason', dispatch_info->>'delay_reason',
+                  'dispatch_status', (dispatch_info->>'dispatch_status')::boolean,
+                  'dispatch_at', dispatch_info->>'dispatch_at',
+                  'updated_by', updated_by,
+                  'updated_at', updated_at
+                ),
+                jsonb_build_object(
+                  'dispatch_type', $3::text,
+                  'delay_reason', $6::text,
+                  'dispatch_status', $2::boolean,
+                  'dispatch_at', $5::timestamp,
+                  'updated_by', $4::integer,
+                  'updated_by_name', $7::text,
+                  'updated_at', now()
+                )
+              )
+            -- Case 3: Brand new record -> initialize array with first entry
+            ELSE
+              jsonb_build_array(
+                jsonb_build_object(
+                  'dispatch_type', $3::text,
+                  'delay_reason', $6::text,
+                  'dispatch_status', $2::boolean,
+                  'dispatch_at', $5::timestamp,
+                  'updated_by', $4::integer,
+                  'updated_by_name', $7::text,
+                  'updated_at', now()
+                )
+              )
+          END
+        )
+        -- Step 2: Overwrite top-level keys with latest active selection
+        || jsonb_build_object(
           'dispatch_type', $3::text,
-          'delay_reason', $6::text
+          'delay_reason', $6::text,
+          'dispatch_status', $2::boolean,
+          'dispatch_at', $5::timestamp
+        )
       ),
       updated_at = now(),
       updated_by = $4
@@ -1139,7 +1196,6 @@ class O2dService {
       RETURNING *;
     `;
 
-      // 2. Update the parameter array to match the new query structure
       const { rows } = await pool.query(query, [
         id,
         dispatch_status,
@@ -1147,10 +1203,12 @@ class O2dService {
         userId,
         dispatch_at,
         delay_reason,
+        userName,
       ]);
+
       return rows[0];
     } catch (error) {
-      console.error("Error in updating dispatch info: ", error);
+      console.error("Error in updating dispatch info:", error);
       throw error;
     }
   }
