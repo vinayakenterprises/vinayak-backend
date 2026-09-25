@@ -202,6 +202,19 @@ class O2dService {
       sale_rate,
     ];
 
+    console.log(
+      "Create Sale Order Data:",
+      JSON.stringify(
+        {
+          ...data,
+          created_by: originalCreatorId || userId,
+          order_status: orderStatus,
+        },
+        null,
+        2
+      )
+    );
+
     const { rows } = await pool.query(query, values);
 
     const createdOrder = rows[0];
@@ -2732,8 +2745,24 @@ class O2dService {
 
   async getSalesTeamDashboardPendingDispatchOverview(userId) {
     try {
-      const query = `select delivery_date, sum(quantity_mt) as quantity_mt, count(delivery_date) as pending_orders from sales_orders
-      where vehicle_arrangement->>'actual_deliver_date' is null group by delivery_date`;
+      const query = `
+      SELECT
+    delivery_date,
+    json_agg(
+        json_build_object(
+                'client_name', client_name,
+                'quantity_mt', quantity_mt,
+                'bundle', quantity_mt / 3.0,
+                'orderno', sale_order_generation->'sale_order_details'->>'orderno'
+            )
+            ORDER BY client_name
+        ) AS client_orders,
+        COUNT(*) AS pending_orders,
+        SUM(quantity_mt) AS quantity_mt
+    FROM sales_orders
+    WHERE vehicle_arrangement->>'actual_deliver_date' IS NULL
+    GROUP BY delivery_date
+    ORDER BY delivery_date;`;
       const { rows } = await pool.query(query, []);
       return rows;
     } catch (error) {
