@@ -202,19 +202,6 @@ class O2dService {
       sale_rate,
     ];
 
-    console.log(
-      "Create Sale Order Data:",
-      JSON.stringify(
-        {
-          ...data,
-          created_by: originalCreatorId || userId,
-          order_status: orderStatus,
-        },
-        null,
-        2
-      )
-    );
-
     const { rows } = await pool.query(query, values);
 
     const createdOrder = rows[0];
@@ -1025,7 +1012,7 @@ class O2dService {
     try {
       const query = `
         SELECT * FROM public.sales_orders
-        WHERE assigned_to = $1 AND sale_order_generation->>'sent_for_so' = 'true' and sale_order_generation->>'so_order_completed_at' is null
+        WHERE sale_order_generation->>'sent_for_so' = 'true' and sale_order_generation->>'so_order_completed_at' is null
         ORDER BY id DESC
         `;
       const { rows } = await pool.query(query, [userId]);
