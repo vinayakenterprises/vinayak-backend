@@ -1015,7 +1015,7 @@ class O2dService {
         WHERE sale_order_generation->>'sent_for_so' = 'true' and sale_order_generation->>'so_order_completed_at' is null
         ORDER BY id DESC
         `;
-      const { rows } = await pool.query(query, [userId]);
+      const { rows } = await pool.query(query, []);
       return rows;
     } catch (error) {
       console.log("error in getting so generation request data: ", error);
