@@ -2,6 +2,21 @@ import { Router } from "express";
 import o2dController from "../controllers/o2d.controller.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
 import { documentUpload } from "../middlewares/upload.middleware.js";
+import multer from "multer";
+
+const storage = multer.memoryStorage();
+
+export const upload = multer({
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit per file
+  },
+});
+const transportExecutiveUpload = upload.fields([
+  { name: "all_bundles_image", maxCount: 1 },
+  { name: "driver_and_vehicle_number_image", maxCount: 1 },
+  { name: "driver_license_image", maxCount: 1 },
+]);
 
 const router = Router();
 
@@ -126,6 +141,7 @@ router.get(
 router.post(
   "/mark-as-delivered-by-transport-executive",
   authMiddleware,
+  transportExecutiveUpload,
   o2dController.markAsDeliveredByTransportExecutive
 );
 

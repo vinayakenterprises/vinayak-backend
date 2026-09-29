@@ -1,23 +1,14 @@
+// utils/helpers/uploadFileToS3.js
+
 import { uploadToS3 } from "../s3.js";
 import config from "../../config/env.js";
 
-const uploadSOPdfToS3 = async (file, path = "documents/path_not_provided") => {
+const uploadFileToS3 = async (file, path = "documents/path_not_provided") => {
   if (!file) {
-    throw new Error("PDF file is required");
+    throw new Error("File is required");
   }
 
-  const year = new Date().getFullYear();
-
-  //   const path = `sales-orders/${year}/${orderNo.replace(/\//g, "_")}`;
-
-  const pdfFile = {
-    ...file,
-    mimetype: "application/pdf",
-  };
-
-  const url = await uploadToS3(pdfFile, config.s3.bucketName, path);
-
-  return url;
+  return await uploadToS3(file, config.s3.bucketName, path);
 };
 
-export default uploadSOPdfToS3;
+export default uploadFileToS3;
