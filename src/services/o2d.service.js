@@ -3,6 +3,7 @@ import { ORDER_STAGES } from "../utils/constants.js";
 import { emitToUser } from "../utils/socket.js";
 import { createNotification } from "./notification.service.js";
 import { sendMail } from "./mail.service.js";
+import { ForbiddenError } from "../errors/customErrors.js";
 import crypto from "node:crypto";
 
 const emailDateFormatter = new Intl.DateTimeFormat("en-IN", {
@@ -2103,11 +2104,16 @@ class O2dService {
       const { actual_dispatch_date, invoices, invoice_completed_at } = dispatchData;
 
       // 1. Fetch current invoice_and_dispatch from the database
-      const fetchQuery = `SELECT invoice_and_dispatch, client_name FROM public.sales_orders WHERE id = $1`;
+      // const fetchQuery = `SELECT invoice_and_dispatch, client_name FROM public.sales_orders WHERE id = $1`;
+      const fetchQuery = `SELECT so.invoice_and_dispatch, so.client_name, EXISTS ( SELECT 1 FROM users u WHERE u.id::text = so.invoice_and_dispatch->>'assign_to' AND u.role = 'Invoice Executive' AND u.department = 'Accounts' ) AS is_assigned_to_invoice_executive FROM public.sales_orders so WHERE so.id = $1`;
       const { rows } = await pool.query(fetchQuery, [orderId]);
 
       if (rows.length === 0) {
         throw new Error("Sales order not found");
+      }
+
+      if (!rows[0].is_assigned_to_invoice_executive) {
+        throw new ForbiddenError("Sales order is not assigned to an Invoice Executive");
       }
 
       // 2. Parse existing data or initialize an empty structure
