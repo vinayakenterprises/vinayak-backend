@@ -1,4 +1,5 @@
 import o2dService from "../services/o2d.service.js";
+import uploadFileToS3 from "../utils/helpers/uploadSOToS3.js";
 import uploadPdfToS3 from "../utils/helpers/uploadSOToS3.js";
 
 class O2dController {
@@ -1153,14 +1154,52 @@ class O2dController {
 
   markAsDeliveredByTransportExecutive = async (req, res, next) => {
     try {
-      const { id } = req.body;
+      const { id, vehicle_no } = req.body;
       const userId = req.user?.id || null;
 
-      const updatedOrder = await o2dService.markAsDeliveredByTransportExecutive(
-        id,
-        userId,
-        req.body
+      // Files uploaded through multipart/form-data
+      const allBundlesFile = req.files?.["all_bundles_image"]?.[0];
+      const driverVehicleFile = req.files?.["driver_and_vehicle_number_image"]?.[0];
+      const driverLicenseFile = req.files?.["driver_license_image"]?.[0];
+
+      // Validate required fields
+      if (!id || !vehicle_no || !allBundlesFile || !driverVehicleFile || !driverLicenseFile) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "id, vehicle_no, all_bundles_image, driver_and_vehicle_number_image, and driver_license_image are required fields.",
+        });
+      }
+
+      // Upload all three files to S3
+      const allBundlesImageUrl = await uploadFileToS3(
+        allBundlesFile,
+        `vinayak-enterprises/sales-orders/${id}/transport-executive/all-bundles`
       );
+
+      const driverVehicleImageUrl = await uploadFileToS3(
+        driverVehicleFile,
+        `vinayak-enterprises/sales-orders/${id}/transport-executive/driver-vehicle`
+      );
+
+      const driverLicenseImageUrl = await uploadFileToS3(
+        driverLicenseFile,
+        `vinayak-enterprises/sales-orders/${id}/transport-executive/driver-license`
+      );
+
+      // Pass S3 URLs to service
+      const updatedOrder = await o2dService.markAsDeliveredByTransportExecutive(id, userId, {
+        ...req.body,
+
+        vehicle_no,
+
+        all_bundles_image: allBundlesImageUrl,
+
+        driver_and_vehicle_number_image: driverVehicleImageUrl,
+
+        driver_license_image: driverLicenseImageUrl,
+      });
+
       return res.status(200).json({
         status: "success",
         message: "Delivered by transport executive marked successfully",

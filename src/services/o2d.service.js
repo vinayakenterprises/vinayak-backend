@@ -2975,11 +2975,13 @@ class O2dService {
   async getVehicleExecutiveAssignedData(userId) {
     try {
       const query = `
-        SELECT * FROM public.sales_orders
-        WHERE assigned_to = $1 AND vehicle_arrangement->>'assigned_to_vehicle_executive' = 'true'
-        ORDER BY id DESC
+        SELECT *
+        FROM public.sales_orders
+        WHERE vehicle_arrangement->>'assigned_to_vehicle_executive' = 'true'
+          AND NOT (vehicle_arrangement ? 'actual_deliver_date')
+        ORDER BY id DESC;
         `;
-      const { rows } = await pool.query(query, [userId]);
+      const { rows } = await pool.query(query, []);
       return rows;
     } catch (error) {
       console.log("error in getting so generation request data: ", error);
@@ -3033,18 +3035,29 @@ class O2dService {
         }
       };
 
+      // vehicle_no,
+      //   all_bundles_image,
+      //   driver_and_vehicle_number_image,
+      //   driver_license_image,
       // 1. Extract only the valid additional fields from the body
       const additionalVehicleData = {};
       if (body.vehicle_no) additionalVehicleData.vehicle_no = body.vehicle_no;
-      if (body.bilty_url) additionalVehicleData.bilty_url = body.bilty_url;
-      if (body.loaded_proof_urls) additionalVehicleData.loaded_proof_urls = body.loaded_proof_urls;
+      if (body.all_bundles_image) additionalVehicleData.all_bundles_image = body.all_bundles_image;
+      if (body.driver_and_vehicle_number_image) {
+        additionalVehicleData.driver_and_vehicle_number_image =
+          body.driver_and_vehicle_number_image;
+      }
+      if (body.driver_license_image) {
+        additionalVehicleData.driver_license_image = body.driver_license_image;
+      }
+      // if (body.loaded_proof_urls) additionalVehicleData.loaded_proof_urls = body.loaded_proof_urls;
 
       // 2. Merge actual_deliver_date with the dynamic JSON payload ($4)
       const query = `
         UPDATE public.sales_orders
         SET 
           vehicle_arrangement = COALESCE(vehicle_arrangement, '{}'::jsonb) 
-            || jsonb_build_object('actual_deliver_date', CURRENT_DATE)
+            || jsonb_build_object('actual_deliver_date', NOW())
             || $4::jsonb,
           updated_at = now(),
           updated_by = $2,
