@@ -1875,6 +1875,26 @@ class O2dService {
       FROM overdue_summary_report osr 
       LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
       WHERE osr.is_deleted = false 
+        AND osr.is_collected = false 
+        AND (ci.sale_order_id IS NULL OR ci.complaint_status = 'Closed')
+      ORDER BY osr.id DESC`;
+
+      const { rows } = await pool.query(query, []);
+
+      return rows;
+    } catch (error) {
+      console.error("Error in getting overdue report data: ", error);
+      throw error;
+    }
+  }
+
+  async getPaymentCollectedData(id, userId) {
+    try {
+      const query = `SELECT osr.*, ci.complaint_status, ci.updated_at
+      FROM overdue_summary_report osr 
+      LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
+      WHERE osr.is_deleted = false 
+        AND osr.is_collected = true 
         AND (ci.sale_order_id IS NULL OR ci.complaint_status = 'Closed')
       ORDER BY osr.id DESC`;
 
@@ -1905,6 +1925,7 @@ class O2dService {
         "client_name",
         "balance",
         "is_deleted",
+        "is_collected",
       ];
 
       for (const key of keys) {
@@ -2033,10 +2054,9 @@ class O2dService {
       return [crn];
     }
 
-    const { rowCount } = await pool.query(
-      `SELECT 1 FROM public.sales_orders WHERE id = $1`,
-      [orderId]
-    );
+    const { rowCount } = await pool.query(`SELECT 1 FROM public.sales_orders WHERE id = $1`, [
+      orderId,
+    ]);
 
     return rowCount === 0 ? [orderId] : [];
   }

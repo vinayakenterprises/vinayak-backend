@@ -757,6 +757,23 @@ class O2dController {
     }
   };
 
+  getPaymentCollectedData = async (req, res, next) => {
+    try {
+      const { id } = req.body;
+      const userId = req.user?.id || null;
+
+      const updatedOrder = await o2dService.getPaymentCollectedData(id, userId);
+
+      res.status(200).json({
+        status: "success",
+        message: "Overdue Report Data retrieved successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   updateOverdueSummaryReportInformation = async (req, res, next) => {
     try {
       const { id } = req.body;
