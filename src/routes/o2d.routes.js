@@ -221,6 +221,8 @@ router.post(
 
 // overdue summary
 router.get("/get-overdue-report-data", authMiddleware, o2dController.getOverdueReportData);
+router.get("/get-payment-collected-data", authMiddleware, o2dController.getPaymentCollectedData);
+
 router.post(
   "/update-overdue-summary-report-information",
   authMiddleware,
