@@ -1456,6 +1456,26 @@ class O2dController {
       next(error);
     }
   };
+
+  getOrderPdfs = async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const pdfs = await o2dService.getOrderPdfs(id);
+
+      if (pdfs === null) {
+        return res.status(404).json({
+          status: "error",
+          message: "Sales order not found",
+        });
+      }
+      return res.status(200).json({
+        status: "success",
+        data: pdfs,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 }
 
 export default new O2dController();

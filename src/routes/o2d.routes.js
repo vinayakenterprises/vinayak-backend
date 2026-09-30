@@ -288,4 +288,6 @@ router.get(
 // receiving details
 router.put("/update-receiving-details", authMiddleware, o2dController.updateReceivingDetails);
 
+router.get("/get-order-pdfs/:id", authMiddleware, o2dController.getOrderPdfs);
+
 export default router;
