@@ -293,4 +293,8 @@ router.get(
 // receiving details
 router.put("/update-receiving-details", authMiddleware, o2dController.updateReceivingDetails);
 
+// link share feature
+router.get("/generate-shareable-link", authMiddleware, o2dController.getShareableDocumentLink);
+router.get("/get-public-order-documents", o2dController.getPublicOrderDocuments);
+
 export default router;
