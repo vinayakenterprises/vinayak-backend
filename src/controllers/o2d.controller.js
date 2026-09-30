@@ -1226,6 +1226,22 @@ class O2dController {
     }
   };
 
+  updateKantaParchiDocument = async (req, res, next) => {
+    try {
+      const { id, kanta_parchi_url } = req.body;
+      const userId = req.user?.id || null;
+
+      const updatedOrder = await o2dService.updateKantaParchiDocument(id, kanta_parchi_url, userId);
+      return res.status(200).json({
+        status: "success",
+        message: "Kanta Parchi document updated successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   assignOrderToInvoiceExecutive = async (req, res, next) => {
     try {
       const { id } = req.body;
