@@ -3945,6 +3945,98 @@ class O2dService {
       throw error;
     }
   }
+
+  // async getOrderPdfs(id) {
+  //   const query = "SELECT * FROM public.sales_orders WHERE id = $1";
+  //   const { rows } = await pool.query(query, [id]);
+
+  //   if (rows.length === 0) return null;
+
+  //   // const { rows: complaints } = await pool.query(
+  //   //   `SELECT documents, visit_action_related FROM public.complaint_info WHERE sale_order_id = $1`,
+  //   //   [id]
+  //   // );
+  //   const order = rows[0];
+  //   const documents = [
+  //     ["SO", order.sale_order_generation?.document_url],
+  //     ...(order.invoice_and_dispatch?.invoices || []).map((invoice) => [
+  //       `Invoice ${invoice.invoice || ""}`.trim(),
+  //       invoice.invoice_url,
+  //     ]),
+  //     ["PO", order.po_related?.po_url],
+  //     ["CN/DN", order.delivery_and_weight?.cn_dn_document_url],
+  //     ...[
+  //       ["Bilty", "bilty_url"],
+  //       ["Bundles image", "all_bundles_image"],
+  //       ["Driver/vehicle image", "driver_and_vehicle_number_image"],
+  //       ["Driver license", "driver_license_image"],
+  //     ].map(([title, field]) => [title, order.vehicle_arrangement?.[field]]),
+  //     ["Receiving document", order.receiving_details?.documents],
+  //     ["Intimation screenshot", order.intimation_thankyou?.screenshot_url],
+  //     // ...complaints.flatMap(({ documents, visit_action_related }, index) => [
+  //     //   [`Complaint ${index + 1}`, documents],
+  //     //   [`Complaint visit ${index + 1}`, visit_action_related?.documents],
+  //     // ]),
+  //   ];
+
+  //   const grouped = new Map();
+  //   const seenUrls = new Set();
+  //   const addDocument = (title, value) => {
+  //     if (Array.isArray(value)) {
+  //       value.forEach((item) => addDocument(title, item));
+  //       return;
+  //     }
+
+  //     const url = typeof value === "string" ? value : value?.url;
+  //     if (typeof url !== "string" || !/^https?:\/\//i.test(url) || seenUrls.has(url)) return;
+
+  //     seenUrls.add(url);
+  //     if (!grouped.has(title)) grouped.set(title, []);
+  //     grouped.get(title).push(url);
+  //   };
+
+  //   documents.forEach(([title, value]) => addDocument(title, value));
+  //   return [...grouped].map(([title, urls]) =>
+  //     urls.length === 1 ? { title, url: urls[0] } : { title, urls }
+  //   );
+  // }
+
+  async getOrderPdfs(id) {
+    const query = "SELECT * FROM public.sales_orders WHERE id = $1";
+    const { rows } = await pool.query(query, [id]);
+    if (rows.length === 0) return null;
+
+    const order = rows[0];
+
+    const documents = [
+      ["SO", order.sale_order_generation?.document_url],
+      ...(order.invoice_and_dispatch?.invoices || []).map((invoice) => [
+        `Invoice ${invoice.invoice || ""}`.trim(),
+        invoice.invoice_url,
+      ]),
+      ["PO", order.po_related?.po_url],
+      [
+        order.delivery_and_weight?.settlement === "CN Issue" ? "Credit Note" : "Debit Note",
+        order.delivery_and_weight?.cn_dn_document_url,
+      ],
+      ["Bilty", order.vehicle_arrangement?.bilty_url],
+      ["Bundles image", order.vehicle_arrangement?.all_bundles_image],
+      [
+        "Driver and vehicle number image",
+        order.vehicle_arrangement?.driver_and_vehicle_number_image,
+      ],
+      ["Driver license", order.vehicle_arrangement?.driver_license_image],
+      ["Receiving document", order.receiving_details?.documents],
+      ["Intimation screenshot", order.intimation_thankyou?.screenshot_url],
+    ];
+
+    return documents
+      .filter(([title, url]) => url)
+      .map(([title, url]) => ({
+        title,
+        url,
+      }));
+  }
 }
 
 export default new O2dService();

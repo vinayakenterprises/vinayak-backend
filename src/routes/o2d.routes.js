@@ -297,4 +297,6 @@ router.put("/update-receiving-details", authMiddleware, o2dController.updateRece
 router.get("/generate-shareable-link", authMiddleware, o2dController.getShareableDocumentLink);
 router.get("/get-public-order-documents", o2dController.getPublicOrderDocuments);
 
+router.get("/get-order-pdfs/:id", authMiddleware, o2dController.getOrderPdfs);
+
 export default router;
