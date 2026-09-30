@@ -146,6 +146,11 @@ router.post(
 );
 
 router.post("/update-bilty-document", authMiddleware, o2dController.updateBiltyDocument);
+router.post(
+  "/update-kanta-parchi-document",
+  authMiddleware,
+  o2dController.updateKantaParchiDocument
+);
 
 // invoice generation phase
 router.get(

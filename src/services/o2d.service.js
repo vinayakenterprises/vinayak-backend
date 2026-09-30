@@ -3117,6 +3117,33 @@ class O2dService {
     }
   }
 
+  async updateKantaParchiDocument(id, kanta_parchi_url, userId) {
+    try {
+      const query = `
+        UPDATE public.sales_orders
+        SET vehicle_arrangement = jsonb_set(
+              COALESCE(vehicle_arrangement, '{}'::jsonb),
+              '{kanta_parchi_url}',
+              to_jsonb($1::text),
+              true
+            ),
+            updated_at = now(),
+            updated_by = $2
+        WHERE id = $3
+        RETURNING *;
+      `;
+
+      const values = [kanta_parchi_url, userId, id];
+
+      const { rows } = await pool.query(query, values);
+
+      return rows[0];
+    } catch (error) {
+      console.error("Error in updating kanta parchi document: ", error);
+      throw error;
+    }
+  }
+
   async assignOrderToInvoiceExecutive(id, userId) {
     try {
       // get invoice executive id
