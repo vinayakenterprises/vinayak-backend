@@ -1109,7 +1109,7 @@ class O2dController {
     }
   };
 
-  getShareableDocumentLink = async (req, res) => {
+  getShareableDocumentLink = async (req, res, next) => {
     try {
       const id = req.query.id || req.params.id;
 
@@ -1125,7 +1125,7 @@ class O2dController {
     }
   };
 
-  getPublicOrderDocuments = async (req, res) => {
+  getPublicOrderDocuments = async (req, res, next) => {
     try {
       const { token } = req.query;
       if (!token) {
