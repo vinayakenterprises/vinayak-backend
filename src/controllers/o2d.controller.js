@@ -1,3 +1,4 @@
+import jwt from "jsonwebtoken";
 import o2dService from "../services/o2d.service.js";
 import uploadFileToS3 from "../utils/helpers/uploadSOToS3.js";
 import uploadPdfToS3 from "../utils/helpers/uploadSOToS3.js";
@@ -1104,6 +1105,53 @@ class O2dController {
           message: "Sales order not found for the provided ID",
         });
       }
+      next(error);
+    }
+  };
+
+  getShareableDocumentLink = async (req, res) => {
+    try {
+      const id = req.query.id || req.params.id;
+
+      // Permanent JWT without expiresIn
+      const token = jwt.sign({ orderId: id }, process.env.DOC_SHARE_JWT_SECRET);
+      const shareUrl = `${process.env.FRONTEND_URL}/public/order-documents?token=${token}`;
+      return res.json({
+        status: "success",
+        data: { shareUrl, token },
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getPublicOrderDocuments = async (req, res) => {
+    try {
+      const { token } = req.query;
+      if (!token) {
+        return res.status(400).json({ status: "error", message: "Token is required." });
+      }
+      try {
+        // 1. Verify signature
+        const decoded = jwt.verify(token, process.env.DOC_SHARE_JWT_SECRET);
+
+        // 2. Fetch order documents by decoded.orderId
+        const orderDocs = await o2dService.getPublicOrderDocuments(decoded.orderId);
+        if (!orderDocs) {
+          return res.status(404).json({ status: "error", message: "Order not found." });
+        }
+        return res.json({
+          status: "success",
+          data: orderDocs,
+        });
+      } catch (err) {
+        // If token was edited or forged
+        return res.status(403).json({
+          status: "error",
+          message: "Invalid or unauthorized document link.",
+        });
+      }
+    } catch (error) {
       next(error);
     }
   };

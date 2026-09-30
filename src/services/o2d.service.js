@@ -2892,6 +2892,25 @@ class O2dService {
     }
   }
 
+  async getPublicOrderDocuments(orderId) {
+    try {
+      const query = `SELECT
+          id,
+          vehicle_arrangement->>'all_bundles_image' AS all_bundles_image,
+          vehicle_arrangement->>'driver_and_vehicle_number_image' AS driver_and_vehicle_number_image,
+          vehicle_arrangement->>'driver_license_image' AS driver_license_image,
+          invoice_and_dispatch->'invoices'->0->>'invoice_url' AS invoice_url
+      FROM public.sales_orders
+      WHERE id = $1;`;
+
+      const result = await pool.query(query, [orderId]);
+      return result.rows[0];
+    } catch (error) {
+      console.error("Error in getting public order documents: ", error);
+      throw error;
+    }
+  }
+
   async assignToVehicleExecutive(id, userId) {
     try {
       // Get vehicle executive id
