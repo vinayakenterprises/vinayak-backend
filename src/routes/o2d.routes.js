@@ -146,6 +146,11 @@ router.post(
 );
 
 router.post("/update-bilty-document", authMiddleware, o2dController.updateBiltyDocument);
+router.post(
+  "/update-kanta-parchi-document",
+  authMiddleware,
+  o2dController.updateKantaParchiDocument
+);
 
 // invoice generation phase
 router.get(
@@ -287,6 +292,10 @@ router.get(
 
 // receiving details
 router.put("/update-receiving-details", authMiddleware, o2dController.updateReceivingDetails);
+
+// link share feature
+router.get("/generate-shareable-link", authMiddleware, o2dController.getShareableDocumentLink);
+router.get("/get-public-order-documents", o2dController.getPublicOrderDocuments);
 
 router.get("/get-order-pdfs/:id", authMiddleware, o2dController.getOrderPdfs);
 

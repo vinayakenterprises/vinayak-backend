@@ -2892,6 +2892,25 @@ class O2dService {
     }
   }
 
+  async getPublicOrderDocuments(orderId) {
+    try {
+      const query = `SELECT
+          id,
+          vehicle_arrangement->>'all_bundles_image' AS all_bundles_image,
+          vehicle_arrangement->>'driver_and_vehicle_number_image' AS driver_and_vehicle_number_image,
+          vehicle_arrangement->>'driver_license_image' AS driver_license_image,
+          invoice_and_dispatch->'invoices'->0->>'invoice_url' AS invoice_url
+      FROM public.sales_orders
+      WHERE id = $1;`;
+
+      const result = await pool.query(query, [orderId]);
+      return result.rows[0];
+    } catch (error) {
+      console.error("Error in getting public order documents: ", error);
+      throw error;
+    }
+  }
+
   async assignToVehicleExecutive(id, userId) {
     try {
       // Get vehicle executive id
@@ -3119,6 +3138,33 @@ class O2dService {
       return rows[0];
     } catch (error) {
       console.error("Error in updating bilty document: ", error);
+      throw error;
+    }
+  }
+
+  async updateKantaParchiDocument(id, kanta_parchi_url, userId) {
+    try {
+      const query = `
+        UPDATE public.sales_orders
+        SET vehicle_arrangement = jsonb_set(
+              COALESCE(vehicle_arrangement, '{}'::jsonb),
+              '{kanta_parchi_url}',
+              to_jsonb($1::text),
+              true
+            ),
+            updated_at = now(),
+            updated_by = $2
+        WHERE id = $3
+        RETURNING *;
+      `;
+
+      const values = [kanta_parchi_url, userId, id];
+
+      const { rows } = await pool.query(query, values);
+
+      return rows[0];
+    } catch (error) {
+      console.error("Error in updating kanta parchi document: ", error);
       throw error;
     }
   }
