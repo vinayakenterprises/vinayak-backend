@@ -4281,25 +4281,22 @@ class O2dService {
     const order = rows[0];
 
     const documents = [
-      ["SO", order.sale_order_generation?.document_url],
+      ["SO Document", order.sale_order_generation?.document_url],
       ...(order.invoice_and_dispatch?.invoices || []).map((invoice) => [
         `Invoice ${invoice.invoice || ""}`.trim(),
         invoice.invoice_url,
       ]),
-      ["PO", order.po_related?.po_url],
+      ["PO Document", order.po_related?.po_url],
       [
         order.delivery_and_weight?.settlement === "CN Issue" ? "Credit Note" : "Debit Note",
         order.delivery_and_weight?.cn_dn_document_url,
       ],
-      ["Bilty", order.vehicle_arrangement?.bilty_url],
-      ["Bundles image", order.vehicle_arrangement?.all_bundles_image],
-      [
-        "Driver and vehicle number image",
-        order.vehicle_arrangement?.driver_and_vehicle_number_image,
-      ],
-      ["Driver license", order.vehicle_arrangement?.driver_license_image],
-      ["Receiving document", order.receiving_details?.documents],
-      ["Intimation screenshot", order.intimation_thankyou?.screenshot_url],
+      ["Bilty Document", order.vehicle_arrangement?.bilty_url],
+      ["All Bundles Image", order.vehicle_arrangement?.all_bundles_image],
+      ["Driver & Vehicle Number Image", order.vehicle_arrangement?.driver_and_vehicle_number_image],
+      ["Driver license Image", order.vehicle_arrangement?.driver_license_image],
+      ["Receiving Document", order.receiving_details?.documents],
+      ["Intimation Proof", order.intimation_thankyou?.screenshot_url],
     ];
 
     return documents
