@@ -1540,6 +1540,256 @@ class O2dController {
       next(error);
     }
   };
+
+  // 1. Fetch sales order details by ID
+  getSalesOrderById = async (req, res, next) => {
+    try {
+      const id = req.params.id || req.query.id;
+
+      if (!id) {
+        return res.status(400).json({
+          status: "error",
+          message: "Order ID is required.",
+        });
+      }
+
+      const order = await o2dService.getSalesOrderById(id);
+
+      if (!order) {
+        return res.status(404).json({
+          status: "error",
+          message: "Sales order not found.",
+        });
+      }
+
+      return res.status(200).json({
+        status: "success",
+        data: order,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  // 2. Update editable fields of sales order
+  updateSalesOrderDetails = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+      const {
+        orderId,
+        rate,
+        ex_works_rate,
+        freight,
+        quantity_mt,
+        delivery_date,
+        bill_to,
+        ship_to,
+        dispatch_type,
+      } = req.body;
+
+      // Validate required fields
+      if (!orderId) {
+        return res.status(400).json({
+          status: "error",
+          message: "orderId is required.",
+        });
+      }
+
+      if (rate === undefined || rate === null || isNaN(Number(rate))) {
+        return res.status(400).json({
+          status: "error",
+          message: "A valid 'rate' is required.",
+        });
+      }
+
+      if (!quantity_mt || isNaN(Number(quantity_mt)) || Number(quantity_mt) <= 0) {
+        return res.status(400).json({
+          status: "error",
+          message: "A valid positive 'quantity_mt' is required.",
+        });
+      }
+
+      if (!delivery_date) {
+        return res.status(400).json({
+          status: "error",
+          message: "'delivery_date' is required.",
+        });
+      }
+
+      if (!bill_to || !bill_to.trim()) {
+        return res.status(400).json({
+          status: "error",
+          message: "'bill_to' address is required.",
+        });
+      }
+
+      if (!ship_to || !ship_to.trim()) {
+        return res.status(400).json({
+          status: "error",
+          message: "'ship_to' address is required.",
+        });
+      }
+
+      const updatePayload = {
+        rate: Number(rate),
+        ex_works_rate:
+          ex_works_rate !== undefined && ex_works_rate !== null ? Number(ex_works_rate) : null,
+        freight: freight !== undefined && freight !== null ? Number(freight) : null,
+        quantity_mt: Number(quantity_mt),
+        delivery_date,
+        bill_to: bill_to.trim(),
+        ship_to: ship_to.trim(),
+        dispatch_type: dispatch_type || null,
+      };
+
+      const updatedOrder = await o2dService.updateSalesOrderDetails(orderId, updatePayload, userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Sales order updated successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      if (error.message === "Sales order not found") {
+        return res.status(404).json({
+          status: "error",
+          message: "Sales order not found for the provided ID",
+        });
+      }
+      next(error);
+    }
+  };
+
+  // 1. Submit multiple field changes to update_request_records
+  createSalesOrderUpdateRequests = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+      const { order_id, changes } = req.body;
+
+      if (!order_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "order_id is required.",
+        });
+      }
+
+      if (!Array.isArray(changes) || changes.length === 0) {
+        return res.status(400).json({
+          status: "error",
+          message: "changes array is required and cannot be empty.",
+        });
+      }
+
+      // Validate each change object has old_value and new_value
+      for (const item of changes) {
+        if (
+          !item.old_value ||
+          typeof item.old_value !== "object" ||
+          !item.new_value ||
+          typeof item.new_value !== "object"
+        ) {
+          return res.status(400).json({
+            status: "error",
+            message: "Each change item must contain valid 'old_value' and 'new_value' objects.",
+          });
+        }
+      }
+
+      const insertedRecords = await o2dService.createSalesOrderUpdateRequests(
+        order_id,
+        changes,
+        userId
+      );
+
+      return res.status(201).json({
+        status: "success",
+        message: `${insertedRecords.length} change request(s) submitted successfully.`,
+        data: insertedRecords,
+      });
+    } catch (error) {
+      if (error.message === "Sales order not found") {
+        return res.status(404).json({
+          status: "error",
+          message: "Sales order not found for the provided ID",
+        });
+      }
+      next(error);
+    }
+  };
+
+  // 2. Get update request records / history for an order
+  getSalesOrderUpdateHistory = async (req, res, next) => {
+    try {
+      const orderId = req.params.orderId || req.query.orderId;
+
+      if (!orderId) {
+        return res.status(400).json({
+          status: "error",
+          message: "orderId is required.",
+        });
+      }
+
+      const history = await o2dService.getSalesOrderUpdateHistory(orderId);
+
+      return res.status(200).json({
+        status: "success",
+        data: history,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  // 1. Fetch all update requests for Sales Team Lead
+  getAllOrderUpdateRequests = async (req, res, next) => {
+    try {
+      const records = await o2dService.getAllOrderUpdateRequests();
+      return res.status(200).json({
+        status: "success",
+        data: records,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  // 2. Approve or Reject an update request
+  reviewOrderUpdateRequest = async (req, res, next) => {
+    try {
+      const reviewerId = req.user?.id || null;
+      const { record_id, action } = req.body;
+
+      if (!record_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "record_id is required.",
+        });
+      }
+
+      if (!["Approved", "Rejected"].includes(action)) {
+        return res.status(400).json({
+          status: "error",
+          message: "action must be either 'Approved' or 'Rejected'.",
+        });
+      }
+
+      const result = await o2dService.reviewOrderUpdateRequest(record_id, action, reviewerId);
+
+      return res.status(200).json({
+        status: "success",
+        message: `Change request #${record_id} was ${action.toLowerCase()} successfully.`,
+        data: result,
+      });
+    } catch (error) {
+      if (error.message === "Update request not found or already reviewed") {
+        return res.status(404).json({
+          status: "error",
+          message: error.message,
+        });
+      }
+      next(error);
+    }
+  };
 }
 
 export default new O2dController();
