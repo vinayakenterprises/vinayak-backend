@@ -254,20 +254,39 @@ class O2dService {
 
   async getAllClientNamesList(userId) {
     try {
-      const query = `
-      SELECT ARRAY_AGG(client_name) AS master_client_list
-      FROM (
-          SELECT company_name AS client_name FROM customers where sales_person = $1
-          UNION
-          SELECT UNNEST(child_companies) AS client_name 
-          FROM customers 
-          WHERE sales_person = $1 and child_companies IS NOT NULL 
-      ) AS combined_names;
-    `;
-      const { rows } = await pool.query(query, [userId]);
+      let query = "";
+      let rows = null;
 
-      // Here, rows[0] is correct because the query only returns exactly 1 row containing the aggregated array
-      // console.log("Retrieved client names list: ", rows[0].master_client_list);
+      console.log("lksjdfklsd -> ", userId);
+
+      if (userId === 7 || userId === 6) {
+        query = `SELECT ARRAY_AGG(client_name) AS master_client_list
+          FROM (
+              SELECT company_name AS client_name FROM customers
+              UNION
+              SELECT UNNEST(child_companies) AS client_name 
+              FROM customers 
+              WHERE child_companies IS NOT NULL 
+          ) AS combined_names;
+        `;
+
+        const result = await pool.query(query, []);
+        rows = result.rows;
+      } else {
+        query = `SELECT ARRAY_AGG(client_name) AS master_client_list
+          FROM (
+              SELECT company_name AS client_name FROM customers where sales_person = $1
+              UNION
+              SELECT UNNEST(child_companies) AS client_name 
+              FROM customers 
+              WHERE sales_person = $1 and child_companies IS NOT NULL 
+          ) AS combined_names;
+        `;
+
+        const result = await pool.query(query, [userId]);
+        rows = result.rows;
+      }
+
       return rows[0].master_client_list;
 
       // Example output: ['AS Metals', 'Alpha Communication LLP', 'Goyal Industries', ...]
@@ -1006,6 +1025,259 @@ class O2dService {
     } catch (error) {
       console.error("Error in updatePoRelated: ", error);
       throw error;
+    }
+  }
+
+  // 1. Get sales order by ID
+  async getSalesOrderById(orderId) {
+    try {
+      const query = `
+      SELECT
+        id,
+        client_name,
+        rate,
+        ex_works_rate,
+        freight,
+        quantity_mt,
+        delivery_date,
+        bill_to,
+        ship_to,
+        dispatch_type
+      FROM public.sales_orders
+      WHERE id = $1;
+    `;
+      const { rows } = await pool.query(query, [orderId]);
+      return rows[0] || null;
+    } catch (error) {
+      console.error("Error in fetching sales order by ID:", error);
+      throw error;
+    }
+  }
+
+  // 2. Update editable fields
+  async updateSalesOrderDetails(orderId, updateData, userId) {
+    try {
+      const query = `
+      UPDATE public.sales_orders
+      SET
+        rate = $1,
+        ex_works_rate = $2,
+        freight = $3,
+        quantity_mt = $4,
+        delivery_date = $5,
+        bill_to = $6,
+        ship_to = $7,
+        dispatch_type = $8,
+        updated_at = NOW(),
+        updated_by = $9
+      WHERE id = $10
+      RETURNING *;
+    `;
+
+      const values = [
+        updateData.rate,
+        updateData.ex_works_rate,
+        updateData.freight,
+        updateData.quantity_mt,
+        updateData.delivery_date,
+        updateData.bill_to,
+        updateData.ship_to,
+        updateData.dispatch_type,
+        userId,
+        orderId,
+      ];
+
+      const { rows } = await pool.query(query, values);
+
+      if (rows.length === 0) {
+        throw new Error("Sales order not found");
+      }
+
+      return rows[0];
+    } catch (error) {
+      console.error("Error in updating sales order details:", error);
+      throw error;
+    }
+  }
+
+  // 1. Create update request records with transaction
+  async createSalesOrderUpdateRequests(orderId, changes, userId) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Verify that the sales order exists
+      const checkOrder = await client.query("SELECT id FROM public.sales_orders WHERE id = $1", [
+        orderId,
+      ]);
+      if (checkOrder.rows.length === 0) {
+        throw new Error("Sales order not found");
+      }
+
+      const insertedRecords = [];
+
+      // Insert each changed field as an individual row
+      for (const item of changes) {
+        const query = `
+          INSERT INTO public.update_request_records
+            (order_id, updated_by, old_value, new_value, status, created_at)
+          VALUES
+            ($1, $2, $3::jsonb, $4::jsonb, 'Pending', CURRENT_TIMESTAMP)
+          RETURNING *;
+        `;
+
+        const values = [
+          orderId,
+          userId,
+          JSON.stringify(item.old_value),
+          JSON.stringify(item.new_value),
+        ];
+
+        const { rows } = await client.query(query, values);
+        if (rows[0]) {
+          insertedRecords.push(rows[0]);
+        }
+      }
+
+      await client.query("COMMIT");
+      return insertedRecords;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error in creating sales order update requests:", error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  // 2. Get all update request records & history for an order
+  async getSalesOrderUpdateHistory(orderId) {
+    try {
+      const query = `
+        SELECT 
+          ur.id,
+          ur.order_id,
+          ur.updated_by,
+          u.username AS updated_by_name,
+          ur.old_value,
+          ur.new_value,
+          ur.status,
+          ur.created_at,
+          ur.status_updated_at
+        FROM public.update_request_records ur
+        LEFT JOIN public.users u ON ur.updated_by = u.id
+        WHERE ur.order_id = $1
+        ORDER BY ur.created_at DESC, ur.id DESC;
+      `;
+
+      const { rows } = await pool.query(query, [orderId]);
+      return rows;
+    } catch (error) {
+      console.error("Error in fetching sales order update history:", error);
+      throw error;
+    }
+  }
+
+  // 1. Get all update request records across all orders
+  async getAllOrderUpdateRequests() {
+    try {
+      const query = `
+        SELECT 
+          ur.id,
+          ur.order_id,
+          ur.updated_by,
+          u.username AS requested_by_name,
+          ur.old_value,
+          ur.new_value,
+          ur.status,
+          ur.created_at,
+          ur.status_updated_at,
+          so.client_name,
+          so.sales_person_name
+        FROM public.update_request_records ur
+        JOIN public.sales_orders so ON ur.order_id = so.id
+        LEFT JOIN public.users u ON ur.updated_by = u.id
+        ORDER BY ur.created_at DESC, ur.id DESC;
+      `;
+
+      const { rows } = await pool.query(query);
+      return rows;
+    } catch (error) {
+      console.error("Error fetching all order update requests:", error);
+      throw error;
+    }
+  }
+
+  // 2. Review (Approve / Reject) an update request with safe SQL type casting
+  async reviewOrderUpdateRequest(recordId, action, reviewerId) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Fetch and lock the pending record
+      const { rows } = await client.query(
+        `SELECT * FROM public.update_request_records WHERE id = $1 FOR UPDATE`,
+        [recordId]
+      );
+
+      const record = rows[0];
+      if (!record || record.status !== "Pending") {
+        throw new Error("Update request not found or already reviewed");
+      }
+
+      if (action === "Approved") {
+        // Extract the field key and typed value from new_value JSONB
+        const fieldKey = Object.keys(record.new_value)[0];
+        const fieldValue = record.new_value[fieldKey];
+
+        // Whitelist allowed fields to prevent any arbitrary column injection
+        const allowedFields = {
+          rate: "numeric(12,2)",
+          ex_works_rate: "numeric(12,2)",
+          freight: "numeric(12,2)",
+          quantity_mt: "numeric(12,3)",
+          delivery_date: "date",
+          dispatch_type: "character varying(100)",
+          bill_to: "text",
+          ship_to: "text",
+        };
+
+        const targetType = allowedFields[fieldKey];
+        if (!targetType) {
+          throw new Error(`Field '${fieldKey}' is not an allowed editable field.`);
+        }
+
+        // Dynamically update the specific column in public.sales_orders
+        const updateSalesOrderSql = `
+          UPDATE public.sales_orders
+          SET ${fieldKey} = $1::${targetType},
+              updated_at = NOW(),
+              updated_by = $2
+          WHERE id = $3
+        `;
+
+        await client.query(updateSalesOrderSql, [fieldValue, reviewerId, record.order_id]);
+      }
+
+      // Update the record status in public.update_request_records
+      const updateRecordSql = `
+        UPDATE public.update_request_records
+        SET status = $1,
+            status_updated_at = NOW()
+        WHERE id = $2
+        RETURNING *;
+      `;
+
+      const updatedRecord = await client.query(updateRecordSql, [action, recordId]);
+
+      await client.query("COMMIT");
+      return updatedRecord.rows[0];
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error reviewing order update request:", error);
+      throw error;
+    } finally {
+      client.release();
     }
   }
 

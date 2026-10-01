@@ -299,4 +299,32 @@ router.get("/get-public-order-documents", o2dController.getPublicOrderDocuments)
 
 router.get("/get-order-pdfs/:id", authMiddleware, o2dController.getOrderPdfs);
 
+// Get specific sales order by ID for editing
+router.get("/get-sales-order-by-id/:id", authMiddleware, o2dController.getSalesOrderById);
+
+// Update editable sales order details
+router.put("/update-sales-order-details", authMiddleware, o2dController.updateSalesOrderDetails);
+
+// 1. Submit edit requests for approval (bypasses direct update on sales_orders)
+router.post(
+  "/create-sales-order-update-requests",
+  authMiddleware,
+  o2dController.createSalesOrderUpdateRequests
+);
+
+// 2. Fetch all update request records & history for a specific order
+router.get(
+  "/get-sales-order-update-history/:orderId",
+  authMiddleware,
+  o2dController.getSalesOrderUpdateHistory
+);
+
+// Sales Team Lead: Order update requests & approvals
+router.get(
+  "/get-all-order-update-requests",
+  authMiddleware,
+  o2dController.getAllOrderUpdateRequests
+);
+router.post("/review-order-update-request", authMiddleware, o2dController.reviewOrderUpdateRequest);
+
 export default router;
