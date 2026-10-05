@@ -1753,6 +1753,20 @@ class O2dController {
     }
   };
 
+  getAssignedDeliveryAndWeightByCRM = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+      const orders = await o2dService.getAssignedDeliveryAndWeightByCRM(userId);
+      return res.status(200).json({
+        status: "success",
+        message: "Delivery and weight orders fetched successfully",
+        data: orders,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   // 2. Approve or Reject an update request
   reviewOrderUpdateRequest = async (req, res, next) => {
     try {
