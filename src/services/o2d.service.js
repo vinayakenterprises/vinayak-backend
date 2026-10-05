@@ -1178,6 +1178,30 @@ class O2dService {
     }
   }
 
+  async getAssignedDeliveryAndWeightByCRM(userId) {
+    try {
+      const query = `
+      SELECT so.*, so.delivery_date::text AS delivery_date 
+      FROM public.sales_orders so
+      INNER JOIN public.customers c ON so.client_name = c.company_name
+        OR so.client_name = ANY(c.child_companies)
+      WHERE c.crm = $1 
+        AND so.sale_order_generation->>'sent_for_so' = 'true'
+        AND (
+          so.invoice_and_dispatch->>'actual_dispatch_date' IS NOT NULL 
+          OR so.invoice_and_dispatch->>'invoice_completed_at' IS NOT NULL
+          OR so.vehicle_arrangement->>'actual_deliver_date' IS NOT NULL
+        )
+      ORDER BY so.id DESC;
+    `;
+      const { rows } = await pool.query(query, [userId]);
+      return rows;
+    } catch (error) {
+      console.error("Error in getAssignedDeliveryAndWeightByCRM: ", error);
+      throw error;
+    }
+  }
+
   // 1. Get all update request records across all orders
   async getAllOrderUpdateRequests() {
     try {

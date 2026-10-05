@@ -327,4 +327,10 @@ router.get(
 );
 router.post("/review-order-update-request", authMiddleware, o2dController.reviewOrderUpdateRequest);
 
+router.get(
+  "/get-assigned-delivery-and-weight-by-crm",
+  authMiddleware,
+  o2dController.getAssignedDeliveryAndWeightByCRM
+);
+
 export default router;
