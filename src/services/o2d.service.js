@@ -5,7 +5,11 @@ import { createNotification } from "./notification.service.js";
 import { sendMail } from "./mail.service.js";
 import { ForbiddenError } from "../errors/customErrors.js";
 import crypto from "node:crypto";
-import { sendNotificationToCrm } from "../utils/helpers/helper-functions.js";
+import {
+  sendNotificationToAccountsTeam,
+  sendNotificationToCrm,
+  sendNotificationToSalesTeamLead,
+} from "../utils/helpers/helper-functions.js";
 
 const emailDateFormatter = new Intl.DateTimeFormat("en-IN", {
   timeZone: "Asia/Kolkata",
@@ -1133,6 +1137,31 @@ class O2dService {
         ];
 
         const { rows } = await client.query(query, values);
+
+        const fieldLabels = {
+          client_name: "Client Name",
+          rate: "Rate",
+          ex_works_rate: "Ex Works Rate",
+          freight: "Freight",
+          quantity_mt: "Quantity MT",
+          delivery_date: "Delivery Date",
+          dispatch_type: "Dispatch Type",
+          bill_to: "Bill To",
+          ship_to: "Ship To",
+        };
+
+        const fieldKey = Object.keys(item.old_value)[0];
+
+        const fieldLabel = fieldLabels[fieldKey] || fieldKey;
+
+        const oldValue = item.old_value[fieldKey];
+        const newValue = item.new_value[fieldKey];
+
+        const message = `Update Request - Order #${orderId}: ${fieldLabel} change from ${oldValue} to ${newValue}.`;
+        const message_id = `update_request_notification_to_sales_team_lead`;
+        sendNotificationToSalesTeamLead(orderId, message, message_id);
+        sendNotificationToAccountsTeam(orderId, message, message_id);
+
         if (rows[0]) {
           insertedRecords.push(rows[0]);
         }
