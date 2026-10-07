@@ -1770,6 +1770,7 @@ class O2dController {
   // 2. Approve or Reject an update request
   reviewOrderUpdateRequest = async (req, res, next) => {
     try {
+      console.log("djcjd,", req.body);
       const reviewerId = req.user?.id || null;
       const { record_id, action } = req.body;
 

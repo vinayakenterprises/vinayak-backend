@@ -5,6 +5,7 @@ import { createNotification } from "./notification.service.js";
 import { sendMail } from "./mail.service.js";
 import { ForbiddenError } from "../errors/customErrors.js";
 import crypto from "node:crypto";
+import { sendNotificationToCrm } from "../utils/helpers/helper-functions.js";
 
 const emailDateFormatter = new Intl.DateTimeFormat("en-IN", {
   timeZone: "Asia/Kolkata",
@@ -256,8 +257,6 @@ class O2dService {
     try {
       let query = "";
       let rows = null;
-
-      console.log("lksjdfklsd -> ", userId);
 
       if (userId === 7 || userId === 6) {
         query = `SELECT ARRAY_AGG(client_name) AS master_client_list
@@ -1255,8 +1254,12 @@ class O2dService {
         const fieldKey = Object.keys(record.new_value)[0];
         const fieldValue = record.new_value[fieldKey];
 
+        const oldValue = record.old_value?.[fieldKey] ?? "N/A";
+        const newValue = record.new_value?.[fieldKey] ?? "N/A";
+
         // Whitelist allowed fields to prevent any arbitrary column injection
         const allowedFields = {
+          client_name: "text",
           rate: "numeric(12,2)",
           ex_works_rate: "numeric(12,2)",
           freight: "numeric(12,2)",
@@ -1281,7 +1284,27 @@ class O2dService {
           WHERE id = $3
         `;
 
+        const fieldLabels = {
+          client_name: "Client Name",
+          rate: "Rate",
+          ex_works_rate: "Ex Works Rate",
+          freight: "Freight",
+          quantity_mt: "Quantity MT",
+          delivery_date: "Delivery Date",
+          dispatch_type: "Dispatch Type",
+          bill_to: "Bill To",
+          ship_to: "Ship To",
+        };
+
         await client.query(updateSalesOrderSql, [fieldValue, reviewerId, record.order_id]);
+
+        const fieldLabel = fieldLabels[fieldKey];
+
+        sendNotificationToCrm(
+          record.order_id,
+          `Order Id: ${record.order_id} has been updated: ${fieldLabel} changed from ${oldValue} to ${newValue}.`,
+          "sale_order_edit_notification"
+        );
       }
 
       // Update the record status in public.update_request_records
@@ -1575,7 +1598,7 @@ class O2dService {
 
       // If new invoices are provided, append them to the existing array
       if (invoices && Array.isArray(invoices) && invoices.length > 0) {
-        console.log("lskjdlsdfk -> ", invoices);
+        // console.log("lskjdlsdfk -> ", invoices);
 
         // todo - save to overdue summary report
         const clientName = rows[0].client_name || null;
@@ -1861,7 +1884,6 @@ class O2dService {
       }
 
       if (visit_status !== undefined) {
-        console.log("visit status: ", visit_status);
         callActionPayload.visit_status = visit_status;
 
         if (visit_status === "Required") {
