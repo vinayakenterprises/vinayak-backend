@@ -829,6 +829,17 @@ class O2dController {
         });
       }
 
+      const isCrmExists = await o2dService.checkCrmExists(
+        salesOrdersData.salesOrders[0]?.terms_of_delivery
+      );
+
+      if (isCrmExists) {
+        return res.status(400).json({
+          status: "fail",
+          message: "So order rejected because the CRN already exists in the database.",
+        });
+      }
+
       // Reject the complete payload before uploading its PDF when any CRN is unknown.
       const missingCrns = await o2dService.findMissingTallyOrderCrns(
         salesOrdersData.salesOrders[0]?.terms_of_delivery

@@ -2396,6 +2396,20 @@ class O2dService {
     }
   }
 
+  async checkCrmExists(orderId) {
+    try {
+      const query = `SELECT 1
+      FROM public.sales_orders
+      WHERE id = $1
+        AND sale_order_generation->>'so_order_completed_at' IS NOT NULL;`;
+      const { rowCount } = await pool.query(query, [Number(orderId)]);
+      return rowCount > 0;
+    } catch (error) {
+      console.error("Error in checking CRM existence for orderId: ", error);
+      throw error;
+    }
+  }
+
   async findMissingTallyOrderCrns(crn) {
     const orderId = Number(crn);
 
