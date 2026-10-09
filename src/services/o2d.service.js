@@ -1231,6 +1231,63 @@ class O2dService {
     }
   }
 
+  async createPartialSalesOrder(previousOrderId) {
+    try {
+      const query = `
+      INSERT INTO public.sales_orders (
+        client_name,
+        rate,
+        ex_works_rate,
+        freight,
+        quantity_mt,
+        rod_size,
+        delivery_date,
+        bill_to,
+        ship_to,
+        dispatch_type,
+        sales_person_name,
+        assigned_to,
+        created_by,
+        updated_by,
+        sale_order_generation,
+        credit_limit_info,
+        dispatch_info
+      )
+      SELECT
+        client_name,
+        rate,
+        ex_works_rate,
+        freight,
+        quantity_mt,
+        rod_size,
+        delivery_date,
+        bill_to,
+        ship_to,
+        dispatch_type,
+        sales_person_name,
+        assigned_to,
+        created_by,
+        updated_by,
+        sale_order_generation,
+        credit_limit_info,
+        jsonb_build_object(
+          'partial_dispatch', true,
+          'partial_dispatch_from', id::text
+        )
+      FROM public.sales_orders
+      WHERE id = $1
+      RETURNING *;
+    `;
+
+      const { rows } = await pool.query(query, [previousOrderId]);
+
+      return rows[0] || null;
+    } catch (error) {
+      console.error("Error creating partial sales order:", error);
+      throw error;
+    }
+  }
+
   // 1. Get all update request records across all orders
   async getAllOrderUpdateRequests() {
     try {

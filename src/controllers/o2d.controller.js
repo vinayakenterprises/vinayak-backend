@@ -1778,6 +1778,38 @@ class O2dController {
     }
   };
 
+  createPartialSalesOrder = async (req, res, next) => {
+    try {
+      const { orderId } = req.params;
+
+      const previousOrderId = Number(orderId);
+
+      if (!Number.isSafeInteger(previousOrderId) || previousOrderId <= 0) {
+        return res.status(400).json({
+          status: "error",
+          message: "Valid sales order ID is required",
+        });
+      }
+
+      const newOrder = await o2dService.createPartialSalesOrder(previousOrderId);
+
+      if (!newOrder) {
+        return res.status(404).json({
+          status: "error",
+          message: "Previous sales order not found",
+        });
+      }
+
+      return res.status(201).json({
+        status: "success",
+        message: "Partial sales order created successfully",
+        data: newOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   // 2. Approve or Reject an update request
   reviewOrderUpdateRequest = async (req, res, next) => {
     try {
