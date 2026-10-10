@@ -2245,34 +2245,40 @@ class O2dService {
   async getAdminDashboardCardsData(userId) {
     try {
       const query = `
-        SELECT 
-            -- Pending Metrics
-            COUNT(*) FILTER (
-                WHERE delivery_and_weight->>'delivery_status' IS DISTINCT FROM 'Delivered'
-            ) AS total_pending_orders,
-            
-            COALESCE(SUM(quantity_mt) FILTER (
-                WHERE EXISTS (
-                    SELECT 1
-                    FROM jsonb_array_elements(
-                        COALESCE(dispatch_info->'history', '[]'::jsonb)
-                    ) AS h
-                    WHERE h->>'dispatch_type' = 'Dispatched'
-                )
-            ), 0) AS total_pending_quantity_mt,
+          SELECT
+              -- Pending Metrics
+              COUNT(*) FILTER (
+                  WHERE NOT EXISTS (
+                      SELECT 1
+                      FROM jsonb_array_elements(
+                          COALESCE(dispatch_info->'history', '[]'::jsonb)
+                      ) AS h
+                      WHERE h->>'dispatch_type' = 'Dispatched'
+                  )
+              ) AS total_pending_orders,
 
-            -- Delivered Metrics
-            COUNT(*) FILTER (
-                WHERE delivery_and_weight->>'delivery_status' = 'Delivered'
-            ) AS total_delivered_orders,
-            
-            COALESCE(SUM(quantity_mt) FILTER (
-                WHERE delivery_and_weight->>'delivery_status' = 'Delivered'
-            ), 0) AS total_delivered_quantity_mt
+              COALESCE(SUM(quantity_mt) FILTER (
+                  WHERE NOT EXISTS (
+                      SELECT 1
+                      FROM jsonb_array_elements(
+                          COALESCE(dispatch_info->'history', '[]'::jsonb)
+                      ) AS h
+                      WHERE h->>'dispatch_type' = 'Dispatched'
+                  )
+              ), 0) AS total_pending_quantity_mt,
 
-        FROM public.sales_orders
-        -- New global filter for credit limit approval
-        WHERE credit_limit_info->>'credit_limit_request_approval_status' IS DISTINCT FROM 'false';
+              -- Delivered Metrics
+              COUNT(*) FILTER (
+                  WHERE delivery_and_weight->>'delivery_status' = 'Delivered'
+              ) AS total_delivered_orders,
+
+              COALESCE(SUM(quantity_mt) FILTER (
+                  WHERE delivery_and_weight->>'delivery_status' = 'Delivered'
+              ), 0) AS total_delivered_quantity_mt
+
+          FROM public.sales_orders
+          WHERE credit_limit_info->>'credit_limit_request_approval_status'
+                IS DISTINCT FROM 'false';
         `;
       const { rows } = await pool.query(query, []);
       return rows;
@@ -3234,28 +3240,33 @@ class O2dService {
   async getSalesTeamDashboardPendingOrdersData(userId) {
     try {
       const query = `
-        SELECT
-            -- Pending Metrics
-            COUNT(*) FILTER (
-                WHERE delivery_and_weight->>'delivery_status'
-                      IS DISTINCT FROM 'Delivered'
-            ) AS total_pending_orders,
+          SELECT
+              -- Pending Metrics
+              COUNT(*) FILTER (
+                  WHERE NOT EXISTS (
+                      SELECT 1
+                      FROM jsonb_array_elements(
+                          COALESCE(dispatch_info->'history', '[]'::jsonb)
+                      ) AS h
+                      WHERE h->>'dispatch_type' = 'Dispatched'
+                  )
+              ) AS total_pending_orders,
 
-            COALESCE(SUM(quantity_mt) FILTER (
-                WHERE EXISTS (
-                    SELECT 1
-                    FROM jsonb_array_elements(
-                        COALESCE(dispatch_info->'history', '[]'::jsonb)
-                    ) AS h
-                    WHERE h->>'dispatch_type' = 'Dispatched'
-                )
-            ), 0) AS total_pending_quantity_mt
+              COALESCE(SUM(quantity_mt) FILTER (
+                  WHERE NOT EXISTS (
+                      SELECT 1
+                      FROM jsonb_array_elements(
+                          COALESCE(dispatch_info->'history', '[]'::jsonb)
+                      ) AS h
+                      WHERE h->>'dispatch_type' = 'Dispatched'
+                  )
+              ), 0) AS total_pending_quantity_mt
 
-        FROM public.sales_orders
+          FROM public.sales_orders
 
-        -- Global filter for credit limit approval
-        WHERE credit_limit_info->>'credit_limit_request_approval_status'
-              IS DISTINCT FROM 'false'; 
+          -- Global filter for credit limit approval
+          WHERE credit_limit_info->>'credit_limit_request_approval_status'
+                IS DISTINCT FROM 'false';
       `;
 
       const { rows } = await pool.query(query, []);
