@@ -2248,23 +2248,35 @@ class O2dService {
           SELECT
               -- Pending Metrics
               COUNT(*) FILTER (
-                  WHERE NOT EXISTS (
-                      SELECT 1
-                      FROM jsonb_array_elements(
-                          COALESCE(dispatch_info->'history', '[]'::jsonb)
-                      ) AS h
-                      WHERE h->>'dispatch_type' = 'Dispatched'
-                  )
+                  WHERE
+                      dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Dispatched'
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM jsonb_array_elements(
+                              CASE
+                                  WHEN jsonb_typeof(dispatch_info->'history') = 'array'
+                                  THEN dispatch_info->'history'
+                                  ELSE '[]'::jsonb
+                              END
+                          ) AS h
+                          WHERE h->>'dispatch_type' = 'Dispatched'
+                      )
               ) AS total_pending_orders,
 
               COALESCE(SUM(quantity_mt) FILTER (
-                  WHERE NOT EXISTS (
-                      SELECT 1
-                      FROM jsonb_array_elements(
-                          COALESCE(dispatch_info->'history', '[]'::jsonb)
-                      ) AS h
-                      WHERE h->>'dispatch_type' = 'Dispatched'
-                  )
+                  WHERE
+                      dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Dispatched'
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM jsonb_array_elements(
+                              CASE
+                                  WHEN jsonb_typeof(dispatch_info->'history') = 'array'
+                                  THEN dispatch_info->'history'
+                                  ELSE '[]'::jsonb
+                              END
+                          ) AS h
+                          WHERE h->>'dispatch_type' = 'Dispatched'
+                      )
               ), 0) AS total_pending_quantity_mt,
 
               -- Delivered Metrics
@@ -3243,23 +3255,35 @@ class O2dService {
           SELECT
               -- Pending Metrics
               COUNT(*) FILTER (
-                  WHERE NOT EXISTS (
-                      SELECT 1
-                      FROM jsonb_array_elements(
-                          COALESCE(dispatch_info->'history', '[]'::jsonb)
-                      ) AS h
-                      WHERE h->>'dispatch_type' = 'Dispatched'
-                  )
+                  WHERE
+                      dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Dispatched'
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM jsonb_array_elements(
+                              CASE
+                                  WHEN jsonb_typeof(dispatch_info->'history') = 'array'
+                                  THEN dispatch_info->'history'
+                                  ELSE '[]'::jsonb
+                              END
+                          ) AS h
+                          WHERE h->>'dispatch_type' = 'Dispatched'
+                      )
               ) AS total_pending_orders,
 
               COALESCE(SUM(quantity_mt) FILTER (
-                  WHERE NOT EXISTS (
-                      SELECT 1
-                      FROM jsonb_array_elements(
-                          COALESCE(dispatch_info->'history', '[]'::jsonb)
-                      ) AS h
-                      WHERE h->>'dispatch_type' = 'Dispatched'
-                  )
+                  WHERE
+                      dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Dispatched'
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM jsonb_array_elements(
+                              CASE
+                                  WHEN jsonb_typeof(dispatch_info->'history') = 'array'
+                                  THEN dispatch_info->'history'
+                                  ELSE '[]'::jsonb
+                              END
+                          ) AS h
+                          WHERE h->>'dispatch_type' = 'Dispatched'
+                      )
               ), 0) AS total_pending_quantity_mt
 
           FROM public.sales_orders
