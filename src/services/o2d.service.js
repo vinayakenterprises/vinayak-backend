@@ -2252,7 +2252,13 @@ class O2dService {
             ) AS total_pending_orders,
             
             COALESCE(SUM(quantity_mt) FILTER (
-                WHERE delivery_and_weight->>'delivery_status' IS DISTINCT FROM 'Delivered'
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM jsonb_array_elements(
+                        COALESCE(dispatch_info->'history', '[]'::jsonb)
+                    ) AS h
+                    WHERE h->>'dispatch_type' = 'Dispatched'
+                )
             ), 0) AS total_pending_quantity_mt,
 
             -- Delivered Metrics
@@ -3235,13 +3241,15 @@ class O2dService {
                       IS DISTINCT FROM 'Delivered'
             ) AS total_pending_orders,
 
-            COALESCE(
-                SUM(quantity_mt) FILTER (
-                    WHERE delivery_and_weight->>'delivery_status'
-                          IS DISTINCT FROM 'Delivered'
-                ),
-                0
-            ) AS total_pending_quantity_mt
+            COALESCE(SUM(quantity_mt) FILTER (
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM jsonb_array_elements(
+                        COALESCE(dispatch_info->'history', '[]'::jsonb)
+                    ) AS h
+                    WHERE h->>'dispatch_type' = 'Dispatched'
+                )
+            ), 0) AS total_pending_quantity_mt
 
         FROM public.sales_orders
 
