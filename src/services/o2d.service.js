@@ -2249,7 +2249,10 @@ class O2dService {
               -- Pending Metrics
               COUNT(*) FILTER (
                   WHERE
-                      dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Dispatched'
+                      dispatch_info->>'dispatch_type'
+                          IS DISTINCT FROM 'Dispatched'
+                      AND dispatch_info->>'dispatch_type'
+                          IS DISTINCT FROM 'Order Cancel'
                       AND NOT EXISTS (
                           SELECT 1
                           FROM jsonb_array_elements(
@@ -2265,7 +2268,10 @@ class O2dService {
 
               COALESCE(SUM(quantity_mt) FILTER (
                   WHERE
-                      dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Dispatched'
+                      dispatch_info->>'dispatch_type'
+                          IS DISTINCT FROM 'Dispatched'
+                      AND dispatch_info->>'dispatch_type'
+                          IS DISTINCT FROM 'Order Cancel'
                       AND NOT EXISTS (
                           SELECT 1
                           FROM jsonb_array_elements(
@@ -2291,7 +2297,7 @@ class O2dService {
           FROM public.sales_orders
           WHERE credit_limit_info->>'credit_limit_request_approval_status'
                 IS DISTINCT FROM 'false';
-        `;
+      `;
       const { rows } = await pool.query(query, []);
       return rows;
     } catch (error) {
@@ -3252,45 +3258,51 @@ class O2dService {
   async getSalesTeamDashboardPendingOrdersData(userId) {
     try {
       const query = `
-          SELECT
-              -- Pending Metrics
-              COUNT(*) FILTER (
-                  WHERE
-                      dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Dispatched'
-                      AND NOT EXISTS (
-                          SELECT 1
-                          FROM jsonb_array_elements(
-                              CASE
-                                  WHEN jsonb_typeof(dispatch_info->'history') = 'array'
-                                  THEN dispatch_info->'history'
-                                  ELSE '[]'::jsonb
-                              END
-                          ) AS h
-                          WHERE h->>'dispatch_type' = 'Dispatched'
-                      )
-              ) AS total_pending_orders,
+        SELECT
+            -- Pending Metrics
+            COUNT(*) FILTER (
+                WHERE
+                    dispatch_info->>'dispatch_type'
+                        IS DISTINCT FROM 'Dispatched'
+                    AND dispatch_info->>'dispatch_type'
+                        IS DISTINCT FROM 'Order Cancel'
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM jsonb_array_elements(
+                            CASE
+                                WHEN jsonb_typeof(dispatch_info->'history') = 'array'
+                                THEN dispatch_info->'history'
+                                ELSE '[]'::jsonb
+                            END
+                        ) AS h
+                        WHERE h->>'dispatch_type' = 'Dispatched'
+                    )
+            ) AS total_pending_orders,
 
-              COALESCE(SUM(quantity_mt) FILTER (
-                  WHERE
-                      dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Dispatched'
-                      AND NOT EXISTS (
-                          SELECT 1
-                          FROM jsonb_array_elements(
-                              CASE
-                                  WHEN jsonb_typeof(dispatch_info->'history') = 'array'
-                                  THEN dispatch_info->'history'
-                                  ELSE '[]'::jsonb
-                              END
-                          ) AS h
-                          WHERE h->>'dispatch_type' = 'Dispatched'
-                      )
-              ), 0) AS total_pending_quantity_mt
+            COALESCE(SUM(quantity_mt) FILTER (
+                WHERE
+                    dispatch_info->>'dispatch_type'
+                        IS DISTINCT FROM 'Dispatched'
+                    AND dispatch_info->>'dispatch_type'
+                        IS DISTINCT FROM 'Order Cancel'
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM jsonb_array_elements(
+                            CASE
+                                WHEN jsonb_typeof(dispatch_info->'history') = 'array'
+                                THEN dispatch_info->'history'
+                                ELSE '[]'::jsonb
+                            END
+                        ) AS h
+                        WHERE h->>'dispatch_type' = 'Dispatched'
+                    )
+            ), 0) AS total_pending_quantity_mt
 
-          FROM public.sales_orders
+        FROM public.sales_orders
 
-          -- Global filter for credit limit approval
-          WHERE credit_limit_info->>'credit_limit_request_approval_status'
-                IS DISTINCT FROM 'false';
+        -- Global filter for credit limit approval
+        WHERE credit_limit_info->>'credit_limit_request_approval_status'
+              IS DISTINCT FROM 'false';
       `;
 
       const { rows } = await pool.query(query, []);
