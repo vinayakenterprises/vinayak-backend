@@ -4489,6 +4489,7 @@ class O2dService {
       ["Driver license Image", order.vehicle_arrangement?.driver_license_image],
       ["Receiving Document", order.receiving_details?.documents],
       ["Intimation Proof", order.intimation_thankyou?.screenshot_url],
+      ["Kanta Parchi Document", order.vehicle_arrangement?.kanta_parchi_url],
     ];
 
     return documents
