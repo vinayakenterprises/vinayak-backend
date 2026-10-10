@@ -1781,8 +1781,10 @@ class O2dController {
   createPartialSalesOrder = async (req, res, next) => {
     try {
       const { orderId } = req.params;
+      const { quantity_mt } = req.body;
 
       const previousOrderId = Number(orderId);
+      const parsedQuantity = Number(quantity_mt);
 
       if (!Number.isSafeInteger(previousOrderId) || previousOrderId <= 0) {
         return res.status(400).json({
@@ -1791,7 +1793,14 @@ class O2dController {
         });
       }
 
-      const newOrder = await o2dService.createPartialSalesOrder(previousOrderId);
+      if (!parsedQuantity || isNaN(parsedQuantity) || parsedQuantity <= 0) {
+        return res.status(400).json({
+          status: "error",
+          message: "Valid partial quantity (quantity_mt) is required and must be greater than 0",
+        });
+      }
+
+      const newOrder = await o2dService.createPartialSalesOrder(previousOrderId, parsedQuantity);
 
       if (!newOrder) {
         return res.status(404).json({

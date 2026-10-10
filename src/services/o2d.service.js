@@ -1231,55 +1231,81 @@ class O2dService {
     }
   }
 
-  async createPartialSalesOrder(previousOrderId) {
+  async createPartialSalesOrder(previousOrderId, partialQuantity) {
     try {
       const query = `
-      INSERT INTO public.sales_orders (
-        client_name,
-        rate,
-        ex_works_rate,
-        freight,
-        quantity_mt,
-        rod_size,
-        delivery_date,
-        bill_to,
-        ship_to,
-        dispatch_type,
-        sales_person_name,
-        assigned_to,
-        created_by,
-        updated_by,
-        sale_order_generation,
-        credit_limit_info,
-        dispatch_info
-      )
-      SELECT
-        client_name,
-        rate,
-        ex_works_rate,
-        freight,
-        quantity_mt,
-        rod_size,
-        delivery_date,
-        bill_to,
-        ship_to,
-        dispatch_type,
-        sales_person_name,
-        assigned_to,
-        created_by,
-        updated_by,
-        sale_order_generation,
-        credit_limit_info,
-        jsonb_build_object(
-          'partial_dispatch', true,
-          'partial_dispatch_from', id::text
+      WITH new_partial_order AS (
+        -- 1. Create the new partial sales order
+        INSERT INTO public.sales_orders (
+          client_name,
+          rate,
+          ex_works_rate,
+          freight,
+          quantity_mt,
+          rod_size,
+          delivery_date,
+          bill_to,
+          ship_to,
+          dispatch_type,
+          sales_person_name,
+          assigned_to,
+          created_by,
+          updated_by,
+          sale_order_generation,
+          credit_limit_info,
+          dispatch_info,
+          order_status
         )
-      FROM public.sales_orders
-      WHERE id = $1
-      RETURNING *;
+        SELECT
+          client_name,
+          rate,
+          ex_works_rate,
+          freight,
+          $2,
+          rod_size,
+          delivery_date,
+          bill_to,
+          ship_to,
+          dispatch_type,
+          sales_person_name,
+          assigned_to,
+          created_by,
+          updated_by,
+          sale_order_generation,
+          credit_limit_info,
+          jsonb_build_object(
+            'partial_dispatch', true,
+            'partial_dispatch_from', id::text
+          ),
+          'So Generation Completed'
+        FROM public.sales_orders
+        WHERE id = $1
+        RETURNING *
+      ),
+      update_parent_order AS (
+        -- 2. Append only child_order_id, quantity_mt, created_at to old order's dispatch_info
+        UPDATE public.sales_orders
+        SET
+          dispatch_info = jsonb_set(
+            COALESCE(dispatch_info, '{}'::jsonb),
+            '{partial_dispatches}',
+            COALESCE(dispatch_info->'partial_dispatches', '[]'::jsonb) || jsonb_build_array(
+              jsonb_build_object(
+                'child_order_id', (SELECT id FROM new_partial_order),
+                'quantity_mt', $2::numeric,
+                'created_at', TO_CHAR(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+              )
+            ),
+            true
+          ),
+          updated_at = NOW()
+        WHERE id = $1
+        RETURNING id
+      )
+      SELECT * FROM new_partial_order;
     `;
 
-      const { rows } = await pool.query(query, [previousOrderId]);
+      const { rows } = await pool.query(query, [previousOrderId, partialQuantity]);
 
       return rows[0] || null;
     } catch (error) {
