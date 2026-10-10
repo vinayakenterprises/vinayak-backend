@@ -333,4 +333,10 @@ router.get(
   o2dController.getAssignedDeliveryAndWeightByCRM
 );
 
+router.post(
+  "/sales-orders/:orderId/partial",
+  authMiddleware,
+  o2dController.createPartialSalesOrder
+);
+
 export default router;
