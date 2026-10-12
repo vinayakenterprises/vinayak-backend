@@ -3345,7 +3345,7 @@ class O2dService {
         COUNT(*) AS pending_orders,
         SUM(quantity_mt) AS quantity_mt
     FROM sales_orders
-    WHERE vehicle_arrangement->>'actual_deliver_date' IS NULL
+    WHERE delivery_and_weight->>'actual_delivery_timestamp' IS NULL
     GROUP BY delivery_date
     ORDER BY delivery_date;`;
       const { rows } = await pool.query(query, []);
