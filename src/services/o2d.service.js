@@ -2319,7 +2319,7 @@ class O2dService {
         Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
       const parsedPageSize = Number(requestedPageSize);
       const pageSize =
-        Number.isInteger(parsedPageSize) && parsedPageSize > 0 && parsedPageSize <= 100
+        Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
           ? parsedPageSize
           : 25;
       const offset = (safePage - 1) * pageSize;
