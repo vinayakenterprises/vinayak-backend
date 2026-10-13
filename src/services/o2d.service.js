@@ -2306,25 +2306,56 @@ class O2dService {
     }
   }
 
-  async getActiveSaleOrdersAdminDashboard(userId, start_date, end_date) {
+  async getActiveSaleOrdersAdminDashboard(
+    userId,
+    start_date,
+    end_date,
+    page = 1,
+    requestedPageSize = 25
+  ) {
     try {
-      let query = `SELECT * FROM sales_orders`;
-      const values = [];
+      const requestedPage = Number(page);
+      const safePage =
+        Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+      const parsedPageSize = Number(requestedPageSize);
+      const pageSize =
+        Number.isInteger(parsedPageSize) && parsedPageSize > 0 && parsedPageSize <= 100
+          ? parsedPageSize
+          : 25;
+      const offset = (safePage - 1) * pageSize;
+      let whereClause = "";
+      const filterValues = [];
 
       if (start_date && end_date) {
-        query += ` WHERE created_at BETWEEN $1 AND $2`;
-        values.push(start_date, end_date);
+        whereClause = ` WHERE created_at BETWEEN $1 AND $2`;
+        filterValues.push(start_date, end_date);
       }
 
-      query += ` ORDER BY id DESC`;
+      const countQuery = `SELECT COUNT(*) AS total_items FROM sales_orders${whereClause}`;
+      const limitParameter = filterValues.length + 1;
+      const offsetParameter = filterValues.length + 2;
+      const ordersQuery = `
+        SELECT *
+        FROM sales_orders${whereClause}
+        ORDER BY created_at DESC NULLS LAST, id DESC
+        LIMIT $${limitParameter} OFFSET $${offsetParameter}
+      `;
 
-      const { rows } = await pool.query(query, values);
+      const [countResult, ordersResult] = await Promise.all([
+        pool.query(countQuery, filterValues),
+        pool.query(ordersQuery, [...filterValues, pageSize, offset]),
+      ]);
+      const totalItems = Number(countResult.rows[0]?.total_items || 0);
 
-      if (rows.length === 0) {
-        throw new Error("No active sale orders found");
-      }
-
-      return rows;
+      return {
+        orders: ordersResult.rows,
+        pagination: {
+          page: safePage,
+          pageSize,
+          totalItems,
+          totalPages: Math.ceil(totalItems / pageSize),
+        },
+      };
     } catch (error) {
       console.error("Error in getting active sale orders admin dashboard data:", error);
       throw error;

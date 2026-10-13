@@ -726,16 +726,19 @@ class O2dController {
     try {
       const userId = req.user?.id || null;
 
-      const { start_date, end_date } = req.body;
-      const order = await o2dService.getActiveSaleOrdersAdminDashboard(
+      const { start_date, end_date, page, pageSize } = req.body;
+      const result = await o2dService.getActiveSaleOrdersAdminDashboard(
         userId,
         start_date,
-        end_date
+        end_date,
+        page,
+        pageSize
       );
       return res.status(200).json({
         status: "success",
         message: "Active Sale Orders Admin Dashboard Data retrieved successfully",
-        data: order,
+        data: result.orders,
+        pagination: result.pagination,
       });
     } catch (error) {
       next(error);
