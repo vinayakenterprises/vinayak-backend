@@ -1233,9 +1233,35 @@ class O2dService {
 
   async createPartialSalesOrder(previousOrderId, partialQuantity) {
     try {
+      // 1. Verify that the parent order exists and has sufficient quantity
+      const parentCheckQuery = `
+      SELECT id, quantity_mt 
+      FROM public.sales_orders 
+      WHERE id = $1
+    `;
+      const parentCheck = await pool.query(parentCheckQuery, [previousOrderId]);
+
+      if (!parentCheck.rows.length) {
+        return {
+          error: "NOT_FOUND",
+          message: "Previous sales order not found",
+        };
+      }
+
+      const currentParentQty = parseFloat(parentCheck.rows[0].quantity_mt) || 0;
+
+      // Partial quantity cannot be greater than or equal to total parent order quantity
+      if (partialQuantity >= currentParentQty) {
+        return {
+          error: "INVALID_QUANTITY",
+          message: `Partial quantity (${partialQuantity} MT) must be less than current order quantity (${currentParentQty} MT).`,
+        };
+      }
+
+      // 2. Insert new child order and subtract quantity from parent order
       const query = `
       WITH new_partial_order AS (
-        -- 1. Create the new partial sales order
+        -- Create the new partial sales order with the partial quantity ($2)
         INSERT INTO public.sales_orders (
           client_name,
           rate,
@@ -1261,7 +1287,7 @@ class O2dService {
           rate,
           ex_works_rate,
           freight,
-          $2,
+          $2::numeric,
           rod_size,
           delivery_date,
           bill_to,
@@ -1283,9 +1309,10 @@ class O2dService {
         RETURNING *
       ),
       update_parent_order AS (
-        -- 2. Append only child_order_id, quantity_mt, created_at to old order's dispatch_info
+        -- Subtract the partial quantity ($2) from parent and append to partial_dispatches history
         UPDATE public.sales_orders
         SET
+          quantity_mt = ROUND((quantity_mt::numeric - $2::numeric), 3),
           dispatch_info = jsonb_set(
             COALESCE(dispatch_info, '{}'::jsonb),
             '{partial_dispatches}',
@@ -1300,7 +1327,7 @@ class O2dService {
           ),
           updated_at = NOW()
         WHERE id = $1
-        RETURNING id
+        RETURNING id, quantity_mt
       )
       SELECT * FROM new_partial_order;
     `;
@@ -2315,8 +2342,7 @@ class O2dService {
   ) {
     try {
       const requestedPage = Number(page);
-      const safePage =
-        Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+      const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
       const parsedPageSize = Number(requestedPageSize);
       const pageSize =
         Number.isInteger(parsedPageSize) && parsedPageSize > 0 && parsedPageSize <= 100
