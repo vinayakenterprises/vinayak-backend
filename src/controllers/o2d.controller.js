@@ -1803,19 +1803,26 @@ class O2dController {
         });
       }
 
-      const newOrder = await o2dService.createPartialSalesOrder(previousOrderId, parsedQuantity);
+      const result = await o2dService.createPartialSalesOrder(previousOrderId, parsedQuantity);
 
-      if (!newOrder) {
+      if (result?.error === "NOT_FOUND") {
         return res.status(404).json({
           status: "error",
-          message: "Previous sales order not found",
+          message: result.message,
+        });
+      }
+
+      if (result?.error === "INVALID_QUANTITY") {
+        return res.status(400).json({
+          status: "error",
+          message: result.message,
         });
       }
 
       return res.status(201).json({
         status: "success",
         message: "Partial sales order created successfully",
-        data: newOrder,
+        data: result,
       });
     } catch (error) {
       next(error);
