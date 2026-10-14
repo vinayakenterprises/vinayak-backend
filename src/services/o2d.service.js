@@ -1556,19 +1556,59 @@ class O2dService {
     }
   }
 
-  async getAssignedSOByCRM(userId) {
+  async getAssignedSOByCRM(userId, page = 1, requestedPageSize = 25) {
     try {
-      const query = `
-        SELECT so.*, so.delivery_date::text AS delivery_date FROM public.sales_orders so
-        INNER JOIN public.customers c ON so.client_name = c.company_name
-        or so.client_name = any(c.child_companies)
-        WHERE c.crm = $1 
-          AND so.sale_order_generation->>'sent_for_so' = 'true'
-          -- AND so.sale_order_generation->>'so_order_completed_at' IS NOT NULL 
-        ORDER BY so.id DESC;
+      const requestedPage = Number(page);
+      const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+      const parsedPageSize = Number(requestedPageSize);
+      const pageSize =
+        Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
+          ? parsedPageSize
+          : 25;
+      const offset = (safePage - 1) * pageSize;
+      const whereClause = `
+        WHERE so.sale_order_generation->>'sent_for_so' = 'true'
+          AND EXISTS (
+            SELECT 1
+            FROM public.customers c
+            WHERE c.crm = $1
+              AND (
+                so.client_name = c.company_name
+                OR so.client_name = ANY(c.child_companies)
+              )
+          )
       `;
-      const { rows } = await pool.query(query, [userId]);
-      return rows;
+      const countQuery = `
+        SELECT
+          COUNT(*) AS total_items,
+          COALESCE(SUM(so.quantity_mt), 0) AS total_volume_mt
+        FROM public.sales_orders so
+        ${whereClause}
+      `;
+      const ordersQuery = `
+        SELECT so.*, so.delivery_date::text AS delivery_date
+        FROM public.sales_orders so
+        ${whereClause}
+        ORDER BY so.created_at DESC NULLS LAST, so.id DESC
+        LIMIT $2 OFFSET $3
+      `;
+      const [countResult, ordersResult] = await Promise.all([
+        pool.query(countQuery, [userId]),
+        pool.query(ordersQuery, [userId, pageSize, offset]),
+      ]);
+      const totalItems = Number(countResult.rows[0]?.total_items || 0);
+      const totalVolumeMT = Number(countResult.rows[0]?.total_volume_mt || 0);
+
+      return {
+        orders: ordersResult.rows,
+        pagination: {
+          page: safePage,
+          pageSize,
+          totalItems,
+          totalVolumeMT,
+          totalPages: Math.ceil(totalItems / pageSize),
+        },
+      };
     } catch (error) {
       console.log("error in getting so generation request data: ", error);
       throw error;

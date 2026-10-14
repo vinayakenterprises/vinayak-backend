@@ -395,11 +395,13 @@ class O2dController {
   getAssignedSOByCRM = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
-      const order = await o2dService.getAssignedSOByCRM(userId);
+      const { page, pageSize } = req.query;
+      const result = await o2dService.getAssignedSOByCRM(userId, page, pageSize);
       return res.status(200).json({
         status: "success",
         message: "Sales order slip generation request completed successfully",
-        data: order,
+        data: result.orders,
+        pagination: result.pagination,
       });
     } catch (error) {
       next(error);
