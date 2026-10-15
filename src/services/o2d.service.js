@@ -1556,7 +1556,14 @@ class O2dService {
     }
   }
 
-  async getAssignedSOByCRM(userId, page = 1, requestedPageSize = 25) {
+  async getAssignedSOByCRM(
+    userId,
+    page = 1,
+    requestedPageSize = 25,
+    deliveryStartDate,
+    deliveryEndDate,
+    orderStatus
+  ) {
     try {
       const requestedPage = Number(page);
       const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
@@ -1566,7 +1573,7 @@ class O2dService {
           ? parsedPageSize
           : 25;
       const offset = (safePage - 1) * pageSize;
-      const whereClause = `
+      const baseWhereClause = `
         WHERE so.sale_order_generation->>'sent_for_so' = 'true'
           AND EXISTS (
             SELECT 1
@@ -1578,26 +1585,59 @@ class O2dService {
               )
           )
       `;
-      const countQuery = `
+      const filterValues = [userId];
+      let filteredWhereClause = baseWhereClause;
+
+      if (deliveryStartDate) {
+        filterValues.push(deliveryStartDate);
+        filteredWhereClause += ` AND so.delivery_date::date >= $${filterValues.length}::date`;
+      }
+      if (deliveryEndDate) {
+        filterValues.push(deliveryEndDate);
+        filteredWhereClause += ` AND so.delivery_date::date <= $${filterValues.length}::date`;
+      }
+      if (orderStatus && orderStatus !== "all") {
+        filterValues.push(orderStatus);
+        filteredWhereClause += ` AND so.order_status = $${filterValues.length}`;
+      }
+
+      const summaryQuery = `
         SELECT
           COUNT(*) AS total_items,
           COALESCE(SUM(so.quantity_mt), 0) AS total_volume_mt
         FROM public.sales_orders so
-        ${whereClause}
+        ${baseWhereClause}
       `;
+      const countQuery = `
+        SELECT COUNT(*) AS total_items
+        FROM public.sales_orders so
+        ${filteredWhereClause}
+      `;
+      const limitParameter = filterValues.length + 1;
+      const offsetParameter = filterValues.length + 2;
       const ordersQuery = `
         SELECT so.*, so.delivery_date::text AS delivery_date
         FROM public.sales_orders so
-        ${whereClause}
+        ${filteredWhereClause}
         ORDER BY so.created_at DESC NULLS LAST, so.id DESC
-        LIMIT $2 OFFSET $3
+        LIMIT $${limitParameter} OFFSET $${offsetParameter}
       `;
-      const [countResult, ordersResult] = await Promise.all([
-        pool.query(countQuery, [userId]),
-        pool.query(ordersQuery, [userId, pageSize, offset]),
+      // console.log("[getAssignedSOByCRM] Executing pagination queries", {
+      //   summaryQuery,
+      //   summaryParams: [userId],
+      //   countQuery,
+      //   countParams: filterValues,
+      //   ordersQuery,
+      //   ordersParams: [...filterValues, pageSize, offset],
+      // });
+      const [summaryResult, countResult, ordersResult] = await Promise.all([
+        pool.query(summaryQuery, [userId]),
+        pool.query(countQuery, filterValues),
+        pool.query(ordersQuery, [...filterValues, pageSize, offset]),
       ]);
       const totalItems = Number(countResult.rows[0]?.total_items || 0);
-      const totalVolumeMT = Number(countResult.rows[0]?.total_volume_mt || 0);
+      const allTotalItems = Number(summaryResult.rows[0]?.total_items || 0);
+      const totalVolumeMT = Number(summaryResult.rows[0]?.total_volume_mt || 0);
 
       return {
         orders: ordersResult.rows,
@@ -1605,6 +1645,7 @@ class O2dService {
           page: safePage,
           pageSize,
           totalItems,
+          allTotalItems,
           totalVolumeMT,
           totalPages: Math.ceil(totalItems / pageSize),
         },
