@@ -1556,19 +1556,100 @@ class O2dService {
     }
   }
 
-  async getAssignedSOByCRM(userId) {
+  async getAssignedSOByCRM(
+    userId,
+    page = 1,
+    requestedPageSize = 25,
+    deliveryStartDate,
+    deliveryEndDate,
+    orderStatus
+  ) {
     try {
-      const query = `
-        SELECT so.*, so.delivery_date::text AS delivery_date FROM public.sales_orders so
-        INNER JOIN public.customers c ON so.client_name = c.company_name
-        or so.client_name = any(c.child_companies)
-        WHERE c.crm = $1 
-          AND so.sale_order_generation->>'sent_for_so' = 'true'
-          -- AND so.sale_order_generation->>'so_order_completed_at' IS NOT NULL 
-        ORDER BY so.id DESC;
+      const requestedPage = Number(page);
+      const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+      const parsedPageSize = Number(requestedPageSize);
+      const pageSize =
+        Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
+          ? parsedPageSize
+          : 25;
+      const offset = (safePage - 1) * pageSize;
+      const baseWhereClause = `
+        WHERE so.sale_order_generation->>'sent_for_so' = 'true'
+          AND EXISTS (
+            SELECT 1
+            FROM public.customers c
+            WHERE c.crm = $1
+              AND (
+                so.client_name = c.company_name
+                OR so.client_name = ANY(c.child_companies)
+              )
+          )
       `;
-      const { rows } = await pool.query(query, [userId]);
-      return rows;
+      const filterValues = [userId];
+      let filteredWhereClause = baseWhereClause;
+
+      if (deliveryStartDate) {
+        filterValues.push(deliveryStartDate);
+        filteredWhereClause += ` AND so.delivery_date::date >= $${filterValues.length}::date`;
+      }
+      if (deliveryEndDate) {
+        filterValues.push(deliveryEndDate);
+        filteredWhereClause += ` AND so.delivery_date::date <= $${filterValues.length}::date`;
+      }
+      if (orderStatus && orderStatus !== "all") {
+        filterValues.push(orderStatus);
+        filteredWhereClause += ` AND so.order_status = $${filterValues.length}`;
+      }
+
+      const summaryQuery = `
+        SELECT
+          COUNT(*) AS total_items,
+          COALESCE(SUM(so.quantity_mt), 0) AS total_volume_mt
+        FROM public.sales_orders so
+        ${baseWhereClause}
+      `;
+      const countQuery = `
+        SELECT COUNT(*) AS total_items
+        FROM public.sales_orders so
+        ${filteredWhereClause}
+      `;
+      const limitParameter = filterValues.length + 1;
+      const offsetParameter = filterValues.length + 2;
+      const ordersQuery = `
+        SELECT so.*, so.delivery_date::text AS delivery_date
+        FROM public.sales_orders so
+        ${filteredWhereClause}
+        ORDER BY so.created_at DESC NULLS LAST, so.id DESC
+        LIMIT $${limitParameter} OFFSET $${offsetParameter}
+      `;
+      // console.log("[getAssignedSOByCRM] Executing pagination queries", {
+      //   summaryQuery,
+      //   summaryParams: [userId],
+      //   countQuery,
+      //   countParams: filterValues,
+      //   ordersQuery,
+      //   ordersParams: [...filterValues, pageSize, offset],
+      // });
+      const [summaryResult, countResult, ordersResult] = await Promise.all([
+        pool.query(summaryQuery, [userId]),
+        pool.query(countQuery, filterValues),
+        pool.query(ordersQuery, [...filterValues, pageSize, offset]),
+      ]);
+      const totalItems = Number(countResult.rows[0]?.total_items || 0);
+      const allTotalItems = Number(summaryResult.rows[0]?.total_items || 0);
+      const totalVolumeMT = Number(summaryResult.rows[0]?.total_volume_mt || 0);
+
+      return {
+        orders: ordersResult.rows,
+        pagination: {
+          page: safePage,
+          pageSize,
+          totalItems,
+          allTotalItems,
+          totalVolumeMT,
+          totalPages: Math.ceil(totalItems / pageSize),
+        },
+      };
     } catch (error) {
       console.log("error in getting so generation request data: ", error);
       throw error;
@@ -2345,7 +2426,7 @@ class O2dService {
       const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
       const parsedPageSize = Number(requestedPageSize);
       const pageSize =
-        Number.isInteger(parsedPageSize) && parsedPageSize > 0 && parsedPageSize <= 100
+        Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
           ? parsedPageSize
           : 25;
       const offset = (safePage - 1) * pageSize;
