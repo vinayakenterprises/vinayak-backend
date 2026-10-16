@@ -2416,8 +2416,9 @@ class O2dService {
 
   async getActiveSaleOrdersAdminDashboard(
     userId,
-    start_date,
-    end_date,
+    deliveryStartDate,
+    deliveryEndDate,
+    orderStatus,
     page = 1,
     requestedPageSize = 25
   ) {
@@ -2430,13 +2431,21 @@ class O2dService {
           ? parsedPageSize
           : 25;
       const offset = (safePage - 1) * pageSize;
-      let whereClause = "";
+      const filters = [];
       const filterValues = [];
-
-      if (start_date && end_date) {
-        whereClause = ` WHERE created_at BETWEEN $1 AND $2`;
-        filterValues.push(start_date, end_date);
+      if (deliveryStartDate) {
+        filterValues.push(deliveryStartDate);
+        filters.push(`delivery_date::date >= $${filterValues.length}::date`);
       }
+      if (deliveryEndDate) {
+        filterValues.push(deliveryEndDate);
+        filters.push(`delivery_date::date <= $${filterValues.length}::date`);
+      }
+      if (orderStatus && orderStatus !== "all") {
+        filterValues.push(orderStatus);
+        filters.push(`order_status = $${filterValues.length}`);
+      }
+      const whereClause = filters.length ? ` WHERE ${filters.join(" AND ")}` : "";
 
       const countQuery = `SELECT COUNT(*) AS total_items FROM sales_orders${whereClause}`;
       const limitParameter = filterValues.length + 1;
