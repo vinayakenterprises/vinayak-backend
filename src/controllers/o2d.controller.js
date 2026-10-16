@@ -735,11 +735,18 @@ class O2dController {
     try {
       const userId = req.user?.id || null;
 
-      const { start_date, end_date, page, pageSize } = req.body;
+      const {
+        delivery_start_date,
+        delivery_end_date,
+        order_status,
+        page,
+        pageSize,
+      } = req.body;
       const result = await o2dService.getActiveSaleOrdersAdminDashboard(
         userId,
-        start_date,
-        end_date,
+        delivery_start_date,
+        delivery_end_date,
+        order_status,
         page,
         pageSize
       );
