@@ -735,13 +735,7 @@ class O2dController {
     try {
       const userId = req.user?.id || null;
 
-      const {
-        delivery_start_date,
-        delivery_end_date,
-        order_status,
-        page,
-        pageSize,
-      } = req.body;
+      const { delivery_start_date, delivery_end_date, order_status, page, pageSize } = req.body;
       const result = await o2dService.getActiveSaleOrdersAdminDashboard(
         userId,
         delivery_start_date,
@@ -1839,6 +1833,24 @@ class O2dController {
         status: "success",
         message: "Partial sales order created successfully",
         data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getQualityUncheckedData = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+      const { page, pageSize } = req.query;
+
+      const result = await o2dService.getQualityUncheckedData(userId, page, pageSize);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Quality Unchecked Data retrieved successfully",
+        data: result.orders,
+        pagination: result.pagination,
       });
     } catch (error) {
       next(error);

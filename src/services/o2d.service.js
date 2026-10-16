@@ -1341,6 +1341,75 @@ class O2dService {
     }
   }
 
+  async getQualityUncheckedData(userId, page = 1, requestedPageSize = 25) {
+    try {
+      const requestedPage = Number(page);
+
+      const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+
+      const parsedPageSize = Number(requestedPageSize);
+
+      const pageSize =
+        Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
+          ? parsedPageSize
+          : 25;
+
+      const offset = (safePage - 1) * pageSize;
+
+      const whereClause = `
+      WHERE so.delivery_and_weight->>'delivery_status' = 'Delivered'
+        AND (
+          so.delivery_and_weight->>'quality_confirmation_status' IS NULL
+          OR so.delivery_and_weight->>'quality_confirmation_status'
+             NOT IN ('Yes', 'No within TAT', 'NO without TAT')
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM public.customers c
+          WHERE c.crm = $1
+            AND (
+              so.client_name = c.company_name
+              OR so.client_name = ANY(c.child_companies)
+            )
+        )
+    `;
+
+      const countQuery = `
+      SELECT COUNT(*) AS total_items
+      FROM public.sales_orders so
+      ${whereClause}
+    `;
+
+      const ordersQuery = `
+      SELECT so.*
+      FROM public.sales_orders so
+      ${whereClause}
+      ORDER BY so.id ASC
+      LIMIT $2 OFFSET $3
+    `;
+
+      const [countResult, ordersResult] = await Promise.all([
+        pool.query(countQuery, [userId]),
+        pool.query(ordersQuery, [userId, pageSize, offset]),
+      ]);
+
+      const totalItems = Number(countResult.rows[0]?.total_items || 0);
+
+      return {
+        orders: ordersResult.rows,
+        pagination: {
+          page: safePage,
+          pageSize,
+          totalItems,
+          totalPages: Math.ceil(totalItems / pageSize),
+        },
+      };
+    } catch (error) {
+      console.log("Error in getting quality unchecked data:", error);
+      throw error;
+    }
+  }
+
   // 1. Get all update request records across all orders
   async getAllOrderUpdateRequests() {
     try {
