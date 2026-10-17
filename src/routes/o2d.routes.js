@@ -339,4 +339,6 @@ router.post(
   o2dController.createPartialSalesOrder
 );
 
+router.get("/get-quality-unchecked-data", authMiddleware, o2dController.getQualityUncheckedData);
+
 export default router;

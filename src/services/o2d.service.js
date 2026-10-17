@@ -411,7 +411,6 @@ class O2dService {
     const {
       customer_type,
       company_name,
-      customer_id,
       address,
       state,
       region,
@@ -419,40 +418,43 @@ class O2dService {
       contact_number,
       status,
       child_companies,
+      credit_limit,
     } = customerData;
 
-    // COALESCE is used here so that if a field isn't passed in the update payload,
-    // it retains its previous database value.
+    // Updates based solely on primary key 'id'
+    // COALESCE preserves existing DB values if a field isn't passed in the payload
     const query = `
       UPDATE public.customers 
       SET 
         customer_type = COALESCE($1, customer_type),
         company_name = COALESCE($2, company_name),
-        customer_id = COALESCE($3, customer_id),
-        address = COALESCE($4, address),
-        state = COALESCE($5, state),
-        region = COALESCE($6, region),
-        contact_person = COALESCE($7, contact_person),
-        contact_number = COALESCE($8, contact_number),
-        status = COALESCE($9, status),
-        child_companies = COALESCE($10, child_companies),
+        address = COALESCE($3, address),
+        state = COALESCE($4, state),
+        region = COALESCE($5, region),
+        contact_person = COALESCE($6, contact_person),
+        contact_number = COALESCE($7, contact_number),
+        status = COALESCE($8, status),
+        child_companies = COALESCE($9, child_companies),
+        credit_limit = COALESCE($10, credit_limit),
         updated_at = now()
       WHERE id = $11
       RETURNING *;
     `;
 
     const values = [
-      customer_type,
-      company_name,
-      customer_id,
-      address,
-      state,
-      region,
-      contact_person,
-      contact_number,
-      status,
-      child_companies,
-      id,
+      customer_type ?? null,
+      company_name ?? null,
+      address ?? null,
+      state ?? null,
+      region ?? null,
+      contact_person ?? null,
+      contact_number ?? null,
+      status ?? null,
+      child_companies ?? null,
+      credit_limit !== undefined && credit_limit !== "" && credit_limit !== null
+        ? Number(credit_limit)
+        : null,
+      Number(id), // Primary key
     ];
 
     const { rows } = await pool.query(query, values);
@@ -1337,6 +1339,75 @@ class O2dService {
       return rows[0] || null;
     } catch (error) {
       console.error("Error creating partial sales order:", error);
+      throw error;
+    }
+  }
+
+  async getQualityUncheckedData(userId, page = 1, requestedPageSize = 25) {
+    try {
+      const requestedPage = Number(page);
+
+      const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+
+      const parsedPageSize = Number(requestedPageSize);
+
+      const pageSize =
+        Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
+          ? parsedPageSize
+          : 25;
+
+      const offset = (safePage - 1) * pageSize;
+
+      const whereClause = `
+      WHERE so.delivery_and_weight->>'delivery_status' = 'Delivered'
+        AND (
+          so.delivery_and_weight->>'quality_confirmation_status' IS NULL
+          OR so.delivery_and_weight->>'quality_confirmation_status'
+             NOT IN ('Yes', 'No within TAT', 'NO without TAT')
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM public.customers c
+          WHERE c.crm = $1
+            AND (
+              so.client_name = c.company_name
+              OR so.client_name = ANY(c.child_companies)
+            )
+        )
+    `;
+
+      const countQuery = `
+      SELECT COUNT(*) AS total_items
+      FROM public.sales_orders so
+      ${whereClause}
+    `;
+
+      const ordersQuery = `
+      SELECT so.*
+      FROM public.sales_orders so
+      ${whereClause}
+      ORDER BY so.id ASC
+      LIMIT $2 OFFSET $3
+    `;
+
+      const [countResult, ordersResult] = await Promise.all([
+        pool.query(countQuery, [userId]),
+        pool.query(ordersQuery, [userId, pageSize, offset]),
+      ]);
+
+      const totalItems = Number(countResult.rows[0]?.total_items || 0);
+
+      return {
+        orders: ordersResult.rows,
+        pagination: {
+          page: safePage,
+          pageSize,
+          totalItems,
+          totalPages: Math.ceil(totalItems / pageSize),
+        },
+      };
+    } catch (error) {
+      console.log("Error in getting quality unchecked data:", error);
       throw error;
     }
   }
