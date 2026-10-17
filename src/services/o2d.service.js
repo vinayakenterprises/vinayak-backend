@@ -411,7 +411,6 @@ class O2dService {
     const {
       customer_type,
       company_name,
-      customer_id,
       address,
       state,
       region,
@@ -419,40 +418,43 @@ class O2dService {
       contact_number,
       status,
       child_companies,
+      credit_limit,
     } = customerData;
 
-    // COALESCE is used here so that if a field isn't passed in the update payload,
-    // it retains its previous database value.
+    // Updates based solely on primary key 'id'
+    // COALESCE preserves existing DB values if a field isn't passed in the payload
     const query = `
       UPDATE public.customers 
       SET 
         customer_type = COALESCE($1, customer_type),
         company_name = COALESCE($2, company_name),
-        customer_id = COALESCE($3, customer_id),
-        address = COALESCE($4, address),
-        state = COALESCE($5, state),
-        region = COALESCE($6, region),
-        contact_person = COALESCE($7, contact_person),
-        contact_number = COALESCE($8, contact_number),
-        status = COALESCE($9, status),
-        child_companies = COALESCE($10, child_companies),
+        address = COALESCE($3, address),
+        state = COALESCE($4, state),
+        region = COALESCE($5, region),
+        contact_person = COALESCE($6, contact_person),
+        contact_number = COALESCE($7, contact_number),
+        status = COALESCE($8, status),
+        child_companies = COALESCE($9, child_companies),
+        credit_limit = COALESCE($10, credit_limit),
         updated_at = now()
       WHERE id = $11
       RETURNING *;
     `;
 
     const values = [
-      customer_type,
-      company_name,
-      customer_id,
-      address,
-      state,
-      region,
-      contact_person,
-      contact_number,
-      status,
-      child_companies,
-      id,
+      customer_type ?? null,
+      company_name ?? null,
+      address ?? null,
+      state ?? null,
+      region ?? null,
+      contact_person ?? null,
+      contact_number ?? null,
+      status ?? null,
+      child_companies ?? null,
+      credit_limit !== undefined && credit_limit !== "" && credit_limit !== null
+        ? Number(credit_limit)
+        : null,
+      Number(id), // Primary key
     ];
 
     const { rows } = await pool.query(query, values);
