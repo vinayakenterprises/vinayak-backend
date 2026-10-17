@@ -1633,7 +1633,9 @@ class O2dService {
     requestedPageSize = 25,
     deliveryStartDate,
     deliveryEndDate,
-    orderStatus
+    orderStatus,
+    dispatchType,
+    delayReason
   ) {
     try {
       const requestedPage = Number(page);
@@ -1670,6 +1672,14 @@ class O2dService {
       if (orderStatus && orderStatus !== "all") {
         filterValues.push(orderStatus);
         filteredWhereClause += ` AND so.order_status = $${filterValues.length}`;
+      }
+      if (dispatchType && dispatchType !== "all") {
+        filterValues.push(dispatchType);
+        filteredWhereClause += ` AND so.dispatch_info->>'dispatch_type' = $${filterValues.length}`;
+      }
+      if (delayReason && delayReason !== "all") {
+        filterValues.push(delayReason);
+        filteredWhereClause += ` AND so.dispatch_info->>'delay_reason' = $${filterValues.length}`;
       }
 
       const summaryQuery = `

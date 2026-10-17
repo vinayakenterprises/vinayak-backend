@@ -20,3 +20,15 @@ export const ORDER_STAGES = {
   thank_you_and_intimation_stage: "Thank You and Intimation Stage",
   order_splitted: "Order Splitted!",
 };
+
+export const DISPATCH_OPTIONS = [
+  "Eligible to Dispatch",
+  "Dispatched",
+  "Dispatch After Advance Payment",
+  "Advance Received",
+  "Previous Payment to Receive",
+  "Dispatch after confirmation",
+  "Order Cancel",
+];
+
+export const DELAY_REASON_OPTIONS = ["Factory", "Client", "sunday", "On Time"];
