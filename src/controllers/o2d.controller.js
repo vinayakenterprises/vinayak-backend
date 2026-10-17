@@ -395,14 +395,24 @@ class O2dController {
   getAssignedSOByCRM = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
-      const { page, pageSize, deliveryStartDate, deliveryEndDate, orderStatus } = req.query;
+      const {
+        page,
+        pageSize,
+        deliveryStartDate,
+        deliveryEndDate,
+        orderStatus,
+        dispatchType,
+        delayReason,
+      } = req.query;
       const result = await o2dService.getAssignedSOByCRM(
         userId,
         page,
         pageSize,
         deliveryStartDate,
         deliveryEndDate,
-        orderStatus
+        orderStatus,
+        dispatchType,
+        delayReason
       );
       return res.status(200).json({
         status: "success",
