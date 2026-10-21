@@ -301,12 +301,23 @@ class O2dController {
   getCreditLimitReachedData = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
-
-      const order = await o2dService.getCreditLimitReachedData(req.body, userId);
+      const { view, page, pageSize, search } = req.query;
+      const result = await o2dService.getCreditLimitReachedData(
+        req.body,
+        userId,
+        view,
+        page,
+        pageSize,
+        search
+      );
       return res.status(200).json({
         status: "success",
         message: "Credit limit reached data retrieved successfully",
-        data: order,
+        data: view === "processed" ? result.orders : result,
+        ...(view === "processed" && {
+          pagination: result.pagination,
+          totalCount: result.totalCount,
+        }),
       });
     } catch (error) {
       next(error);
@@ -1801,10 +1812,13 @@ class O2dController {
   // 1. Fetch all update requests for Sales Team Lead
   getAllOrderUpdateRequests = async (req, res, next) => {
     try {
-      const records = await o2dService.getAllOrderUpdateRequests();
+      const { view, page, pageSize, search } = req.query;
+      const result = await o2dService.getAllOrderUpdateRequests(view, page, pageSize, search);
       return res.status(200).json({
         status: "success",
-        data: records,
+        data: view === "history" || view === "pending" ? result.records : result,
+        ...(view === "pending" && { counts: result.counts }),
+        ...(view === "history" && { pagination: result.pagination }),
       });
     } catch (error) {
       next(error);
