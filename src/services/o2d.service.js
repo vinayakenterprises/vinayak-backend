@@ -1612,15 +1612,52 @@ class O2dService {
     }
   }
 
-  async getCompletedSOGenerationRequestData(userId) {
+  async getCompletedSOGenerationRequestData(userId, page = 1, requestedPageSize = 25, search = "") {
     try {
+      const requestedPage = Number(page);
+      const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+      const parsedPageSize = Number(requestedPageSize);
+      const pageSize =
+        Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
+          ? parsedPageSize
+          : 25;
+      const offset = (safePage - 1) * pageSize;
+      const searchTerm = String(search).trim();
+      const searchPattern = `%${searchTerm}%`;
+      const searchClause = searchTerm
+        ? ` AND (client_name ILIKE $1 OR sales_person_name ILIKE $1 OR id::text ILIKE $1)`
+        : "";
+      const filterValues = searchTerm ? [searchPattern] : [];
+      const limitParameter = filterValues.length + 1;
       const query = `
         SELECT * FROM public.sales_orders
-        WHERE sale_order_generation->>'sent_for_so' = 'true' and sale_order_generation->>'so_order_completed_at' is not null
+        WHERE sale_order_generation->>'sent_for_so' = 'true'
+          AND sale_order_generation->>'so_order_completed_at' IS NOT NULL
+          ${searchClause}
         ORDER BY id DESC
-        `;
-      const { rows } = await pool.query(query, []);
-      return rows;
+        LIMIT $${limitParameter} OFFSET $${limitParameter + 1}
+      `;
+      const countQuery = `
+        SELECT COUNT(*) AS total_items
+        FROM public.sales_orders
+        WHERE sale_order_generation->>'sent_for_so' = 'true'
+          AND sale_order_generation->>'so_order_completed_at' IS NOT NULL
+          ${searchClause}
+      `;
+      const [countResult, ordersResult] = await Promise.all([
+        pool.query(countQuery, filterValues),
+        pool.query(query, [...filterValues, pageSize, offset]),
+      ]);
+      const totalItems = Number(countResult.rows[0]?.total_items || 0);
+      return {
+        orders: ordersResult.rows,
+        pagination: {
+          page: safePage,
+          pageSize,
+          totalItems,
+          totalPages: Math.ceil(totalItems / pageSize),
+        },
+      };
     } catch (error) {
       console.log("error in getting so generation request data: ", error);
       throw error;
@@ -2355,15 +2392,55 @@ class O2dService {
     }
   }
 
-  async getCnDnWorkHistory(userId) {
+  async getCnDnWorkHistory(userId, page = 1, requestedPageSize = 25, search = "") {
     try {
+      const requestedPage = Number(page);
+      const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+      const parsedPageSize = Number(requestedPageSize);
+      const pageSize =
+        Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
+          ? parsedPageSize
+          : 25;
+      const offset = (safePage - 1) * pageSize;
+      const searchTerm = String(search).trim();
+      const searchPattern = `%${searchTerm}%`;
+      const searchClause = searchTerm
+        ? ` AND (
+            client_name ILIKE $1
+            OR sales_person_name ILIKE $1
+            OR id::text ILIKE $1
+            OR delivery_and_weight->>'settlement' ILIKE $1
+          )`
+        : "";
+      const filterValues = searchTerm ? [searchPattern] : [];
+      const limitParameter = filterValues.length + 1;
       const query = `
         SELECT * FROM public.sales_orders
         WHERE delivery_and_weight->>'cn_or_dn_issue_timestamp' IS NOT NULL
+          ${searchClause}
         ORDER BY id DESC
+        LIMIT $${limitParameter} OFFSET $${limitParameter + 1}
       `;
-      const { rows } = await pool.query(query, []);
-      return rows;
+      const countQuery = `
+        SELECT COUNT(*) AS total_items
+        FROM public.sales_orders
+        WHERE delivery_and_weight->>'cn_or_dn_issue_timestamp' IS NOT NULL
+          ${searchClause}
+      `;
+      const [countResult, ordersResult] = await Promise.all([
+        pool.query(countQuery, filterValues),
+        pool.query(query, [...filterValues, pageSize, offset]),
+      ]);
+      const totalItems = Number(countResult.rows[0]?.total_items || 0);
+      return {
+        orders: ordersResult.rows,
+        pagination: {
+          page: safePage,
+          pageSize,
+          totalItems,
+          totalPages: Math.ceil(totalItems / pageSize),
+        },
+      };
     } catch (error) {
       console.error("Error in getting cn/dn work history: ", error);
       throw error;
@@ -2390,23 +2467,65 @@ class O2dService {
     }
   }
 
-  async getInterestNoteIssueWorkHistory(userId) {
+  async getInterestNoteIssueWorkHistory(userId, page = 1, requestedPageSize = 25, search = "") {
     try {
       // AND (
       //       payment_status->>'collect_interest_from_client' IS NULL
       //       OR payment_status->>'collect_interest_from_client' = 'true'
       //     )
-
+      const requestedPage = Number(page);
+      const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+      const parsedPageSize = Number(requestedPageSize);
+      const pageSize =
+        Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
+          ? parsedPageSize
+          : 25;
+      const offset = (safePage - 1) * pageSize;
+      const searchTerm = String(search).trim();
+      const searchPattern = `%${searchTerm}%`;
+      const searchClause = searchTerm
+        ? ` AND (
+            client_name ILIKE $1
+            OR sales_person_name ILIKE $1
+            OR id::text ILIKE $1
+            OR delivery_and_weight->>'settlement' ILIKE $1
+          )`
+        : "";
+      const filterValues = searchTerm ? [searchPattern] : [];
+      const limitParameter = filterValues.length + 1;
       const query = `
         SELECT * FROM public.sales_orders
         WHERE payment_status->>'interest_note_issued_on_timestamp' IS NOT NULL AND (
             payment_status->>'collect_interest_from_client' IS NULL
             OR payment_status->>'collect_interest_from_client' = 'true'
           )
+          ${searchClause}
         ORDER BY id DESC
+        LIMIT $${limitParameter} OFFSET $${limitParameter + 1}
       `;
-      const { rows } = await pool.query(query, []);
-      return rows;
+      const countQuery = `
+        SELECT COUNT(*) AS total_items
+        FROM public.sales_orders
+        WHERE payment_status->>'interest_note_issued_on_timestamp' IS NOT NULL AND (
+            payment_status->>'collect_interest_from_client' IS NULL
+            OR payment_status->>'collect_interest_from_client' = 'true'
+          )
+          ${searchClause}
+      `;
+      const [countResult, ordersResult] = await Promise.all([
+        pool.query(countQuery, filterValues),
+        pool.query(query, [...filterValues, pageSize, offset]),
+      ]);
+      const totalItems = Number(countResult.rows[0]?.total_items || 0);
+      return {
+        orders: ordersResult.rows,
+        pagination: {
+          page: safePage,
+          pageSize,
+          totalItems,
+          totalPages: Math.ceil(totalItems / pageSize),
+        },
+      };
     } catch (error) {
       console.error("Error in getting interest note issue work history: ", error);
       throw error;
@@ -2578,19 +2697,106 @@ class O2dService {
     }
   }
 
-  async getPaymentCollectedData(id, userId) {
+  async getPaymentCollectedData(id, userId, page = 1, requestedPageSize = 25, search = "", status = "All") {
     try {
-      const query = `SELECT osr.*, ci.complaint_status, ci.updated_at
-      FROM overdue_summary_report osr 
-      LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
-      WHERE osr.is_deleted = false 
-        AND osr.is_collected = true 
-        AND (ci.sale_order_id IS NULL OR ci.complaint_status = 'Closed')
-      ORDER BY osr.id DESC`;
+      const requestedPage = Number(page);
+      const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+      const parsedPageSize = Number(requestedPageSize);
+      const pageSize =
+        Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
+          ? parsedPageSize
+          : 25;
+      const offset = (safePage - 1) * pageSize;
+      const filterValues = [];
+      const filters = [
+        "osr.is_deleted = false",
+        "osr.is_collected = true",
+        "(ci.sale_order_id IS NULL OR ci.complaint_status = 'Closed')",
+      ];
+      const searchTerm = String(search).trim();
+      if (searchTerm) {
+        filterValues.push(`%${searchTerm}%`);
+        const searchParameter = `$${filterValues.length}`;
+        filters.push(`(
+          osr.client_name ILIKE ${searchParameter}
+          OR osr.invoice_no ILIKE ${searchParameter}
+          OR osr.sale_order_id::text ILIKE ${searchParameter}
+          OR osr.id::text ILIKE ${searchParameter}
+        )`);
+      }
+      const overdueStatusExpression = `CASE
+        WHEN osr.invoice_date IS NOT NULL
+          AND CURRENT_TIMESTAMP > GREATEST(
+            osr.invoice_date::timestamp + INTERVAL '10 days',
+            CASE
+              WHEN ci.complaint_status = 'Closed' AND ci.updated_at IS NOT NULL
+                THEN ci.updated_at + INTERVAL '10 days'
+              ELSE osr.invoice_date::timestamp + INTERVAL '10 days'
+            END
+          )
+          AND COALESCE(NULLIF(osr.balance::text, '')::numeric, 0) > 0
+          THEN 'Overdue'
+        ELSE 'Within TAT'
+      END`;
+      if (status && status !== "All") {
+        filterValues.push(status);
+        filters.push(`${overdueStatusExpression} = $${filterValues.length}`);
+      }
 
-      const { rows } = await pool.query(query, []);
+      const whereClause = filters.join(" AND ");
+      const countQuery = `
+        SELECT COUNT(*) AS total_items
+        FROM overdue_summary_report osr
+        LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
+        WHERE ${whereClause}
+      `;
+      const limitParameter = filterValues.length + 1;
+      const ordersQuery = `
+        SELECT osr.*, ci.complaint_status, ci.updated_at
+        FROM overdue_summary_report osr
+        LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
+        WHERE ${whereClause}
+        ORDER BY osr.id DESC
+        LIMIT $${limitParameter} OFFSET $${limitParameter + 1}
+      `;
+      const summaryQuery = `
+        SELECT
+          COUNT(*) AS total_items,
+          COALESCE(SUM(
+            CASE
+              WHEN jsonb_array_length(COALESCE(osr.transactions, '[]'::jsonb)) > 0 THEN (
+                SELECT COALESCE(SUM(NULLIF(tx->>'amount', '')::numeric), 0)
+                FROM jsonb_array_elements(COALESCE(osr.transactions, '[]'::jsonb)) tx
+              )
+              ELSE COALESCE(NULLIF(osr.balance::text, '')::numeric, 0)
+            END
+          ), 0) AS total_collected_amount
+        FROM overdue_summary_report osr
+        LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
+        WHERE osr.is_deleted = false
+          AND osr.is_collected = true
+          AND (ci.sale_order_id IS NULL OR ci.complaint_status = 'Closed')
+      `;
 
-      return rows;
+      const [countResult, ordersResult, summaryResult] = await Promise.all([
+        pool.query(countQuery, filterValues),
+        pool.query(ordersQuery, [...filterValues, pageSize, offset]),
+        pool.query(summaryQuery, []),
+      ]);
+      const totalItems = Number(countResult.rows[0]?.total_items || 0);
+      return {
+        orders: ordersResult.rows,
+        pagination: {
+          page: safePage,
+          pageSize,
+          totalItems,
+          totalPages: Math.ceil(totalItems / pageSize),
+        },
+        summary: {
+          totalItems: Number(summaryResult.rows[0]?.total_items || 0),
+          totalCollectedAmount: Number(summaryResult.rows[0]?.total_collected_amount || 0),
+        },
+      };
     } catch (error) {
       console.error("Error in getting overdue report data: ", error);
       throw error;

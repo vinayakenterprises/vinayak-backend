@@ -381,11 +381,18 @@ class O2dController {
   getCompletedSOGenerationRequestData = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
-      const order = await o2dService.getCompletedSOGenerationRequestData(userId);
+      const { page, pageSize, search } = req.query;
+      const result = await o2dService.getCompletedSOGenerationRequestData(
+        userId,
+        page,
+        pageSize,
+        search
+      );
       return res.status(200).json({
         status: "success",
         message: "Sales order slip generation request completed successfully",
-        data: order,
+        data: result.orders,
+        pagination: result.pagination,
       });
     } catch (error) {
       next(error);
@@ -664,13 +671,14 @@ class O2dController {
   getCnDnWorkHistory = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
-
-      const order = await o2dService.getCnDnWorkHistory(userId);
+      const { page, pageSize, search } = req.query;
+      const result = await o2dService.getCnDnWorkHistory(userId, page, pageSize, search);
 
       return res.status(200).json({
         status: "success",
         message: "CN/DN Work History retrieved successfully",
-        data: order,
+        data: result.orders,
+        pagination: result.pagination,
       });
     } catch (error) {
       next(error);
@@ -696,13 +704,19 @@ class O2dController {
   getInterestNoteIssueWorkHistory = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
-
-      const order = await o2dService.getInterestNoteIssueWorkHistory(userId);
+      const { page, pageSize, search } = req.query;
+      const result = await o2dService.getInterestNoteIssueWorkHistory(
+        userId,
+        page,
+        pageSize,
+        search
+      );
 
       return res.status(200).json({
         status: "success",
         message: "Interest Note Issue Work History retrieved successfully",
-        data: order,
+        data: result.orders,
+        pagination: result.pagination,
       });
     } catch (error) {
       next(error);
@@ -784,15 +798,25 @@ class O2dController {
 
   getPaymentCollectedData = async (req, res, next) => {
     try {
-      const { id } = req.body;
+      const { id } = req.query;
+      const { page, pageSize, search, status } = req.query;
       const userId = req.user?.id || null;
 
-      const updatedOrder = await o2dService.getPaymentCollectedData(id, userId);
+      const result = await o2dService.getPaymentCollectedData(
+        id,
+        userId,
+        page,
+        pageSize,
+        search,
+        status
+      );
 
       res.status(200).json({
         status: "success",
         message: "Overdue Report Data retrieved successfully",
-        data: updatedOrder,
+        data: result.orders,
+        pagination: result.pagination,
+        summary: result.summary,
       });
     } catch (error) {
       next(error);
