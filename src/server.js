@@ -9,6 +9,7 @@ import pool from "./config/database.js";
 import logger from "./utils/logger.js";
 import { initSocket } from "./utils/socket.js";
 import { initCronJobs } from "./cron/cron-service.js";
+import { initAttendanceCron } from "./cron/attendance-service.js";
 
 const app = express();
 
@@ -77,3 +78,4 @@ process.on("uncaughtException", (error) => {
 
 // cron jobs
 initCronJobs();
+initAttendanceCron();
