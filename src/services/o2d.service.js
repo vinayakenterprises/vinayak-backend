@@ -687,43 +687,124 @@ class O2dService {
     }
   }
 
-  async getCreditLimitReachedData(body, userId) {
-    // We calculate pending sums using a CTE and join it to the filtered sales_orders
-    const query = `
-      WITH PendingOrders AS (
-          SELECT client_name, COALESCE(SUM(quantity_mt), 0) as total_pending_quantity
-          FROM public.sales_orders
-          WHERE payment_status IS NULL
-          GROUP BY client_name
-      )
-      SELECT 
-          so.*,
-          COALESCE(c.credit_limit, 0) as credit_limit,
-          COALESCE(po.total_pending_quantity, 0) as total_pending_quantity,
-          (COALESCE(c.credit_limit, 0) - COALESCE(po.total_pending_quantity, 0)) as remaining_credit,
-          CASE 
-              WHEN COALESCE(c.credit_limit, 0) = 0 THEN 'Advance Payment Required'
-              WHEN COALESCE(po.total_pending_quantity, 0) >= COALESCE(c.credit_limit, 0) THEN 'Credit Limit Exceeded'
-              ELSE 'Within the Credit Limit'
-          END as credit_message
-      FROM public.sales_orders so
-      LEFT JOIN public.customers c ON so.client_name = c.company_name
-      LEFT JOIN PendingOrders po ON so.client_name = po.client_name
-      WHERE so.credit_limit_info->>'credit_limit_approval_request' = 'true'
-      ORDER BY so.id DESC;
-    `;
+  async getCreditLimitReachedData(body, userId, view, page = 1, requestedPageSize = 25, search = "") {
+    const isProcessedView = view === "processed";
+    const requestedPageNumber = Number(page);
+    const safePage =
+      Number.isInteger(requestedPageNumber) && requestedPageNumber > 0 ? requestedPageNumber : 1;
+    const parsedPageSize = Number(requestedPageSize);
+    const pageSize =
+      Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
+        ? parsedPageSize
+        : 25;
+    const searchPattern = String(search).trim() ? `%${String(search).trim()}%` : null;
+    const processedFilter = `credit_limit_info->>'credit_limit_request_approved_at' IS NOT NULL
+      OR credit_limit_info->>'credit_limit_request_approval_status' = 'false'`;
+    const requestFilters = ["credit_limit_info->>'credit_limit_approval_request' = 'true'"];
 
     try {
-      // Execute the query. (See note below if you need to filter by userId)
-      const { rows } = await pool.query(query);
+      if (isProcessedView) {
+        requestFilters.push(`(${processedFilter})`);
+        if (searchPattern) {
+          requestFilters.push("(client_name ILIKE $1 OR sales_person_name ILIKE $1)");
+        }
+      } else if (view === "pending") {
+        requestFilters.push(`credit_limit_info->>'credit_limit_request_approved_at' IS NULL`);
+        requestFilters.push(
+          `credit_limit_info->>'credit_limit_request_approval_status' IS DISTINCT FROM 'false'`
+        );
+      }
 
-      // Ensure numeric fields are correctly typed for the frontend
-      return rows.map((row) => ({
+      let totalItems = 0;
+      let totalCount = 0;
+      let totalPages = 0;
+      let effectivePage = 1;
+      let offset = 0;
+
+      if (isProcessedView) {
+        const searchFilter = searchPattern
+          ? "AND (so.client_name ILIKE $1 OR so.sales_person_name ILIKE $1)"
+          : "";
+        const countResult = await pool.query(
+          `
+            SELECT
+              COUNT(*) FILTER (
+                WHERE (${processedFilter})
+                  ${searchFilter}
+              ) AS total_items,
+              COUNT(*) FILTER (WHERE (${processedFilter})) AS total_count
+            FROM public.sales_orders so
+            WHERE so.credit_limit_info->>'credit_limit_approval_request' = 'true'
+          `,
+          searchPattern ? [searchPattern] : []
+        );
+        totalItems = Number(countResult.rows[0]?.total_items || 0);
+        totalCount = Number(countResult.rows[0]?.total_count || 0);
+        totalPages = Math.ceil(totalItems / pageSize);
+        effectivePage = totalPages > 0 ? Math.min(safePage, totalPages) : 1;
+        offset = (effectivePage - 1) * pageSize;
+      }
+
+      const requestValues = [];
+      if (isProcessedView) {
+        if (searchPattern) requestValues.push(searchPattern);
+      }
+      const requestWhere = requestFilters.join(" AND ");
+      let pageClause = "";
+      if (isProcessedView) {
+        requestValues.push(pageSize, offset);
+        pageClause = `LIMIT $${requestValues.length - 1} OFFSET $${requestValues.length}`;
+      }
+
+      const { rows } = await pool.query(
+        `
+          WITH RequestedOrders AS (
+            SELECT *
+            FROM public.sales_orders
+            WHERE ${requestWhere}
+            ORDER BY id DESC
+            ${pageClause}
+          ),
+          PendingOrders AS (
+            SELECT pending.client_name, COALESCE(SUM(pending.quantity_mt), 0) AS total_pending_quantity
+            FROM public.sales_orders pending
+            JOIN (SELECT DISTINCT client_name FROM RequestedOrders) requested
+              ON requested.client_name = pending.client_name
+            WHERE pending.payment_status IS NULL
+            GROUP BY pending.client_name
+          )
+          SELECT
+            so.*,
+            COALESCE(c.credit_limit, 0) AS credit_limit,
+            COALESCE(po.total_pending_quantity, 0) AS total_pending_quantity,
+            COALESCE(c.credit_limit, 0) - COALESCE(po.total_pending_quantity, 0) AS remaining_credit,
+            CASE
+              WHEN COALESCE(c.credit_limit, 0) = 0 THEN 'Advance Payment Required'
+              WHEN COALESCE(po.total_pending_quantity, 0) >= COALESCE(c.credit_limit, 0)
+                THEN 'Credit Limit Exceeded'
+              ELSE 'Within the Credit Limit'
+            END AS credit_message
+          FROM RequestedOrders so
+          LEFT JOIN public.customers c ON so.client_name = c.company_name
+          LEFT JOIN PendingOrders po ON so.client_name = po.client_name
+          ORDER BY so.id DESC
+        `,
+        requestValues
+      );
+
+      const orders = rows.map((row) => ({
         ...row,
         credit_limit: Number(row.credit_limit),
         total_pending_quantity: Number(row.total_pending_quantity),
         remaining_credit: Number(row.remaining_credit),
       }));
+
+      if (!isProcessedView) return orders;
+      return {
+        orders,
+        totalCount,
+        pagination: { page: effectivePage, pageSize, totalItems, totalPages },
+      };
     } catch (error) {
       console.error("error in getting credit limit reached data: ", error);
       throw error;
@@ -1413,7 +1494,7 @@ class O2dService {
   }
 
   // 1. Get all update request records across all orders
-  async getAllOrderUpdateRequests() {
+  async getAllOrderUpdateRequests(view, page = 1, requestedPageSize = 25, search = "") {
     try {
       const query = `
         SELECT 
@@ -1431,11 +1512,87 @@ class O2dService {
         FROM public.update_request_records ur
         JOIN public.sales_orders so ON ur.order_id = so.id
         LEFT JOIN public.users u ON ur.updated_by = u.id
-        ORDER BY ur.created_at DESC, ur.id DESC;
       `;
 
-      const { rows } = await pool.query(query);
-      return rows;
+      if (view === "pending") {
+        const [recordsResult, countsResult] = await Promise.all([
+          pool.query(`${query} WHERE ur.status = 'Pending' ORDER BY ur.created_at DESC, ur.id DESC`),
+          pool.query(`
+            SELECT
+              COUNT(*) FILTER (WHERE status = 'Pending') AS pending_count,
+              COUNT(*) FILTER (WHERE status IS DISTINCT FROM 'Pending') AS history_count
+            FROM public.update_request_records
+          `),
+        ]);
+        return {
+          records: recordsResult.rows,
+          counts: {
+            pending: Number(countsResult.rows[0]?.pending_count || 0),
+            history: Number(countsResult.rows[0]?.history_count || 0),
+          },
+        };
+      }
+
+      if (view !== "history") {
+        const { rows } = await pool.query(`${query} ORDER BY ur.created_at DESC, ur.id DESC`);
+        return rows;
+      }
+
+      const requestedPage = Number(page);
+      const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+      const parsedPageSize = Number(requestedPageSize);
+      const pageSize = Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
+        ? parsedPageSize
+        : 25;
+      const values = [];
+      let searchPredicate = "";
+      const searchTerm = String(search).trim();
+
+      if (searchTerm) {
+        values.push(`%${searchTerm}%`);
+        const parameter = `$${values.length}`;
+        searchPredicate = `AND (
+          ur.order_id::text ILIKE ${parameter}
+          OR so.client_name ILIKE ${parameter}
+          OR so.sales_person_name ILIKE ${parameter}
+          OR u.username ILIKE ${parameter}
+          OR ur.new_value::text ILIKE ${parameter}
+        )`;
+      }
+
+      const whereClause = `ur.status IS DISTINCT FROM 'Pending' ${searchPredicate}`;
+      const countResult = searchTerm
+        ? await pool.query(
+            `
+              SELECT COUNT(*) AS total_items
+              FROM public.update_request_records ur
+              JOIN public.sales_orders so ON ur.order_id = so.id
+              LEFT JOIN public.users u ON ur.updated_by = u.id
+              WHERE ${whereClause}
+            `,
+            values
+          )
+        : await pool.query(`
+            SELECT COUNT(*) AS total_items
+            FROM public.update_request_records
+            WHERE status IS DISTINCT FROM 'Pending'
+          `);
+      const totalItems = Number(countResult.rows[0]?.total_items || 0);
+      const totalPages = Math.ceil(totalItems / pageSize);
+      const effectivePage = totalPages > 0 ? Math.min(safePage, totalPages) : 1;
+      const offset = (effectivePage - 1) * pageSize;
+      const { rows } = await pool.query(
+        `${query}
+        WHERE ${whereClause}
+        ORDER BY ur.created_at DESC, ur.id DESC
+        LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+        [...values, pageSize, offset]
+      );
+
+      return {
+        records: rows,
+        pagination: { page: effectivePage, pageSize, totalItems, totalPages },
+      };
     } catch (error) {
       console.error("Error fetching all order update requests:", error);
       throw error;
