@@ -503,11 +503,18 @@ class O2dController {
   getInvoiceExecutiveCompletedData = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
-      const order = await o2dService.getInvoiceExecutiveCompletedData(userId);
+      const { page, pageSize, search } = req.query;
+      const result = await o2dService.getInvoiceExecutiveCompletedData(
+        userId,
+        page,
+        pageSize,
+        search
+      );
       return res.status(200).json({
         status: "success",
         message: "Invoice executive completed data retrieved successfully",
-        data: order,
+        data: result.orders,
+        pagination: result.pagination,
       });
     } catch (error) {
       next(error);

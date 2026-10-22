@@ -2190,15 +2190,53 @@ class O2dService {
     }
   }
 
-  async getInvoiceExecutiveCompletedData(userId) {
+  async getInvoiceExecutiveCompletedData(userId, page = 1, requestedPageSize = 25, search = "") {
     try {
+      const requestedPage = Number(page);
+      const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+      const parsedPageSize = Number(requestedPageSize);
+      const pageSize =
+        Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
+          ? parsedPageSize
+          : 25;
+      const offset = (safePage - 1) * pageSize;
+      const searchTerm = String(search).trim();
+      const searchClause = searchTerm
+        ? " AND (client_name ILIKE $1 OR sales_person_name ILIKE $1)"
+        : "";
+      const filterValues = searchTerm ? [`%${searchTerm}%`] : [];
+      const limitParameter = filterValues.length + 1;
+      const searchPredicate = searchTerm
+        ? "client_name ILIKE $1 OR sales_person_name ILIKE $1"
+        : "TRUE";
       const query = `
         SELECT * FROM public.sales_orders
-        WHERE invoice_and_dispatch->>'invoice_completed_at' is not null
+        WHERE invoice_and_dispatch->>'invoice_completed_at' IS NOT NULL
+          ${searchClause}
         ORDER BY id DESC
-        `;
-      const { rows } = await pool.query(query, []);
-      return rows;
+        LIMIT $${limitParameter} OFFSET $${limitParameter + 1}
+      `;
+      const countQuery = `
+        SELECT COUNT(*) AS total_count,
+          COUNT(*) FILTER (WHERE ${searchPredicate}) AS total_items
+        FROM public.sales_orders
+        WHERE invoice_and_dispatch->>'invoice_completed_at' IS NOT NULL
+      `;
+      const [countResult, ordersResult] = await Promise.all([
+        pool.query(countQuery, filterValues),
+        pool.query(query, [...filterValues, pageSize, offset]),
+      ]);
+      const totalItems = Number(countResult.rows[0]?.total_items || 0);
+      return {
+        orders: ordersResult.rows,
+        pagination: {
+          page: safePage,
+          pageSize,
+          totalItems,
+          totalCount: Number(countResult.rows[0]?.total_count || 0),
+          totalPages: Math.ceil(totalItems / pageSize),
+        },
+      };
     } catch (error) {
       console.log("error in getting so generation request data: ", error);
       throw error;
