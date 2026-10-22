@@ -1261,11 +1261,18 @@ class O2dController {
   getVehicleExecutiveWorkHistory = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
-      const order = await o2dService.getVehicleExecutiveWorkHistory(userId);
+      const { page, pageSize, search } = req.query;
+      const result = await o2dService.getVehicleExecutiveWorkHistory(
+        userId,
+        page,
+        pageSize,
+        search
+      );
       return res.status(200).json({
         status: "success",
         message: "Vehicle Executive work history retrieved successfully",
-        data: order,
+        data: result.orders,
+        pagination: result.pagination,
       });
     } catch (error) {
       next(error);
