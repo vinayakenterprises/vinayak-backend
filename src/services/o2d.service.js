@@ -521,12 +521,18 @@ class O2dService {
     return rows[0] || null;
   }
 
-  async getAllSaleOrder(userId) {
-    // We use a CTE (WITH PendingOrders) to calculate the pending sums once,
-    // and then JOIN it to the main sales_orders query.
+  async getAllSaleOrder(userId, page = 1, requestedPageSize = 25) {
+    const requestedPage = Number(page);
+    const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const parsedPageSize = Number(requestedPageSize);
+    const pageSize =
+      Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
+        ? parsedPageSize
+        : 25;
+    const offset = (safePage - 1) * pageSize;
     const query = `
       WITH PendingOrders AS (
-          SELECT client_name, COALESCE(SUM(quantity_mt), 0) as total_pending_quantity
+          SELECT client_name, COALESCE(SUM(quantity_mt), 0) AS total_pending_quantity
           FROM public.sales_orders
           WHERE payment_status IS NULL
           GROUP BY client_name
@@ -545,19 +551,54 @@ class O2dService {
       LEFT JOIN public.customers c ON so.client_name = c.company_name
       LEFT JOIN PendingOrders po ON so.client_name = po.client_name
       WHERE so.created_by = $1
-      ORDER BY so.id DESC;
+      ORDER BY so.id DESC
+      LIMIT $2 OFFSET $3;
+    `;
+    const summaryQuery = `
+      SELECT
+        COUNT(*) AS total_orders,
+        COALESCE(SUM(quantity_mt), 0) AS total_quantity_mt,
+        COALESCE(
+          SUM(COALESCE(rate, 0) * COALESCE(quantity_mt, 0))
+            / NULLIF(SUM(quantity_mt), 0),
+          0
+        ) AS average_rate,
+        COUNT(*) FILTER (WHERE COALESCE(dispatch_type, 'Regular') = 'Regular') AS regular_count,
+        COUNT(*) FILTER (WHERE dispatch_type = 'Advance') AS advance_count
+      FROM public.sales_orders
+      WHERE created_by = $1;
     `;
 
     try {
-      const { rows } = await pool.query(query, [userId]);
+      const [ordersResult, summaryResult] = await Promise.all([
+        pool.query(query, [userId, pageSize, offset]),
+        pool.query(summaryQuery, [userId]),
+      ]);
+      const summary = summaryResult.rows[0] || {};
+      const totalItems = Number(summary.total_orders) || 0;
 
       // Ensure numeric fields are returned as Numbers, not Strings, to the frontend
-      return rows.map((row) => ({
-        ...row,
-        credit_limit: Number(row.credit_limit),
-        total_pending_quantity: Number(row.total_pending_quantity),
-        remaining_credit: Number(row.remaining_credit),
-      }));
+      return {
+        orders: ordersResult.rows.map((row) => ({
+          ...row,
+          credit_limit: Number(row.credit_limit),
+          total_pending_quantity: Number(row.total_pending_quantity),
+          remaining_credit: Number(row.remaining_credit),
+        })),
+        pagination: {
+          page: safePage,
+          pageSize,
+          totalItems,
+          totalPages: Math.ceil(totalItems / pageSize),
+        },
+        summary: {
+          totalOrders: totalItems,
+          totalQuantityMT: Number(summary.total_quantity_mt) || 0,
+          averageRate: Number(summary.average_rate) || 0,
+          regularCount: Number(summary.regular_count) || 0,
+          advanceCount: Number(summary.advance_count) || 0,
+        },
+      };
     } catch (error) {
       console.error("Error in getAllSaleOrder: ", error);
       throw error;

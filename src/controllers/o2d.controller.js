@@ -203,12 +203,15 @@ class O2dController {
         return res.status(401).json({ status: "error", message: "Unauthorized" });
       }
 
-      const orders = await o2dService.getAllSaleOrder(userId);
+      const { page, pageSize } = req.query;
+      const result = await o2dService.getAllSaleOrder(userId, page, pageSize);
 
       return res.status(200).json({
         status: "success",
         message: "Sales orders retrieved successfully",
-        data: orders,
+        data: result.orders,
+        pagination: result.pagination,
+        summary: result.summary,
       });
     } catch (error) {
       next(error);
