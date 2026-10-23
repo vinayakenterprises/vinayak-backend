@@ -203,12 +203,15 @@ class O2dController {
         return res.status(401).json({ status: "error", message: "Unauthorized" });
       }
 
-      const orders = await o2dService.getAllSaleOrder(userId);
+      const { page, pageSize } = req.query;
+      const result = await o2dService.getAllSaleOrder(userId, page, pageSize);
 
       return res.status(200).json({
         status: "success",
         message: "Sales orders retrieved successfully",
-        data: orders,
+        data: result.orders,
+        pagination: result.pagination,
+        summary: result.summary,
       });
     } catch (error) {
       next(error);
@@ -500,11 +503,18 @@ class O2dController {
   getInvoiceExecutiveCompletedData = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
-      const order = await o2dService.getInvoiceExecutiveCompletedData(userId);
+      const { page, pageSize, search } = req.query;
+      const result = await o2dService.getInvoiceExecutiveCompletedData(
+        userId,
+        page,
+        pageSize,
+        search
+      );
       return res.status(200).json({
         status: "success",
         message: "Invoice executive completed data retrieved successfully",
-        data: order,
+        data: result.orders,
+        pagination: result.pagination,
       });
     } catch (error) {
       next(error);
@@ -1258,11 +1268,18 @@ class O2dController {
   getVehicleExecutiveWorkHistory = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
-      const order = await o2dService.getVehicleExecutiveWorkHistory(userId);
+      const { page, pageSize, search } = req.query;
+      const result = await o2dService.getVehicleExecutiveWorkHistory(
+        userId,
+        page,
+        pageSize,
+        search
+      );
       return res.status(200).json({
         status: "success",
         message: "Vehicle Executive work history retrieved successfully",
-        data: order,
+        data: result.orders,
+        pagination: result.pagination,
       });
     } catch (error) {
       next(error);
