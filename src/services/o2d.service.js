@@ -2515,7 +2515,8 @@ class O2dService {
             ci.*,
             so.client_name,
             so.delivery_and_weight->>'quality_confirmation_status' AS complaint_tat_informatoin,
-            so.quantity_mt
+            so.quantity_mt,
+            so.invoice_and_dispatch->'invoices' AS invoices
         FROM 
             public.complaint_info ci
         LEFT JOIN 
