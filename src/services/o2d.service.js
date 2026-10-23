@@ -687,7 +687,14 @@ class O2dService {
     }
   }
 
-  async getCreditLimitReachedData(body, userId, view, page = 1, requestedPageSize = 25, search = "") {
+  async getCreditLimitReachedData(
+    body,
+    userId,
+    view,
+    page = 1,
+    requestedPageSize = 25,
+    search = ""
+  ) {
     const isProcessedView = view === "processed";
     const requestedPageNumber = Number(page);
     const safePage =
@@ -1516,7 +1523,9 @@ class O2dService {
 
       if (view === "pending") {
         const [recordsResult, countsResult] = await Promise.all([
-          pool.query(`${query} WHERE ur.status = 'Pending' ORDER BY ur.created_at DESC, ur.id DESC`),
+          pool.query(
+            `${query} WHERE ur.status = 'Pending' ORDER BY ur.created_at DESC, ur.id DESC`
+          ),
           pool.query(`
             SELECT
               COUNT(*) FILTER (WHERE status = 'Pending') AS pending_count,
@@ -1541,9 +1550,10 @@ class O2dService {
       const requestedPage = Number(page);
       const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
       const parsedPageSize = Number(requestedPageSize);
-      const pageSize = Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
-        ? parsedPageSize
-        : 25;
+      const pageSize =
+        Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
+          ? parsedPageSize
+          : 25;
       const values = [];
       let searchPredicate = "";
       const searchTerm = String(search).trim();
@@ -2854,7 +2864,14 @@ class O2dService {
     }
   }
 
-  async getPaymentCollectedData(id, userId, page = 1, requestedPageSize = 25, search = "", status = "All") {
+  async getPaymentCollectedData(
+    id,
+    userId,
+    page = 1,
+    requestedPageSize = 25,
+    search = "",
+    status = "All"
+  ) {
     try {
       const requestedPage = Number(page);
       const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
@@ -3923,22 +3940,47 @@ class O2dService {
     try {
       const query = `
       SELECT
-    delivery_date,
-    json_agg(
-        json_build_object(
-                'client_name', client_name,
-                'quantity_mt', quantity_mt,
-                'bundle', quantity_mt / 3.0,
-                'orderno', sale_order_generation->'sale_order_details'->>'orderno'
-            )
-            ORDER BY client_name
+        delivery_date,
+        json_agg(
+          json_build_object(
+            'client_name', client_name,
+            'quantity_mt', quantity_mt,
+            'bundle', quantity_mt / 3.0,
+            'orderno', sale_order_generation->'sale_order_details'->>'orderno'
+          )
+          ORDER BY client_name
         ) AS client_orders,
         COUNT(*) AS pending_orders,
-        SUM(quantity_mt) AS quantity_mt
-    FROM sales_orders
-    WHERE delivery_and_weight->>'actual_delivery_timestamp' IS NULL
-    GROUP BY delivery_date
-    ORDER BY delivery_date;`;
+        COALESCE(SUM(quantity_mt), 0) AS quantity_mt
+      FROM public.sales_orders
+      WHERE
+        delivery_and_weight->>'actual_delivery_timestamp' IS NULL
+
+        AND credit_limit_info->>'credit_limit_request_approval_status'
+            IS DISTINCT FROM 'false'
+
+        AND dispatch_info->>'dispatch_type'
+            IS DISTINCT FROM 'Dispatched'
+
+        AND dispatch_info->>'dispatch_type'
+            IS DISTINCT FROM 'Order Cancel'
+
+        AND NOT EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(
+            CASE
+              WHEN jsonb_typeof(dispatch_info->'history') = 'array'
+              THEN dispatch_info->'history'
+              ELSE '[]'::jsonb
+            END
+          ) AS h
+          WHERE h->>'dispatch_type' = 'Dispatched'
+        )
+
+      GROUP BY delivery_date
+      ORDER BY delivery_date;
+    `;
+
       const { rows } = await pool.query(query, []);
       return rows;
     } catch (error) {
