@@ -3527,18 +3527,34 @@ class O2dService {
       const invoiceFound = [];
 
       for (const allocation of bill_allocations) {
-        const { bill_name, bill_type, amount } = allocation;
+        const { bill_name, bill_type, amount, crn } = allocation;
 
-        const billNameData = await pool.query(
-          `
-        SELECT *
-        FROM overdue_summary_report
-        WHERE invoice_no = $1
-        ORDER BY id DESC
-        LIMIT 1
-        `,
-          [bill_name]
-        );
+        const sale_order_id = parseInt(crn, 10);
+
+        let billNameData;
+        if (isNaN(sale_order_id)) {
+          billNameData = await pool.query(
+            `
+          SELECT *
+          FROM overdue_summary_report
+          WHERE invoice_no = $1
+          ORDER BY id DESC
+          LIMIT 1
+          `,
+            [bill_name]
+          );
+        } else {
+          billNameData = await pool.query(
+            `
+          SELECT *
+          FROM overdue_summary_report
+          WHERE sale_order_id = $1
+          ORDER BY id DESC
+          LIMIT 1
+          `,
+            [sale_order_id]
+          );
+        }
 
         if (billNameData.rows.length === 0) {
           console.log(`No record found for invoice_no: ${bill_name}`);
