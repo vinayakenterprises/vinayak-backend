@@ -1537,12 +1537,7 @@ class O2dService {
     }
   }
 
-  async getQualityUncheckedData(
-    userId,
-    page = 1,
-    requestedPageSize = 25,
-    isAdmin = false
-  ) {
+  async getQualityUncheckedData(userId, page = 1, requestedPageSize = 25, isAdmin = false) {
     try {
       const requestedPage = Number(page);
 
@@ -2858,13 +2853,25 @@ class O2dService {
 
   async getUncollectedInterestNoteData() {
     try {
-      const query = `SELECT 
+      const query = `
+        SELECT 
+          id,
           client_name,
-          SUM((payment_status -> 'interest_note_details_from_tally' ->> 'calculated_interest_amount')::NUMERIC) AS total_interest_amount
-      FROM public.sales_orders
-      WHERE payment_status->>'interest_note_issued_on_timestamp' IS NOT NULL
-        AND payment_status->>'interest_note_collected_on_timestamp' IS NULL
-      GROUP BY client_name;`;
+          sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
+          payment_status->'interest_note_details_from_tally'->>'original_invoice_number' AS invoice_no,
+          (payment_status->'interest_note_details_from_tally'->>'calculated_interest_amount')::NUMERIC AS total_interest_amount,
+          payment_status->>'interest_note_issued_on_timestamp' AS interest_note_issued_on_timestamp,
+          payment_status->'interest_note_details_from_tally'->>'bill_date' AS bill_date,
+          payment_status->'interest_note_details_from_tally'->>'payment_cleared_date' AS payment_cleared_date
+        FROM public.sales_orders
+        WHERE payment_status->>'interest_note_issued_on_timestamp' IS NOT NULL
+          AND payment_status->>'interest_note_collected_on_timestamp' IS NULL
+          AND (
+            payment_status->>'collect_interest_from_client' IS NULL
+            OR payment_status->>'collect_interest_from_client' = 'true'
+          )
+        ORDER BY id DESC;
+      `;
 
       const { rows } = await pool.query(query, []);
       return rows;
