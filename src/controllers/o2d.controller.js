@@ -1450,6 +1450,16 @@ class O2dController {
 
   updateDeliveryAndWeightInformation = async (req, res, next) => {
     try {
+      if (
+        req.user?.role?.toLowerCase() === "admin" &&
+        req.user?.department?.toLowerCase() === "admin"
+      ) {
+        return res.status(403).json({
+          status: "error",
+          message: "Admins have read-only access to delivery and weight information.",
+        });
+      }
+
       const { id } = req.body;
       const userId = req.user?.id || null;
 
@@ -1845,11 +1855,24 @@ class O2dController {
   getAssignedDeliveryAndWeightByCRM = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
-      const orders = await o2dService.getAssignedDeliveryAndWeightByCRM(userId);
+      const isAdmin =
+        req.user?.role?.toLowerCase() === "admin" &&
+        req.user?.department?.toLowerCase() === "admin";
+      const { page, pageSize, search, deliveryStatus, settlement } = req.query;
+      const result = await o2dService.getAssignedDeliveryAndWeightByCRM(
+        userId,
+        page,
+        pageSize,
+        search,
+        deliveryStatus,
+        settlement,
+        isAdmin
+      );
       return res.status(200).json({
         status: "success",
         message: "Delivery and weight orders fetched successfully",
-        data: orders,
+        data: result.orders,
+        pagination: result.pagination,
       });
     } catch (error) {
       next(error);
@@ -1907,9 +1930,17 @@ class O2dController {
   getQualityUncheckedData = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
+      const isAdmin =
+        req.user?.role?.toLowerCase() === "admin" &&
+        req.user?.department?.toLowerCase() === "admin";
       const { page, pageSize } = req.query;
 
-      const result = await o2dService.getQualityUncheckedData(userId, page, pageSize);
+      const result = await o2dService.getQualityUncheckedData(
+        userId,
+        page,
+        pageSize,
+        isAdmin
+      );
 
       return res.status(200).json({
         status: "success",

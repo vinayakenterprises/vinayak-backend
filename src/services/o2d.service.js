@@ -1337,25 +1337,90 @@ class O2dService {
     }
   }
 
-  async getAssignedDeliveryAndWeightByCRM(userId) {
+  async getAssignedDeliveryAndWeightByCRM(
+    userId,
+    page = 1,
+    requestedPageSize = 25,
+    search = "",
+    deliveryStatus = "All",
+    settlement = "All",
+    isAdmin = false
+  ) {
     try {
-      const query = `
-      SELECT 
-        so.*, 
-        so.delivery_date::text AS delivery_date 
-      FROM public.sales_orders so
-      INNER JOIN public.customers c 
-        ON so.client_name = c.company_name
-        OR so.client_name = ANY(c.child_companies)
-      WHERE c.crm = $1 
-        AND so.sale_order_generation->>'sent_for_so' = 'true'
-        AND so.intimation_thankyou->>'completed_at' IS NOT NULL
-        AND so.invoice_and_dispatch->>'invoice_completed_at' IS NOT NULL
-      ORDER BY so.id DESC;
-    `;
+      const requestedPage = Number(page);
+      const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+      const parsedPageSize = Number(requestedPageSize);
+      const pageSize =
+        Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
+          ? parsedPageSize
+          : 25;
+      const offset = (safePage - 1) * pageSize;
+      const filterValues = [];
+      const conditions = [
+        "so.sale_order_generation->>'sent_for_so' = 'true'",
+        "so.intimation_thankyou->>'completed_at' IS NOT NULL",
+        "so.invoice_and_dispatch->>'invoice_completed_at' IS NOT NULL",
+      ];
 
-      const { rows } = await pool.query(query, [userId]);
-      return rows;
+      if (!isAdmin) {
+        filterValues.push(userId);
+        conditions.push(`EXISTS (
+          SELECT 1
+          FROM public.customers c
+          WHERE c.crm = $1
+            AND (
+              so.client_name = c.company_name
+              OR so.client_name = ANY(c.child_companies)
+            )
+        )`);
+      }
+
+      const searchTerm = String(search || "").trim();
+      if (searchTerm) {
+        filterValues.push(`%${searchTerm}%`);
+        const searchParameter = `$${filterValues.length}`;
+        conditions.push(`(
+            so.client_name ILIKE ${searchParameter}
+            OR so.id::text ILIKE ${searchParameter}
+            OR so.sale_order_generation->'sale_order_details'->>'orderno' ILIKE ${searchParameter}
+            OR so.invoice_and_dispatch::text ILIKE ${searchParameter}
+          )`);
+      }
+
+      if (deliveryStatus && deliveryStatus.toLowerCase() !== "all") {
+        filterValues.push(deliveryStatus);
+        conditions.push(
+          `LOWER(COALESCE(NULLIF(so.delivery_and_weight->>'delivery_status', ''), 'Not Delivered')) = LOWER($${filterValues.length})`
+        );
+      }
+
+      if (settlement && settlement.toLowerCase() !== "all") {
+        filterValues.push(settlement);
+        conditions.push(
+          `LOWER(COALESCE(NULLIF(so.delivery_and_weight->>'settlement', ''), 'Settled')) = LOWER($${filterValues.length})`
+        );
+      }
+
+      const whereClause = conditions.join("\n          AND ");
+      const query = `
+        SELECT so.*, so.delivery_date::text AS delivery_date
+        FROM public.sales_orders so
+        WHERE ${whereClause}
+        ORDER BY so.id DESC
+        LIMIT $${filterValues.length + 1} OFFSET $${filterValues.length + 2}
+      `;
+      const { rows } = await pool.query(query, [...filterValues, pageSize + 1, offset]);
+      const hasNext = rows.length > pageSize;
+      const orders = hasNext ? rows.slice(0, pageSize) : rows;
+
+      return {
+        orders,
+        pagination: {
+          page: safePage,
+          pageSize,
+          hasNext,
+        },
+      };
     } catch (error) {
       console.error("Error in getAssignedDeliveryAndWeightByCRM: ", error);
       throw error;
@@ -1472,7 +1537,12 @@ class O2dService {
     }
   }
 
-  async getQualityUncheckedData(userId, page = 1, requestedPageSize = 25) {
+  async getQualityUncheckedData(
+    userId,
+    page = 1,
+    requestedPageSize = 25,
+    isAdmin = false
+  ) {
     try {
       const requestedPage = Number(page);
 
@@ -1487,14 +1557,19 @@ class O2dService {
 
       const offset = (safePage - 1) * pageSize;
 
-      const whereClause = `
-      WHERE so.delivery_and_weight->>'delivery_status' = 'Delivered'
-        AND (
+      const conditions = [
+        "so.delivery_and_weight->>'delivery_status' = 'Delivered'",
+        `(
           so.delivery_and_weight->>'quality_confirmation_status' IS NULL
           OR so.delivery_and_weight->>'quality_confirmation_status'
              NOT IN ('Yes', 'No within TAT', 'NO without TAT')
-        )
-        AND EXISTS (
+        )`,
+      ];
+      const filterValues = [];
+
+      if (!isAdmin) {
+        filterValues.push(userId);
+        conditions.push(`EXISTS (
           SELECT 1
           FROM public.customers c
           WHERE c.crm = $1
@@ -1502,8 +1577,10 @@ class O2dService {
               so.client_name = c.company_name
               OR so.client_name = ANY(c.child_companies)
             )
-        )
-    `;
+        )`);
+      }
+
+      const whereClause = `WHERE ${conditions.join("\n        AND ")}`;
 
       const countQuery = `
       SELECT COUNT(*) AS total_items
@@ -1516,12 +1593,12 @@ class O2dService {
       FROM public.sales_orders so
       ${whereClause}
       ORDER BY so.id ASC
-      LIMIT $2 OFFSET $3
+      LIMIT $${filterValues.length + 1} OFFSET $${filterValues.length + 2}
     `;
 
       const [countResult, ordersResult] = await Promise.all([
-        pool.query(countQuery, [userId]),
-        pool.query(ordersQuery, [userId, pageSize, offset]),
+        pool.query(countQuery, filterValues),
+        pool.query(ordersQuery, [...filterValues, pageSize, offset]),
       ]);
 
       const totalItems = Number(countResult.rows[0]?.total_items || 0);
