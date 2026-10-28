@@ -1,5 +1,5 @@
 import pool from "../config/database.js";
-import { ORDER_STAGES } from "../utils/constants.js";
+import { HTTP_STATUS, ORDER_STAGES } from "../utils/constants.js";
 import { emitToUser } from "../utils/socket.js";
 import { createNotification } from "./notification.service.js";
 import { sendMail } from "./mail.service.js";
@@ -3514,6 +3514,26 @@ class O2dService {
 
       if (isNaN(orderId)) {
         throw new Error(`Invalid order ID ${orderId}`);
+      }
+
+      const isInvoiceAlreadyExists = await pool.query(
+        `SELECT COALESCE(jsonb_array_length(invoice_and_dispatch->'invoices'), 0) > 0 AS has_invoices
+        FROM sales_orders
+        WHERE id = $1;`,
+        [orderId]
+      );
+
+      if (isInvoiceAlreadyExists.rows[0]?.has_invoices) {
+        console.log(
+          `Invoice already exists for Order ID: ${orderId}. Aborting update to maintain single invoice rule.`
+        );
+
+        const error = new Error(
+          `Invoice already exists for Order ID: ${orderId}. No update performed.`
+        );
+        error.statusCode = HTTP_STATUS.CONFLICT;
+
+        throw error;
       }
 
       // 2. Format the dispatch data
