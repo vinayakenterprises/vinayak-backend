@@ -1537,12 +1537,7 @@ class O2dService {
     }
   }
 
-  async getQualityUncheckedData(
-    userId,
-    page = 1,
-    requestedPageSize = 25,
-    isAdmin = false
-  ) {
+  async getQualityUncheckedData(userId, page = 1, requestedPageSize = 25, isAdmin = false) {
     try {
       const requestedPage = Number(page);
 
@@ -2858,13 +2853,25 @@ class O2dService {
 
   async getUncollectedInterestNoteData() {
     try {
-      const query = `SELECT 
+      const query = `
+        SELECT 
+          id,
           client_name,
-          SUM((payment_status -> 'interest_note_details_from_tally' ->> 'calculated_interest_amount')::NUMERIC) AS total_interest_amount
-      FROM public.sales_orders
-      WHERE payment_status->>'interest_note_issued_on_timestamp' IS NOT NULL
-        AND payment_status->>'interest_note_collected_on_timestamp' IS NULL
-      GROUP BY client_name;`;
+          sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
+          payment_status->'interest_note_details_from_tally'->>'original_invoice_number' AS invoice_no,
+          (payment_status->'interest_note_details_from_tally'->>'calculated_interest_amount')::NUMERIC AS total_interest_amount,
+          payment_status->>'interest_note_issued_on_timestamp' AS interest_note_issued_on_timestamp,
+          payment_status->'interest_note_details_from_tally'->>'bill_date' AS bill_date,
+          payment_status->'interest_note_details_from_tally'->>'payment_cleared_date' AS payment_cleared_date
+        FROM public.sales_orders
+        WHERE payment_status->>'interest_note_issued_on_timestamp' IS NOT NULL
+          AND payment_status->>'interest_note_collected_on_timestamp' IS NULL
+          AND (
+            payment_status->>'collect_interest_from_client' IS NULL
+            OR payment_status->>'collect_interest_from_client' = 'true'
+          )
+        ORDER BY id DESC;
+      `;
 
       const { rows } = await pool.query(query, []);
       return rows;
@@ -3684,18 +3691,34 @@ class O2dService {
       const invoiceFound = [];
 
       for (const allocation of bill_allocations) {
-        const { bill_name, bill_type, amount } = allocation;
+        const { bill_name, bill_type, amount, crn } = allocation;
 
-        const billNameData = await pool.query(
-          `
-        SELECT *
-        FROM overdue_summary_report
-        WHERE invoice_no = $1
-        ORDER BY id DESC
-        LIMIT 1
-        `,
-          [bill_name]
-        );
+        const sale_order_id = parseInt(crn, 10);
+
+        let billNameData;
+        if (isNaN(sale_order_id)) {
+          billNameData = await pool.query(
+            `
+          SELECT *
+          FROM overdue_summary_report
+          WHERE invoice_no = $1
+          ORDER BY id DESC
+          LIMIT 1
+          `,
+            [bill_name]
+          );
+        } else {
+          billNameData = await pool.query(
+            `
+          SELECT *
+          FROM overdue_summary_report
+          WHERE sale_order_id = $1
+          ORDER BY id DESC
+          LIMIT 1
+          `,
+            [sale_order_id]
+          );
+        }
 
         if (billNameData.rows.length === 0) {
           console.log(`No record found for invoice_no: ${bill_name}`);
