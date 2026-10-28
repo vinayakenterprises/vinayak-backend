@@ -3709,6 +3709,7 @@ class O2dService {
 
       const invoiceNotFound = [];
       const invoiceFound = [];
+      const voucherAlreadyExists = [];
 
       for (const allocation of bill_allocations) {
         const { bill_name, bill_type, amount, crn } = allocation;
@@ -3744,6 +3745,21 @@ class O2dService {
           console.log(`No record found for invoice_no: ${bill_name}`);
           invoiceNotFound.push(bill_name);
           continue;
+        }
+
+        if (billNameData.rows[0].transactions) {
+          const existingTransactions = billNameData.rows[0].transactions;
+          const isVoucherExists = existingTransactions.some(
+            (tx) => tx.voucher_number === voucher_number
+          );
+
+          if (isVoucherExists) {
+            console.log(
+              `Voucher number ${voucher_number} already exists for invoice_no: ${bill_name}`
+            );
+            voucherAlreadyExists.push(voucher_number);
+            continue;
+          }
         }
 
         invoiceFound.push(bill_name);
@@ -3782,6 +3798,7 @@ class O2dService {
       return {
         invoiceFound,
         invoiceNotFound,
+        voucherAlreadyExists,
       };
     } catch (error) {
       console.log("Error updating invoice bill from Tally:", error);
