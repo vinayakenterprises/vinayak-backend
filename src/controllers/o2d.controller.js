@@ -1160,17 +1160,85 @@ class O2dController {
     try {
       const userId = req.user?.id || null;
       const { orderId } = req.body;
-      const { documents } = req.body;
+      let { documents } = req.body;
+      let { receiving_kanta_parchi_url: receivingKantaParchiUrl } = req.body;
+      const receivingKantaParchiFile = req.files?.["pdf-file"]?.[0];
+      const receivingProofFiles = req.files?.["receiving-proof-files"] || [];
+
+      if (typeof documents === "string") {
+        try {
+          documents = JSON.parse(documents);
+        } catch {
+          return res.status(400).json({
+            status: "error",
+            message: "Documents must be a valid JSON array of URLs.",
+          });
+        }
+      }
 
       // Validate the payload
-      if (!documents || !Array.isArray(documents)) {
+      if (documents !== undefined && !Array.isArray(documents)) {
         return res.status(400).json({
           status: "error",
-          message: "An array of document URLs is required.",
+          message: "Documents must be an array of URLs.",
         });
       }
 
-      const updatedOrder = await o2dService.updateReceivingDetails(orderId, documents, userId);
+      if (
+        documents === undefined &&
+        receivingKantaParchiUrl === undefined &&
+        !receivingKantaParchiFile &&
+        receivingProofFiles.length === 0
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message: "Receiving details are required.",
+        });
+      }
+
+      if (!orderId) {
+        return res.status(400).json({
+          status: "error",
+          message: "Sales order ID is required.",
+        });
+      }
+
+      if (receivingProofFiles.length > 0) {
+        const uploadedReceivingProofUrls = await Promise.all(
+          receivingProofFiles.map((file) =>
+            uploadFileToS3(
+              file,
+              `vinayak-enterprises/sales-orders/${orderId}/crm/receiving-proof`
+            )
+          )
+        );
+        documents = [...(documents || []), ...uploadedReceivingProofUrls];
+      }
+
+      if (receivingKantaParchiFile) {
+        receivingKantaParchiUrl = await uploadFileToS3(
+          receivingKantaParchiFile,
+          `vinayak-enterprises/sales-orders/${orderId}/crm/receiving-kanta-parchi`
+        );
+      }
+
+      if (
+        receivingKantaParchiUrl !== undefined &&
+        receivingKantaParchiUrl !== null &&
+        typeof receivingKantaParchiUrl !== "string"
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message: "Receiving Kanta Parchi URL must be a string.",
+        });
+      }
+
+      const updatedOrder = await o2dService.updateReceivingDetails(
+        orderId,
+        documents,
+        userId,
+        receivingKantaParchiUrl
+      );
 
       return res.status(200).json({
         status: "success",
@@ -1935,12 +2003,7 @@ class O2dController {
         req.user?.department?.toLowerCase() === "admin";
       const { page, pageSize } = req.query;
 
-      const result = await o2dService.getQualityUncheckedData(
-        userId,
-        page,
-        pageSize,
-        isAdmin
-      );
+      const result = await o2dService.getQualityUncheckedData(userId, page, pageSize, isAdmin);
 
       return res.status(200).json({
         status: "success",
