@@ -108,6 +108,62 @@ class PurchaseService {
       throw err;
     }
   };
+
+  getPOCreationRequests = async () => {
+    try {
+      const query = `SELECT *
+      FROM public.purchases
+      WHERE accounts_info ? 'sent_for_po_at'
+        AND accounts_info->>'sent_for_po_at' IS NOT NULL;`;
+      const { rows } = await pool.query(query);
+      return rows;
+    } catch (err) {
+      console.error("Error in fetching PO creation requests:", err.message);
+      throw err;
+    }
+  };
+
+  completePOCreationFromTally = async (data) => {
+    try {
+      const { crn, ...poData } = data;
+
+      if (!crn) {
+        throw new Error("CRN is required");
+      }
+
+      const crnData = await pool.query(`SELECT id FROM public.purchases WHERE id = $1`, [crn]);
+
+      if (crnData.rows.length === 0) {
+        throw new Error(`No purchase record found for CRN: ${crn}`);
+      }
+
+      const query = `
+      UPDATE public.purchases
+      SET
+        accounts_info = jsonb_set(
+          jsonb_set(
+            COALESCE(accounts_info, '{}'::jsonb),
+            '{po_information_from_tally}',
+            $2::jsonb,
+            true
+          ),
+          '{po_completed_at}',
+          to_jsonb(NOW() AT TIME ZONE 'UTC'),
+          true
+        ),
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING *;
+    `;
+
+      const result = await pool.query(query, [crn, JSON.stringify(poData)]);
+
+      return result.rows[0];
+    } catch (err) {
+      console.error("Error in completing PO creation from Tally:", err.message);
+      throw err;
+    }
+  };
 }
 
 export default new PurchaseService();

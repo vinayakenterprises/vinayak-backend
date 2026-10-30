@@ -74,6 +74,26 @@ class PurchaseController {
       next(err);
     }
   };
+
+  getPOCreationRequests = async (req, res, next) => {
+    try {
+      const poCreationRequests = await purchaseService.getPOCreationRequests();
+      return res.status(200).json({ success: true, data: poCreationRequests });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  completePOCreationFromTally = async (req, res, next) => {
+    try {
+      const result = await purchaseService.completePOCreationFromTally(req.body);
+      return res
+        .status(200)
+        .json({ success: true, message: "PO has been registered successfully!", data: result });
+    } catch (err) {
+      next(err);
+    }
+  };
 }
 
 export default new PurchaseController();
