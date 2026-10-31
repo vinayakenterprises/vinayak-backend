@@ -1,4 +1,5 @@
 import purchaseService from "../services/purchase.service.js";
+import { HTTP_STATUS } from "../utils/constants.js";
 
 class PurchaseController {
   // GET: Fetch vendors
@@ -87,9 +88,7 @@ class PurchaseController {
   completePOCreationFromTally = async (req, res, next) => {
     try {
       const result = await purchaseService.completePOCreationFromTally(req.body);
-      return res
-        .status(200)
-        .json({ success: true, message: "PO has been registered successfully!", data: result });
+      return res.status(HTTP_STATUS.OK).json(result);
     } catch (err) {
       next(err);
     }
