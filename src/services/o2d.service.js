@@ -6,10 +6,31 @@ import { sendMail } from "./mail.service.js";
 import { ForbiddenError } from "../errors/customErrors.js";
 import crypto from "node:crypto";
 import {
+  addWorkingHours,
+  createISTDate,
+  dateFormatter,
+  formatWorkingDelay,
+  getISTComponents,
+  getPlannedDeliveryAndWeightDate,
+  getPlannedIntimationDate,
+  getPlannedReceivingDate,
+  getVehicleWorkingDelay,
+  getWorkingHoursDiff,
   sendNotificationToAccountsTeam,
   sendNotificationToCrm,
   sendNotificationToSalesTeamLead,
+  WORK_CONFIG,
 } from "../utils/helpers/helper-functions.js";
+
+const emailDateTimeFormatter = new Intl.DateTimeFormat("en-IN", {
+  timeZone: "Asia/Kolkata",
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: true,
+});
 
 const emailDateFormatter = new Intl.DateTimeFormat("en-IN", {
   timeZone: "Asia/Kolkata",
@@ -17,6 +38,7 @@ const emailDateFormatter = new Intl.DateTimeFormat("en-IN", {
   month: "short",
   year: "numeric",
 });
+
 const formatEmailDate = (value) => (value ? emailDateFormatter.format(new Date(value)) : "-");
 
 class O2dService {
@@ -5423,6 +5445,540 @@ class O2dService {
         title,
         url,
       }));
+  }
+
+  // Sending pending work report at eod
+  async sendDailyPendingWorkReport(recipientEmailOverride = null) {
+    try {
+      // 1. Fetch report recipients
+      let recipients = [];
+
+      if (recipientEmailOverride?.trim()) {
+        recipients = [
+          {
+            email_id: recipientEmailOverride.trim(),
+            username: "Junior Developer",
+            role: "Developer",
+          },
+        ];
+      } else {
+        const recipientResult = await pool.query(`
+        SELECT id, username, role, TRIM(email_id) AS email_id
+        FROM public.users
+        WHERE role IN ('Admin', 'Executive Assistant')
+          AND (is_deleted IS NULL OR is_deleted = false)
+          AND NULLIF(TRIM(email_id), '') IS NOT NULL
+        ORDER BY id ASC;
+      `);
+
+        // Remove duplicate email addresses
+        const uniqueRecipients = new Map();
+
+        for (const user of recipientResult.rows) {
+          const userEmail = user.email_id;
+
+          if (!uniqueRecipients.has(userEmail)) {
+            uniqueRecipients.set(userEmail, user);
+          }
+        }
+
+        recipients = [...uniqueRecipients.values()];
+
+        if (recipients.length === 0) {
+          console.log("No Admin or Executive Assistant found. Skipping email.");
+          return;
+        }
+      }
+
+      // 2. Fetch pending work for Vehicle Executive (Vikas)
+      // Only include orders whose delivery date is before today.
+      const pendingVikasOrders = await pool.query(`
+      SELECT
+        id,
+        client_name,
+        quantity_mt,
+        rod_size,
+        delivery_date,
+        vehicle_arrangement,
+        order_status
+      FROM public.sales_orders
+      WHERE vehicle_arrangement @> '{"assigned_to_vehicle_executive": true}'::jsonb
+        AND NOT (vehicle_arrangement ? 'actual_deliver_date')
+        AND delivery_date < CURRENT_DATE
+      ORDER BY id ASC;
+    `);
+
+      // 3. Fetch pending work for Invoice Executive (Gagan): Invoice, Bilty, Kanta Parchi
+      const pendingGaganOrders = await pool.query(`
+      SELECT
+          so.id AS sale_order_id,
+          so.client_name,
+          so.delivery_date,
+
+          ARRAY_REMOVE(
+              ARRAY[
+                  CASE
+                      WHEN EXISTS (
+                          SELECT 1
+                          FROM jsonb_array_elements(
+                              CASE
+                                  WHEN jsonb_typeof(so.invoice_and_dispatch->'invoices') = 'array'
+                                  THEN so.invoice_and_dispatch->'invoices'
+                                  ELSE '[]'::jsonb
+                              END
+                          ) AS inv
+                          WHERE NULLIF(TRIM(inv->>'invoice'), '') IS NOT NULL
+                            AND (
+                                NOT (inv ? 'invoice_url')
+                                OR inv->'invoice_url' = 'null'::jsonb
+                                OR NULLIF(TRIM(inv->>'invoice_url'), '') IS NULL
+                            )
+                      )
+                      THEN 'Invoice'
+                  END,
+
+                  CASE
+                      WHEN NULLIF(TRIM(so.vehicle_arrangement->>'bilty_url'), '') IS NULL
+                      THEN 'Bilty'
+                  END,
+
+                  CASE
+                      WHEN NULLIF(TRIM(so.vehicle_arrangement->>'kanta_parchi_url'), '') IS NULL
+                      THEN 'Kanta Parchi'
+                  END
+              ],
+              NULL
+          ) AS pending_documents,
+
+          -- All invoice numbers for this sales order
+          ARRAY(
+              SELECT inv->>'invoice'
+              FROM jsonb_array_elements(
+                  CASE
+                      WHEN jsonb_typeof(so.invoice_and_dispatch->'invoices') = 'array'
+                      THEN so.invoice_and_dispatch->'invoices'
+                      ELSE '[]'::jsonb
+                  END
+              ) AS inv
+              WHERE NULLIF(TRIM(inv->>'invoice'), '') IS NOT NULL
+          ) AS invoice_numbers
+
+      FROM public.sales_orders so
+
+      WHERE
+          EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(
+                  CASE
+                      WHEN jsonb_typeof(so.invoice_and_dispatch->'invoices') = 'array'
+                      THEN so.invoice_and_dispatch->'invoices'
+                      ELSE '[]'::jsonb
+                  END
+              ) AS inv
+              WHERE NULLIF(TRIM(inv->>'invoice'), '') IS NOT NULL
+                AND (
+                    NOT (inv ? 'invoice_url')
+                    OR inv->'invoice_url' = 'null'::jsonb
+                    OR NULLIF(TRIM(inv->>'invoice_url'), '') IS NULL
+                )
+          )
+
+          OR NULLIF(TRIM(so.vehicle_arrangement->>'bilty_url'), '') IS NULL
+
+          OR NULLIF(TRIM(so.vehicle_arrangement->>'kanta_parchi_url'), '') IS NULL
+
+      ORDER BY so.id;
+    `);
+
+      // 4. Fetch pending work for CRM Executive (Intimation, Receiving Proof, Delivery & Weight & Quality)
+      const pendingCrmOrders = await pool.query(`
+        SELECT
+          so.id,
+          so.client_name,
+          so.delivery_date,
+          so.invoice_and_dispatch,
+          so.intimation_thankyou,
+          so.receiving_details,
+          so.delivery_and_weight
+        FROM public.sales_orders so
+        WHERE (
+          so.invoice_and_dispatch ? 'invoice_completed_at'
+          OR so.invoice_and_dispatch ? 'actual_dispatch_date'
+        )
+        AND (
+          -- A. Intimation pending
+          (
+            so.invoice_and_dispatch ? 'invoice_completed_at'
+            AND NULLIF(TRIM(so.invoice_and_dispatch->>'invoice_completed_at'), '') IS NOT NULL
+            AND (
+              so.intimation_thankyou IS NULL
+              OR NOT (so.intimation_thankyou ? 'completed_at')
+              OR NULLIF(TRIM(so.intimation_thankyou->>'completed_at'), '') IS NULL
+            )
+          )
+          OR
+          -- B. Receiving Proof pending
+          (
+            so.invoice_and_dispatch ? 'invoice_completed_at'
+            AND NULLIF(TRIM(so.invoice_and_dispatch->>'invoice_completed_at'), '') IS NOT NULL
+            AND (
+              so.receiving_details IS NULL
+              OR NOT (so.receiving_details ? 'completion_timestamp')
+              OR NULLIF(TRIM(so.receiving_details->>'completion_timestamp'), '') IS NULL
+            )
+          )
+          OR
+          -- C. Delivery & Weight & Quality pending
+          (
+            so.delivery_and_weight IS NULL
+            OR (
+              NULLIF(TRIM(so.delivery_and_weight->>'actual_delivery_timestamp'), '') IS NULL
+              AND NULLIF(TRIM(so.delivery_and_weight->>'actual_delivery_date'), '') IS NULL
+              AND COALESCE(NULLIF(TRIM(so.delivery_and_weight->>'delivery_status'), ''), '') != 'Delivered'
+            )
+          )
+        )
+        ORDER BY so.id ASC;
+      `);
+
+      // 5. Prepare report date
+      const reportDateStr = emailDateFormatter.format(new Date());
+
+      // 6. Process Vehicle Executive tasks using WORK_CONFIG company working hours
+      const vikasItems = pendingVikasOrders.rows.map((order) => {
+        const delay = getVehicleWorkingDelay(order.delivery_date);
+
+        return {
+          id: order.id,
+          client_name: order.client_name || "-",
+          quantity_mt: order.quantity_mt ? `${order.quantity_mt} MT` : "-",
+          rod_size: order.rod_size || "-",
+          delivery_date: order.delivery_date
+            ? dateFormatter.format(new Date(order.delivery_date))
+            : "-",
+          planned_date: delay.plannedDate,
+          isOverdue: delay.isOverdue,
+          delayText: delay.delayText,
+        };
+      });
+
+      // 7. Process Invoice Executive tasks (Documents: Invoice, Kanta Parchi, Bilty)
+      const gaganItems = pendingGaganOrders.rows.map((order) => {
+        const pendingDocs = Array.isArray(order.pending_documents) ? order.pending_documents : [];
+        const invoiceNums = Array.isArray(order.invoice_numbers)
+          ? order.invoice_numbers.filter(Boolean)
+          : [];
+
+        const isInvoiceMissing = pendingDocs.includes("Invoice") || invoiceNums.length === 0;
+        const isInvoicePresent = !isInvoiceMissing;
+
+        const isKantaParchiMissing = pendingDocs.includes("Kanta Parchi");
+        const isKantaParchiPresent = !isKantaParchiMissing;
+
+        const isBiltyMissing = pendingDocs.includes("Bilty");
+        const isBiltyPresent = !isBiltyMissing;
+
+        const invoiceNumStr = invoiceNums.length > 0 ? invoiceNums.join(", ") : "-";
+
+        return {
+          id: order.sale_order_id,
+          client_name: order.client_name || "-",
+          invoice_number: invoiceNumStr,
+          isInvoicePresent,
+          isKantaParchiPresent,
+          isBiltyPresent,
+        };
+      });
+
+      // 8. Process CRM Executive tasks (Checklist: Order ID, Intimation, Receiving Proof, Delivery & Weight) using WORK_CONFIG
+      const crmItems = [];
+
+      for (const order of pendingCrmOrders.rows) {
+        const invoiceCompletedAt = order.invoice_and_dispatch?.invoice_completed_at;
+        const dispatchDate = order.invoice_and_dispatch?.actual_dispatch_date;
+        const intimationCompletedAt = order.intimation_thankyou?.completed_at;
+
+        // A. Intimation & Thank you (invoice_completed_at + 17 working hours)
+        const isIntimationCompleted = !!(
+          order.intimation_thankyou?.completed_at &&
+          String(order.intimation_thankyou.completed_at).trim() !== ""
+        );
+
+        let intimationStatus = { state: "pending" };
+        if (isIntimationCompleted) {
+          intimationStatus = { state: "completed" };
+        } else if (invoiceCompletedAt) {
+          const plannedIntimation = getPlannedIntimationDate(invoiceCompletedAt);
+          if (plannedIntimation) {
+            const delayText = formatWorkingDelay(plannedIntimation);
+            if (delayText) {
+              intimationStatus = { state: "overdue", delayText };
+            } else {
+              intimationStatus = { state: "within_limit" };
+            }
+          }
+        }
+
+        // B. Receiving Proof (intimation_completed_at + 9 working hours / fallback invoice + 26h)
+        const isReceivingCompleted = !!(
+          order.receiving_details?.completion_timestamp &&
+          String(order.receiving_details.completion_timestamp).trim() !== ""
+        );
+
+        let receivingStatus = { state: "pending" };
+        if (isReceivingCompleted) {
+          receivingStatus = { state: "completed" };
+        } else {
+          const plannedReceiving = getPlannedReceivingDate(intimationCompletedAt, invoiceCompletedAt);
+          if (plannedReceiving) {
+            const delayText = formatWorkingDelay(plannedReceiving);
+            if (delayText) {
+              receivingStatus = { state: "overdue", delayText };
+            } else {
+              receivingStatus = { state: "within_limit" };
+            }
+          }
+        }
+
+        // C. Delivery & Weight & Quality (invoice/dispatch + 9 working hours)
+        const isDeliveryWeightCompleted = !!(
+          order.delivery_and_weight?.actual_delivery_timestamp ||
+          order.delivery_and_weight?.actual_delivery_date ||
+          order.delivery_and_weight?.delivery_status === "Delivered"
+        );
+
+        let deliveryStatus = { state: "pending" };
+        if (isDeliveryWeightCompleted) {
+          deliveryStatus = { state: "completed" };
+        } else {
+          const deliveryBaseDate = invoiceCompletedAt || dispatchDate;
+          if (deliveryBaseDate) {
+            const plannedDeliveryWeight = getPlannedDeliveryAndWeightDate(deliveryBaseDate);
+            if (plannedDeliveryWeight) {
+              const delayText = formatWorkingDelay(plannedDeliveryWeight);
+              if (delayText) {
+                deliveryStatus = { state: "overdue", delayText };
+              } else {
+                deliveryStatus = { state: "within_limit" };
+              }
+            }
+          }
+        }
+
+        // Only include order if it has at least one overdue task
+        if (
+          intimationStatus.state === "overdue" ||
+          receivingStatus.state === "overdue" ||
+          deliveryStatus.state === "overdue"
+        ) {
+          crmItems.push({
+            id: order.id,
+            client_name: order.client_name || "-",
+            intimation: intimationStatus,
+            receiving: receivingStatus,
+            delivery: deliveryStatus,
+          });
+        }
+      }
+
+      const totalPending = vikasItems.length + gaganItems.length + crmItems.length;
+
+      // 9. Unified Checklist Badge Renderer (for Invoice Executive & CRM Executive)
+      const renderChecklistBadge = (item) => {
+        if (item === true || item?.state === "completed" || item?.isCompleted) {
+          return `<span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 13px; font-weight: 700; background-color: #dcfce7; color: #166534; border: 1px solid #bbf7d0;">✓</span>`;
+        }
+        if (item === false || item?.state === "overdue" || item?.isOverdue) {
+          const delayDiv = item?.delayText
+            ? `<div style="font-size: 10px; color: #dc2626; font-weight: 600; margin-top: 3px; white-space: nowrap;">${item.delayText}</div>`
+            : "";
+          return `
+            <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 13px; font-weight: 700; background-color: #fee2e2; color: #991b1b; border: 1px solid #fecaca;">✗</span>
+            ${delayDiv}
+          `;
+        }
+        if (item === "within_limit" || item?.state === "within_limit" || item?.isWithinLimit) {
+          return `<span style="display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; background-color: #dcfce7; color: #166534; border: 1px solid #bbf7d0; white-space: nowrap;">Within Limit</span>`;
+        }
+        return `<span style="color: #94a3b8; font-weight: 600;">-</span>`;
+      };
+
+      // Status badge for Vehicle Executive
+      const getStatusBadge = (item) => `
+      <span style="
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        ${
+          item.isOverdue
+            ? "background-color: #fee2e2; color: #991b1b; border: 1px solid #fecaca;"
+            : "background-color: #dcfce7; color: #166534; border: 1px solid #bbf7d0;"
+        }
+      ">
+        ${item.delayText}
+      </span>
+    `;
+
+      // 10. Generate Vehicle Executive HTML rows
+      const vikasRowsHtml =
+        vikasItems.length === 0
+          ? `
+          <tr>
+            <td colspan="5" style="
+              padding: 16px;
+              text-align: center;
+              color: #16a34a;
+              background-color: #f0fdf4;
+              font-weight: 500;
+            ">
+              ✓ No pending tasks for Vehicle Executive (Vikas Kr). All work completed.
+            </td>
+          </tr>
+        `
+          : vikasItems
+              .map(
+                (item) => `
+                <tr style="border-bottom: 1px solid #e2e8f0;">
+                  <td style="padding: 10px 12px; font-weight: 600; color: #1e293b;">#${item.id}</td>
+                  <td style="padding: 10px 12px; color: #334155;">${item.client_name}</td>
+                  <td style="padding: 10px 12px; color: #334155;">${item.quantity_mt}</td>
+                  <td style="padding: 10px 12px; color: #334155;">${item.planned_date}</td>
+                  <td style="padding: 10px 12px;">${getStatusBadge(item)}</td>
+                </tr>
+              `
+              )
+              .join("");
+
+      // 11. Generate Invoice Executive HTML rows (Checklist: Order ID, Invoice No, Invoice PDF, Kanta Parchi, Bilty)
+      const gaganRowsHtml =
+        gaganItems.length === 0
+          ? `
+          <tr>
+            <td colspan="5" style="
+              padding: 16px;
+              text-align: center;
+              color: #16a34a;
+              background-color: #f0fdf4;
+              font-weight: 500;
+            ">
+              ✓ No pending documents for Invoice Executive (Gagan Sharma). All Invoices, Kanta Parchi, and Bilty uploaded.
+            </td>
+          </tr>
+        `
+          : gaganItems
+              .map(
+                (item) => `
+                <tr style="border-bottom: 1px solid #e2e8f0;">
+                  <td style="padding: 10px 12px; font-weight: 600; color: #1e293b;">
+                    #${item.id}
+                    ${
+                      item.client_name && item.client_name !== "-"
+                        ? `<div style="font-size: 11px; font-weight: 400; color: #64748b; margin-top: 2px;">${item.client_name}</div>`
+                        : ""
+                    }
+                  </td>
+                  <td style="padding: 10px 12px; font-weight: 600; color: #1e293b;">
+                    ${item.invoice_number}
+                  </td>
+                  <td style="padding: 10px 12px; text-align: center;">
+                    ${renderChecklistBadge(item.isInvoicePresent)}
+                  </td>
+                  <td style="padding: 10px 12px; text-align: center;">
+                    ${renderChecklistBadge(item.isKantaParchiPresent)}
+                  </td>
+                  <td style="padding: 10px 12px; text-align: center;">
+                    ${renderChecklistBadge(item.isBiltyPresent)}
+                  </td>
+                </tr>
+              `
+              )
+              .join("");
+
+      // 12. Generate CRM Executive HTML rows (Checklist: Order ID, Intimation, Receiving Proof, Delivery & Weight)
+      const crmRowsHtml =
+        crmItems.length === 0
+          ? `
+          <tr>
+            <td colspan="4" style="
+              padding: 16px;
+              text-align: center;
+              color: #16a34a;
+              background-color: #f0fdf4;
+              font-weight: 500;
+            ">
+              ✓ No pending tasks for CRM Executive. All Intimation, Receiving, and Delivery details completed.
+            </td>
+          </tr>
+        `
+          : crmItems
+              .map(
+                (item) => `
+                <tr style="border-bottom: 1px solid #e2e8f0;">
+                  <td style="padding: 10px 12px; font-weight: 600; color: #1e293b;">
+                    #${item.id}
+                    ${
+                      item.client_name && item.client_name !== "-"
+                        ? `<div style="font-size: 11px; font-weight: 400; color: #64748b; margin-top: 2px;">${item.client_name}</div>`
+                        : ""
+                    }
+                  </td>
+                  <td style="padding: 10px 12px; text-align: center;">
+                    ${renderChecklistBadge(item.intimation)}
+                  </td>
+                  <td style="padding: 10px 12px; text-align: center;">
+                    ${renderChecklistBadge(item.receiving)}
+                  </td>
+                  <td style="padding: 10px 12px; text-align: center;">
+                    ${renderChecklistBadge(item.delivery)}
+                  </td>
+                </tr>
+              `
+              )
+              .join("");
+
+      // 13. Prepare email subject and shared replacements
+      const appName = "Vinayak Enterprises";
+      const formattedDate = dateFormatter.format(new Date());
+
+      const subject =
+        totalPending > 0
+          ? `⚠️ Daily Pending Work Report: ${totalPending} Task${
+              totalPending > 1 ? "s" : ""
+            } Pending - ${formattedDate}`
+          : `✅ Daily Work Report: All Clear (No Pending Tasks) - ${formattedDate}`;
+
+      const replacements = {
+        appName,
+        report_date: reportDateStr,
+        total_pending: String(totalPending),
+        total_vikas_pending: String(vikasItems.length),
+        total_gagan_pending: String(gaganItems.length),
+        total_crm_pending: String(crmItems.length),
+        vikas_rows: vikasRowsHtml,
+        gagan_rows: gaganRowsHtml,
+        crm_rows: crmRowsHtml,
+      };
+
+      // 11. Send the report to every eligible recipient
+      for (const recipient of recipients) {
+        await sendMail({
+          to: recipient.email_id,
+          subject,
+          templateName: "daily-pending-work-report",
+          replacements: {
+            ...replacements,
+            name: recipient.username || recipient.role || "User",
+            ea_name: recipient.username || recipient.role || "User",
+          },
+        });
+
+        console.log(`CRON: Successfully sent daily pending work report to ${recipient.email_id}`);
+      }
+    } catch (error) {
+      console.error("CRON Error during generating pending end of day work report:", error.message);
+    }
   }
 }
 

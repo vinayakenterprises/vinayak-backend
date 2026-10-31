@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Daily Pending Work Report</title>
+    <style>
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background-color: #f1f5f9;
+        color: #1e293b;
+        margin: 0;
+        padding: 24px;
+      }
+      .wrapper {
+        max-width: 780px;
+        margin: 0 auto;
+        background-color: #ffffff;
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+      }
+      .header {
+        background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+        color: #ffffff;
+        padding: 28px 32px;
+        text-align: left;
+      }
+      .header h1 {
+        margin: 0 0 6px 0;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .header p {
+        margin: 0;
+        font-size: 13px;
+        color: #cbd5e1;
+      }
+      .content {
+        padding: 32px;
+      }
+      .greeting {
+        font-size: 15px;
+        line-height: 1.6;
+        margin: 0 0 20px 0;
+        color: #334155;
+      }
+      .stats-grid {
+        width: 100%;
+        margin: 0 0 28px 0;
+        border-collapse: separate;
+        border-spacing: 12px 0;
+      }
+      .stat-card {
+        background-color: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 16px;
+        text-align: center;
+        width: 25%;
+        box-sizing: border-box;
+      }
+      .stat-label {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #64748b;
+        margin-bottom: 6px;
+      }
+      .stat-value {
+        font-size: 24px;
+        font-weight: 700;
+        color: #0f172a;
+      }
+      .section-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #0f172a;
+        margin: 28px 0 12px 0;
+        display: flex;
+        align-items: center;
+        border-bottom: 2px solid #e2e8f0;
+        padding-bottom: 8px;
+      }
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-left: 8px;
+      }
+      .badge-blue {
+        background-color: #dbeafe;
+        color: #1e40af;
+      }
+      .badge-purple {
+        background-color: #f3e8ff;
+        color: #6b21a8;
+      }
+      .badge-amber {
+        background-color: #fef3c7;
+        color: #92400e;
+      }
+      .table-responsive {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+        font-size: 13px;
+      }
+      .data-table th {
+        background-color: #f8fafc;
+        color: #475569;
+        font-weight: 600;
+        text-align: left;
+        padding: 10px 12px;
+        border-bottom: 2px solid #e2e8f0;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+      .data-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid #f1f5f9;
+        color: #334155;
+        vertical-align: middle;
+      }
+      .data-table tr:hover {
+        background-color: #f8fafc;
+      }
+      .footer {
+        background-color: #f8fafc;
+        border-top: 1px solid #e2e8f0;
+        padding: 20px 32px;
+        text-align: center;
+        font-size: 12px;
+        color: #64748b;
+      }
+      .footer p {
+        margin: 4px 0;
+      }
+
+      /* Mobile Optimization (Screen width <= 640px) */
+      @media only screen and (max-width: 640px) {
+        body {
+          padding: 8px !important;
+          background-color: #f1f5f9 !important;
+        }
+        .wrapper {
+          border-radius: 8px !important;
+          width: 100% !important;
+        }
+        .header {
+          padding: 20px 16px !important;
+        }
+        .header h1 {
+          font-size: 18px !important;
+          line-height: 1.3 !important;
+        }
+        .header p {
+          font-size: 12px !important;
+        }
+        .content {
+          padding: 16px 12px !important;
+        }
+        .greeting {
+          font-size: 14px !important;
+          line-height: 1.5 !important;
+          margin-bottom: 16px !important;
+        }
+
+        /* 2x2 Grid for KPI Cards on Mobile (No more 1x1 line-by-line stacking) */
+        .stats-grid,
+        .stats-grid tbody,
+        .stats-grid tr {
+          display: block !important;
+          width: 100% !important;
+        }
+        .stats-grid td.stat-card {
+          display: inline-block !important;
+          width: 48.5% !important;
+          margin-bottom: 8px !important;
+          padding: 12px 6px !important;
+          box-sizing: border-box !important;
+          vertical-align: top !important;
+        }
+        .stats-grid td.stat-card:nth-child(odd) {
+          margin-right: 2% !important;
+        }
+        .stat-label {
+          font-size: 10px !important;
+          letter-spacing: 0.02em !important;
+          margin-bottom: 4px !important;
+        }
+        .stat-value {
+          font-size: 20px !important;
+        }
+
+        /* Section Titles on Mobile */
+        .section-title {
+          font-size: 14px !important;
+          margin: 22px 0 10px 0 !important;
+          flex-wrap: wrap !important;
+          gap: 6px !important;
+        }
+        .badge {
+          margin-left: 0 !important;
+          font-size: 11px !important;
+          padding: 2px 6px !important;
+        }
+
+        /* Responsive Table Horizontal Scrolling */
+        .table-responsive {
+          width: 100% !important;
+          overflow-x: auto !important;
+          -webkit-overflow-scrolling: touch !important;
+          margin-top: 8px !important;
+          margin-bottom: 12px !important;
+          border: 1px solid #e2e8f0 !important;
+          border-radius: 6px !important;
+        }
+        .data-table {
+          min-width: 520px !important;
+          margin-top: 0 !important;
+        }
+        .data-table th,
+        .data-table td {
+          padding: 8px 8px !important;
+          font-size: 12px !important;
+        }
+        .footer {
+          padding: 16px !important;
+          font-size: 11px !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrapper">
+      <!-- Header -->
+      <div class="header">
+        <h1>📊 Daily Pending Work Report (End of Day)</h1>
+        <p>Report Generated: {{report_date}} | {{appName}}</p>
+      </div>
+
+      <!-- Body -->
+      <div class="content">
+        <p class="greeting">
+          Hello <strong>{{name}}</strong>,<br />
+          Below is the daily summary of all pending operations for
+          <strong>Vehicle Executive</strong>, <strong>Invoice Executive</strong>, and
+          <strong>CRM</strong> as of the 6:00 PM end-of-day cutoff.
+        </p>
+
+        <!-- KPI Summary Cards (Desktop: 4 columns, Mobile: 2x2 grid) -->
+        <table class="stats-grid" role="presentation">
+          <tr>
+            <td class="stat-card" style="width: 25%">
+              <div class="stat-label">Total Pending</div>
+              <div class="stat-value">{{total_pending}}</div>
+            </td>
+            <td class="stat-card" style="width: 25%">
+              <div class="stat-label">Vehicle Exec (Vikas)</div>
+              <div class="stat-value">{{total_vikas_pending}}</div>
+            </td>
+            <td class="stat-card" style="width: 25%">
+              <div class="stat-label">Invoice Exec (Gagan)</div>
+              <div class="stat-value">{{total_gagan_pending}}</div>
+            </td>
+            <td class="stat-card" style="width: 25%">
+              <div class="stat-label">CRM Executive</div>
+              <div class="stat-value">{{total_crm_pending}}</div>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Section 1: Vehicle Executive (Vikas Kr) -->
+        <div class="section-title">
+          Vehicle Executive (Vikas Kr) — Pending Documents
+          <span class="badge badge-blue">{{total_vikas_pending}} Pending</span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" role="presentation">
+            <thead>
+              <tr>
+                <th style="width: 14%">Order ID</th>
+                <th style="width: 26%">Client</th>
+                <th style="width: 16%">Quantity</th>
+                <th style="width: 24%">Planned Date</th>
+                <th style="width: 20%">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{vikas_rows}}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 2: Invoice Executive (Gagan Sharma) -->
+        <div class="section-title" style="margin-top: 36px">
+          Invoice Executive (Gagan Sharma) — Pending Documents
+          <span class="badge badge-purple">{{total_gagan_pending}} Pending</span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" role="presentation">
+            <thead>
+              <tr>
+                <th style="width: 20%">Order ID</th>
+                <th style="width: 26%">Invoice No</th>
+                <th style="width: 18%; text-align: center">Invoice PDF</th>
+                <th style="width: 18%; text-align: center">Kanta Parchi</th>
+                <th style="width: 18%; text-align: center">Bilty</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{gagan_rows}}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 3: CRM Executive -->
+        <div class="section-title" style="margin-top: 36px">
+          CRM — Pending Tasks
+          <span class="badge badge-amber">{{total_crm_pending}} Pending</span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" role="presentation">
+            <thead>
+              <tr>
+                <th style="width: 28%">Order ID</th>
+                <th style="width: 24%; text-align: center">Intimation & Thank you</th>
+                <th style="width: 24%; text-align: center">Receiving Proof</th>
+                <th style="width: 24%; text-align: center">Delivery & Weight</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{crm_rows}}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <p>
+          This automated end-of-day report was dispatched by <strong>{{appName}}</strong> at 6:00 PM
+          IST.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>
