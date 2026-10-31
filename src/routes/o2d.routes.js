@@ -291,7 +291,12 @@ router.get(
 );
 
 // receiving details
-router.put("/update-receiving-details", authMiddleware, o2dController.updateReceivingDetails);
+router.put(
+  "/update-receiving-details",
+  authMiddleware,
+  documentUpload,
+  o2dController.updateReceivingDetails
+);
 
 // link share feature
 router.get("/generate-shareable-link", authMiddleware, o2dController.getShareableDocumentLink);

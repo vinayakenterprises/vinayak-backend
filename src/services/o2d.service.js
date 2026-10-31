@@ -4227,16 +4227,16 @@ class O2dService {
     }
   }
 
-  async updateReceivingDetails(orderId, documents, userId) {
+  async updateReceivingDetails(orderId, documents, userId, receivingKantaParchiUrl) {
     try {
-      // Generate current UTC timestamp
-      const completionTimestamp = new Date().toISOString();
-
-      // Create the JSON payload
-      const receivingDetailsUpdate = {
-        documents: documents,
-        completion_timestamp: completionTimestamp,
-      };
+      const receivingDetailsUpdate = {};
+      if (documents !== undefined) {
+        receivingDetailsUpdate.documents = documents;
+        receivingDetailsUpdate.completion_timestamp = new Date().toISOString();
+      }
+      if (receivingKantaParchiUrl !== undefined) {
+        receivingDetailsUpdate.receiving_kanta_parchi_url = receivingKantaParchiUrl;
+      }
 
       // Using COALESCE to merge with existing JSON data (if any) to prevent overwriting other keys
       const query = `
@@ -5434,6 +5434,7 @@ class O2dService {
       ["Driver & Vehicle Number Image", order.vehicle_arrangement?.driver_and_vehicle_number_image],
       ["Driver license Image", order.vehicle_arrangement?.driver_license_image],
       ["Receiving Document", order.receiving_details?.documents],
+      ["Receiving Kanta Parchi", order.receiving_details?.receiving_kanta_parchi_url],
       ["Intimation Proof", order.intimation_thankyou?.screenshot_url],
       ["Kanta Parchi Document", order.vehicle_arrangement?.kanta_parchi_url],
     ];

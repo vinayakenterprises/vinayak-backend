@@ -22,6 +22,7 @@ export const documentUpload = upload.fields([
   { name: "warranty", maxCount: 1 },
   { name: "acceptance_letter", maxCount: 1 },
   { name: "pdf-file", maxCount: 1 },
+  { name: "receiving-proof-files", maxCount: 20 },
 ]);
 
 export const avatarUpload = upload.fields([{ name: "avatar_url", maxCount: 1 }]);

@@ -575,3 +575,21 @@ export const getVehicleWorkingDelay = (
     plannedDate: dateFormatter.format(plannedDate),
   };
 };
+
+export const sendNotificationToPurchaseExecutive = async (order_id, message, message_id) => {
+  try {
+    const userDetails = await pool.query(
+      `select * from users where role = 'Purchase Executive' and department = 'Purchase' limit 1`
+    );
+
+    if (userDetails.rows.length === 0 || userDetails.rows[0].id === null) {
+      throw new Error("Please Assign Purchase Team First");
+    }
+    const purchaseExecutiveId = userDetails.rows[0].id;
+
+    const notif = await createNotification(purchaseExecutiveId, `${message}`, `${message_id}`);
+    emitToUser(purchaseExecutiveId, "new_notification", notif);
+  } catch (error) {
+    console.log("error while sending notification to purchase executive: ", error);
+  }
+};

@@ -9,6 +9,7 @@ import o2dRoutes from "./o2d.routes.js";
 import imsRoutes from "./ims.routes.js";
 import hrRoutes from "./hr.routes.js";
 import errorRoutes from "./errorLogs.routes.js";
+import purchaseRoutes from "./purchase.routes.js";
 
 const router = Router();
 
@@ -23,5 +24,6 @@ router.use("/o2d", o2dRoutes);
 router.use("/ims", imsRoutes);
 router.use("/hr", hrRoutes);
 router.use("/error-logs", errorRoutes);
+router.use("/purchase", purchaseRoutes);
 
 export default router;
