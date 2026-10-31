@@ -416,21 +416,4 @@ export const initCronJobs = () => {
       timezone: "Asia/Kolkata",
     }
   );
-
-  cron.schedule(
-    "* * * * *",
-    async () => {
-      console.log("CRON: Triggering 6:00 PM End of Day Pending Work Report...");
-
-      try {
-        await o2dService.sendDailyPendingWorkReport("jr.developer@vinayak-enterprises.com");
-        console.log("CRON: End of Day Pending Work Report sent successfully.");
-      } catch (error) {
-        console.error("CRON Error: Failed to send End of Day Pending Work Report:", error.message);
-      }
-    },
-    {
-      timezone: "Asia/Kolkata",
-    }
-  );
 };
