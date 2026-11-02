@@ -949,7 +949,7 @@ class O2dController {
   receiveInvoiceDetailsFromTally = async (req, res, next) => {
     try {
       const {
-        actual_dispatch_date,
+        actual_dispatch_date, // invoice date of tally
         invoice_number,
         quantity,
         total_invoice_amount,
