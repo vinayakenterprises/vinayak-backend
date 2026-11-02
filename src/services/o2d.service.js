@@ -5043,6 +5043,7 @@ class O2dService {
             const invoiceAndDispatch = orderData.invoice_and_dispatch || {};
             const invoices = invoiceAndDispatch.invoices || [];
             const totalInvoiceAmount = invoiceAndDispatch.total_invoice_amount || null;
+            const actualDispatchDate = invoiceAndDispatch.actual_dispatch_date || null;
 
             // Ensure an invoice actually exists before trying to insert
             if (invoices.length > 0) {
@@ -5074,7 +5075,7 @@ class O2dService {
 
                 await pool.query(insertOverdueQuery, [
                   id,
-                  invoiceDate,
+                  actualDispatchDate,
                   invoiceNo,
                   clientName,
                   totalInvoiceAmount,
@@ -5729,7 +5730,10 @@ class O2dService {
         if (isReceivingCompleted) {
           receivingStatus = { state: "completed" };
         } else {
-          const plannedReceiving = getPlannedReceivingDate(intimationCompletedAt, invoiceCompletedAt);
+          const plannedReceiving = getPlannedReceivingDate(
+            intimationCompletedAt,
+            invoiceCompletedAt
+          );
           if (plannedReceiving) {
             const delayText = formatWorkingDelay(plannedReceiving);
             if (delayText) {
