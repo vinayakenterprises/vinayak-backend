@@ -1206,10 +1206,7 @@ class O2dController {
       if (receivingProofFiles.length > 0) {
         const uploadedReceivingProofUrls = await Promise.all(
           receivingProofFiles.map((file) =>
-            uploadFileToS3(
-              file,
-              `vinayak-enterprises/sales-orders/${orderId}/crm/receiving-proof`
-            )
+            uploadFileToS3(file, `vinayak-enterprises/sales-orders/${orderId}/crm/receiving-proof`)
           )
         );
         documents = [...(documents || []), ...uploadedReceivingProofUrls];
@@ -1656,7 +1653,10 @@ class O2dController {
 
   getInvoiceGenerationRequestData = async (req, res, next) => {
     try {
-      const userId = req.user?.id || null;
+      let userId = req.user?.id || null;
+      if (userId === 15) {
+        userId = 10;
+      }
       const order = await o2dService.getInvoiceGenerationRequestData(userId);
       return res.status(200).json({
         status: "success",
