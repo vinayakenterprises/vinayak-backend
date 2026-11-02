@@ -93,6 +93,33 @@ class PurchaseController {
       next(err);
     }
   };
+
+  getCompletePOCreationFromTallyData = async (req, res, next) => {
+    try {
+      const page = parseInt(req.body.page || req.query.page, 10) || 1;
+      const pageSize = parseInt(req.body.pageSize || req.query.pageSize, 10) || 10;
+      const search = (req.body.search || req.query.search || "").trim();
+
+      const { rows, totalItems } = await purchaseService.getCompletePOCreationFromTallyData({
+        page,
+        pageSize,
+        search,
+      });
+
+      return res.status(HTTP_STATUS.OK).json({
+        status: "success",
+        data: rows,
+        pagination: {
+          totalItems,
+          totalPages: Math.ceil(totalItems / pageSize) || 1,
+          currentPage: page,
+          pageSize,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
 }
 
 export default new PurchaseController();
