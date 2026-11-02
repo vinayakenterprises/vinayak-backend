@@ -127,7 +127,7 @@ class PurchaseService {
   getPOCreationRequests = async () => {
     try {
       const query = `SELECT *
-      FROM public.purchases
+      FROM public.purchases p left join vendors_data v on p.vendor_id = v.id
       WHERE accounts_info ? 'sent_for_po_at'
         AND accounts_info->>'sent_for_po_at' IS NOT NULL;`;
       const { rows } = await pool.query(query);
@@ -273,6 +273,69 @@ class PurchaseService {
       throw err;
     } finally {
       client.release();
+    }
+  };
+
+  getCompletePOCreationFromTallyData = async ({ page = 1, pageSize = 10, search = "" }) => {
+    try {
+      const offset = (page - 1) * pageSize;
+      const queryParams = [];
+      let paramIndex = 1;
+
+      // Base conditions
+      let whereClause = `
+      WHERE p.accounts_info ? 'po_completed_at'
+        AND p.accounts_info->>'po_completed_at' IS NOT NULL
+    `;
+
+      // Optional Search filter
+      if (search) {
+        whereClause += `
+        AND (
+          v.vendor_name ILIKE $${paramIndex}
+          OR p.material ILIKE $${paramIndex}
+          OR p.purchased_by ILIKE $${paramIndex}
+          OR p.id::text ILIKE $${paramIndex}
+        )
+      `;
+        queryParams.push(`%${search}%`);
+        paramIndex++;
+      }
+
+      // 1. Get Total Count for Pagination
+      const countQuery = `
+      SELECT COUNT(*) AS total
+      FROM public.purchases p
+      LEFT JOIN public.vendors_data v ON p.vendor_id = v.id
+      ${whereClause};
+    `;
+
+      const countResult = await pool.query(countQuery, queryParams);
+      const totalItems = parseInt(countResult.rows[0]?.total || 0, 10);
+
+      // 2. Get Paginated Data
+      const dataQuery = `
+      SELECT p.*, v.*
+      FROM public.purchases p
+      LEFT JOIN public.vendors_data v ON p.vendor_id = v.id
+      ${whereClause}
+      ORDER BY
+        COALESCE(
+          (p.accounts_info->>'po_completed_at')::timestamptz,
+          p.created_at
+        ) DESC,
+        p.id DESC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1};
+    `;
+
+      queryParams.push(pageSize, offset);
+
+      const { rows } = await pool.query(dataQuery, queryParams);
+
+      return { rows, totalItems };
+    } catch (err) {
+      console.error("Error in fetching completed PO creation from Tally:", err.message);
+      throw err;
     }
   };
 }

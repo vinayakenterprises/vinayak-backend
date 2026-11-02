@@ -17,4 +17,10 @@ router.get("/get-po-creation-requests", authMiddleware, purchaseController.getPO
 
 router.post("/complete-po-creation-from-tally", purchaseController.completePOCreationFromTally);
 
+router.post(
+  "/completed-po-from-tally",
+  authMiddleware,
+  purchaseController.getCompletePOCreationFromTallyData
+);
+
 export default router;
