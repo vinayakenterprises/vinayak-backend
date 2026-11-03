@@ -763,8 +763,9 @@ class O2dController {
   getAdminDashboardCardsData = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
+      const isDrossOrder = req.query.is_dross_order === "true";
 
-      const order = await o2dService.getAdminDashboardCardsData(userId);
+      const order = await o2dService.getAdminDashboardCardsData(userId, isDrossOrder);
 
       return res.status(200).json({
         status: "success",
@@ -780,14 +781,22 @@ class O2dController {
     try {
       const userId = req.user?.id || null;
 
-      const { delivery_start_date, delivery_end_date, order_status, page, pageSize } = req.body;
+      const {
+        delivery_start_date,
+        delivery_end_date,
+        order_status,
+        page,
+        pageSize,
+        is_dross_order,
+      } = req.body;
       const result = await o2dService.getActiveSaleOrdersAdminDashboard(
         userId,
         delivery_start_date,
         delivery_end_date,
         order_status,
         page,
-        pageSize
+        pageSize,
+        is_dross_order === true
       );
       return res.status(200).json({
         status: "success",
@@ -1356,47 +1365,69 @@ class O2dController {
       const { id, vehicle_no } = req.body;
       const userId = req.user?.id || null;
 
+      if (!id) {
+        return res.status(400).json({
+          status: "error",
+          message: "id is required.",
+        });
+      }
+
+      const order = await o2dService.getSaleOrderById(id);
+      if (!order) {
+        return res.status(404).json({
+          status: "error",
+          message: `Sales order not found for ID: ${id}`,
+        });
+      }
+      const isDrossOrder =
+        String(order.rod_size || "")
+          .trim()
+          .toLowerCase() === "dross";
+
       // Files uploaded through multipart/form-data
       const allBundlesFile = req.files?.["all_bundles_image"]?.[0];
       const driverVehicleFile = req.files?.["driver_and_vehicle_number_image"]?.[0];
       const driverLicenseFile = req.files?.["driver_license_image"]?.[0];
 
-      // Validate required fields
-      if (!id || !vehicle_no || !allBundlesFile || !driverVehicleFile || !driverLicenseFile) {
+      if (
+        !isDrossOrder &&
+        (!String(vehicle_no || "").trim() ||
+          !allBundlesFile ||
+          !driverVehicleFile ||
+          !driverLicenseFile)
+      ) {
         return res.status(400).json({
           status: "error",
           message:
-            "id, vehicle_no, all_bundles_image, driver_and_vehicle_number_image, and driver_license_image are required fields.",
+            "vehicle_no, all_bundles_image, driver_and_vehicle_number_image, and driver_license_image are required fields.",
         });
       }
 
-      // Upload all three files to S3
-      const allBundlesImageUrl = await uploadFileToS3(
-        allBundlesFile,
-        `vinayak-enterprises/sales-orders/${id}/transport-executive/all-bundles`
-      );
-
-      const driverVehicleImageUrl = await uploadFileToS3(
-        driverVehicleFile,
-        `vinayak-enterprises/sales-orders/${id}/transport-executive/driver-vehicle`
-      );
-
-      const driverLicenseImageUrl = await uploadFileToS3(
-        driverLicenseFile,
-        `vinayak-enterprises/sales-orders/${id}/transport-executive/driver-license`
-      );
+      const vehicleData = {};
+      if (vehicle_no?.trim()) vehicleData.vehicle_no = vehicle_no.trim();
+      if (allBundlesFile) {
+        vehicleData.all_bundles_image = await uploadFileToS3(
+          allBundlesFile,
+          `vinayak-enterprises/sales-orders/${id}/transport-executive/all-bundles`
+        );
+      }
+      if (driverVehicleFile) {
+        vehicleData.driver_and_vehicle_number_image = await uploadFileToS3(
+          driverVehicleFile,
+          `vinayak-enterprises/sales-orders/${id}/transport-executive/driver-vehicle`
+        );
+      }
+      if (driverLicenseFile) {
+        vehicleData.driver_license_image = await uploadFileToS3(
+          driverLicenseFile,
+          `vinayak-enterprises/sales-orders/${id}/transport-executive/driver-license`
+        );
+      }
 
       // Pass S3 URLs to service
       const updatedOrder = await o2dService.markAsDeliveredByTransportExecutive(id, userId, {
         ...req.body,
-
-        vehicle_no,
-
-        all_bundles_image: allBundlesImageUrl,
-
-        driver_and_vehicle_number_image: driverVehicleImageUrl,
-
-        driver_license_image: driverLicenseImageUrl,
+        ...vehicleData,
       });
 
       return res.status(200).json({

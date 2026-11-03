@@ -61,6 +61,8 @@ class O2dService {
       splitted_from,
       sale_rate,
     } = data;
+    const resolvedDispatchType =
+      String(rod_size || "").trim().toLowerCase() === "dross" ? "Dross" : dispatch_type;
 
     // Check CRM
     const getCrm = await pool.query(
@@ -113,7 +115,7 @@ class O2dService {
               quantity_mt,
               rod_size,
               delivery_date: formatEmailDate(delivery_date),
-              dispatch_type,
+              dispatch_type: resolvedDispatchType,
               credit_limit: credit_limit_info.credit_limit,
               remaining_credit: credit_limit_info.remaining_credit_limit,
             },
@@ -218,7 +220,7 @@ class O2dService {
       delivery_date,
       bill_to,
       ship_to,
-      dispatch_type,
+      resolvedDispatchType,
       sales_person_name,
       originalCreatorId || userId,
       originalCreatorId || userId,
@@ -661,7 +663,10 @@ class O2dService {
         delivery_date = COALESCE($7, delivery_date),
         bill_to = COALESCE($8, bill_to),
         ship_to = COALESCE($9, ship_to),
-        dispatch_type = COALESCE($10, dispatch_type),
+        dispatch_type = CASE
+          WHEN LOWER(BTRIM(COALESCE(COALESCE($6, rod_size), ''))) = 'dross' THEN 'Dross'
+          ELSE COALESCE($10, dispatch_type)
+        END,
         sales_person_name = COALESCE($11, sales_person_name),
         assigned_to = COALESCE($12, assigned_to),
         updated_by = $13,
@@ -2903,7 +2908,7 @@ class O2dService {
     }
   }
 
-  async getAdminDashboardCardsData(userId) {
+  async getAdminDashboardCardsData(userId, isDrossOrder = false) {
     try {
       const query = `
           SELECT
@@ -2957,9 +2962,10 @@ class O2dService {
 
           FROM public.sales_orders
           WHERE credit_limit_info->>'credit_limit_request_approval_status'
-                IS DISTINCT FROM 'false';
+                IS DISTINCT FROM 'false'
+            AND (LOWER(BTRIM(COALESCE(rod_size, ''))) = 'dross') = $1;
       `;
-      const { rows } = await pool.query(query, []);
+      const { rows } = await pool.query(query, [isDrossOrder]);
       return rows;
     } catch (error) {
       console.error("Error in getting admin dashboard cards data: ", error);
@@ -2973,7 +2979,8 @@ class O2dService {
     deliveryEndDate,
     orderStatus,
     page = 1,
-    requestedPageSize = 25
+    requestedPageSize = 25,
+    isDrossOrder = false
   ) {
     try {
       const requestedPage = Number(page);
@@ -2986,6 +2993,10 @@ class O2dService {
       const offset = (safePage - 1) * pageSize;
       const filters = [];
       const filterValues = [];
+      filterValues.push(Boolean(isDrossOrder));
+      filters.push(
+        `(LOWER(BTRIM(COALESCE(rod_size, ''))) = 'dross') = $${filterValues.length}`
+      );
       if (deliveryStartDate) {
         filterValues.push(deliveryStartDate);
         filters.push(`delivery_date::date >= $${filterValues.length}::date`);
@@ -4149,7 +4160,8 @@ class O2dService {
 
         -- Global filter for credit limit approval
         WHERE credit_limit_info->>'credit_limit_request_approval_status'
-              IS DISTINCT FROM 'false';
+              IS DISTINCT FROM 'false'
+          AND LOWER(BTRIM(COALESCE(rod_size, ''))) <> 'dross';
       `;
 
       const { rows } = await pool.query(query, []);
@@ -4197,6 +4209,8 @@ class O2dService {
 
         AND credit_limit_info->>'credit_limit_request_approval_status'
             IS DISTINCT FROM 'false'
+
+        AND LOWER(BTRIM(COALESCE(rod_size, ''))) <> 'dross'
 
         AND dispatch_info->>'dispatch_type'
             IS DISTINCT FROM 'Dispatched'
