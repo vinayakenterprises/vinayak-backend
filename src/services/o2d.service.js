@@ -5475,7 +5475,7 @@ class O2dService {
         recipients = [
           {
             email_id: recipientEmailOverride.trim(),
-            username: "Junior Developer",
+            username: "Admin",
             role: "Developer",
           },
         ];
