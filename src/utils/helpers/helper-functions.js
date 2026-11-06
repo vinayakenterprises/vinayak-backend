@@ -91,6 +91,50 @@ export const dateTimeFormatter = new Intl.DateTimeFormat("en-IN", {
   timeZone: "Asia/Kolkata",
 });
 
+/**
+ * Format a Date or date string to Indian Standard Time (IST) representation
+ */
+export const formatToIST = (dateInput) => {
+  if (!dateInput) return "N/A";
+  let date;
+  if (dateInput instanceof Date) {
+    date = dateInput;
+  } else {
+    const str = String(dateInput);
+    const hasTimezone = /([+-]\d{2}:?\d{2}|[+-]\d{2}|[Zz])$/.test(str);
+    date = new Date(hasTimezone ? str : str + "Z");
+  }
+
+  if (isNaN(date.getTime())) return "N/A";
+
+  return date.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
+/**
+ * Format a Date or date string to a Date-only format (e.g., "Sep 28, 2026") in IST
+ */
+export const formatDateOnly = (dateInput) => {
+  if (!dateInput) return "N/A";
+  const comp = getISTComponents(dateInput);
+  if (!comp) return "N/A";
+
+  const d = new Date(Date.UTC(comp.year, comp.month, comp.day));
+  return d.toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+};
+
 export const WORK_CONFIG = {
   // Standard Working Window (9:30 AM to 6:30 PM IST = 9 hours = 540 minutes per working day)
   DEFAULT_START_TIME: { hour: 9, minute: 30 },
@@ -442,9 +486,104 @@ export const getWorkingHoursDiff = (plannedDateInput, actualDateInput, config = 
   return isNegative ? -hoursDiff : hoursDiff;
 };
 
-//  Stage-Specific Planned Getters (O2D)
+/**
+ * Generic target for delivery date at 6:00 PM IST (18:00 IST)
+ * If Sunday or holiday, rolls to next working day at 18:00 IST
+ */
+export const getPlannedDeliveryTargetDate = (deliveryDateStr, config = WORK_CONFIG) => {
+  if (!deliveryDateStr) return null;
+  const comp = getISTComponents(deliveryDateStr);
+  if (!comp) return null;
 
-// A. Intimation: invoice_completed_at + 17 working hours
+  let year = comp.year;
+  let month = comp.month;
+  let day = comp.day;
+
+  // Target 18:00 (6:00 PM) IST
+  let target = createISTDate(year, month, day, 18, 0);
+  let window = getDayWorkingWindow(target, config);
+
+  // If Sunday or holiday, roll to next working day 18:00 IST
+  if (!window) {
+    target = addWorkingHours(createISTDate(year, month, day, 9, 30), 8.5, config);
+  }
+  return target;
+};
+
+/* =========================================================================
+   Stage-Specific Planned Getters
+   ========================================================================= */
+
+// 1. SO Generation: created_at + 2 working hours
+export const getPlannedSOTime = (createdAtStr) => {
+  if (!createdAtStr) return "N/A";
+  try {
+    const planned = addWorkingHours(createdAtStr, 2);
+    return planned ? formatToIST(planned) : createdAtStr;
+  } catch (err) {
+    console.error(err);
+    return createdAtStr;
+  }
+};
+
+// 2. Delivery Date Time Str: 6:00 PM IST formatted
+export const getPlannedDateTimeStr = (deliveryDateStr) => {
+  if (!deliveryDateStr) return "N/A";
+  try {
+    const target = getPlannedDeliveryTargetDate(deliveryDateStr);
+    if (!target) return deliveryDateStr;
+    const comp = getISTComponents(target);
+    const d = new Date(Date.UTC(comp.year, comp.month, comp.day));
+    const dateFormatted = d.toLocaleDateString("en-US", {
+      timeZone: "UTC",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+    return `${dateFormatted}, 6:00 PM`;
+  } catch (err) {
+    console.error(err);
+    return deliveryDateStr;
+  }
+};
+
+// 3. PO Generation: sent_for_po_at + 24 working hours
+export const getPlannedPoTime = (soSentAtStr) => {
+  if (!soSentAtStr) return "N/A";
+  try {
+    const planned = addWorkingHours(soSentAtStr, 24);
+    return planned ? formatToIST(planned) : soSentAtStr;
+  } catch (err) {
+    console.error(err);
+    return soSentAtStr;
+  }
+};
+
+// 4. Invoice & Dispatch: delivery_date at 6:00 PM IST
+export const getPlannedInvoiceTime = (deliveryDateStr) => {
+  if (!deliveryDateStr) return "NA";
+  try {
+    const target = getPlannedDeliveryTargetDate(deliveryDateStr);
+    return target ? formatToIST(target) : "NA";
+  } catch (err) {
+    console.error(err);
+    return "NA";
+  }
+};
+
+// 5. Intimation: invoice_completed_at + 17 working hours
+export const getPlannedIntimationTime = (invoiceCompletedAtStr) => {
+  if (!invoiceCompletedAtStr) return "NA";
+  try {
+    const planned = addWorkingHours(invoiceCompletedAtStr, 17);
+    return planned ? formatToIST(planned) : "NA";
+  } catch (err) {
+    console.error(err);
+    return "NA";
+  }
+};
+
+// Compatibility alias for Date object return
 export const getPlannedIntimationDate = (invoiceCompletedAtStr, config = WORK_CONFIG) => {
   if (!invoiceCompletedAtStr) return null;
   try {
@@ -455,7 +594,25 @@ export const getPlannedIntimationDate = (invoiceCompletedAtStr, config = WORK_CO
   }
 };
 
-// B. Receiving Proof: intimation_completed_at + 9 working hours (fallback: invoice + 17h + 9h)
+// 6. Receiving Proof: intimation_completed_at + 9 working hours (fallback: invoice + 17h + 9h)
+export const getPlannedReceivingTime = (intimationCompletedAtStr, invoiceCompletedAtStr) => {
+  try {
+    if (intimationCompletedAtStr) {
+      const planned = addWorkingHours(intimationCompletedAtStr, 9);
+      if (planned) return formatToIST(planned);
+    }
+    if (invoiceCompletedAtStr) {
+      const intimationPlanned = addWorkingHours(invoiceCompletedAtStr, 17);
+      const planned = addWorkingHours(intimationPlanned, 9);
+      if (planned) return formatToIST(planned);
+    }
+  } catch (err) {
+    console.error(err);
+  }
+  return "NA";
+};
+
+// Compatibility alias for Date object return
 export const getPlannedReceivingDate = (
   intimationCompletedAtStr,
   invoiceCompletedAtStr,
@@ -478,11 +635,342 @@ export const getPlannedReceivingDate = (
   return null;
 };
 
-// C. Delivery & Weight: baseDate (invoice_completed_at or actual_dispatch_date) + 9 working hours (1 working day)
+// 7. Delivery & Weight: actual_dispatch_date + 9 working hours (1 working day)
+export const getPlannedDeliveryAndWeightTime = (actualDispatchDateStr) => {
+  if (!actualDispatchDateStr) return "N/A";
+  try {
+    const planned = addWorkingHours(actualDispatchDateStr, 9);
+    return planned ? formatToIST(planned) : "N/A";
+  } catch (err) {
+    console.error(err);
+    return "N/A";
+  }
+};
+
+// Compatibility alias for Date object return
 export const getPlannedDeliveryAndWeightDate = (baseDateStr, config = WORK_CONFIG) => {
   if (!baseDateStr) return null;
   try {
     return addWorkingHours(baseDateStr, 9, config);
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+};
+
+// 8. CN / DN Note: actual_delivery_date + 9 working hours (1 working day)
+export const getPlannedCnDnTime = (actualDeliveryDateStr) => {
+  if (!actualDeliveryDateStr) return "N/A";
+  try {
+    const planned = addWorkingHours(actualDeliveryDateStr, 9);
+    return planned ? formatDateOnly(planned) : "N/A";
+  } catch (err) {
+    console.error(err);
+    return "N/A";
+  }
+};
+
+// 9. Payment: actual_dispatch_date + 90 working hours (10 working days)
+export const getPlannedPaymentTime = (actualDispatchDateStr) => {
+  if (!actualDispatchDateStr) return "N/A";
+  try {
+    const planned = addWorkingHours(actualDispatchDateStr, 90);
+    return planned ? formatDateOnly(planned) : "N/A";
+  } catch (err) {
+    console.error(err);
+    return "N/A";
+  }
+};
+
+// 10. Interest Note Issue: payment_done_at + 9 working hours (1 working day)
+export const getPlannedInterestNoteTime = (paymentDoneAtStr) => {
+  if (!paymentDoneAtStr) return "N/A";
+  try {
+    const planned = addWorkingHours(paymentDoneAtStr, 9);
+    return planned ? formatDateOnly(planned) : "N/A";
+  } catch (err) {
+    console.error(err);
+    return "N/A";
+  }
+};
+
+// 11. Interest Note Collection: interest_note_issued_on + 45 working hours (5 working days)
+export const getPlannedInterestNoteCollectionTime = (interestNoteIssuedOnTimestampStr) => {
+  if (!interestNoteIssuedOnTimestampStr) return "N/A";
+  try {
+    const planned = addWorkingHours(interestNoteIssuedOnTimestampStr, 45);
+    return planned ? formatDateOnly(planned) : "N/A";
+  } catch (err) {
+    console.error(err);
+    return "N/A";
+  }
+};
+
+// 12. Quality Confirmation: actual_delivery_date + 36 working hours (4 working days)
+export const getPlannedQualityConfirmationTime = (actualDeliveryDateStr) => {
+  if (!actualDeliveryDateStr) return "N/A";
+  try {
+    const planned = addWorkingHours(actualDeliveryDateStr, 36);
+    return planned ? formatDateOnly(planned) : "N/A";
+  } catch (err) {
+    console.error(err);
+    return "N/A";
+  }
+};
+
+// 13. Complaint - Call Action: complaint_created_at + 2 working hours
+export const getPlannedCallActionTime = (createdAtStr) => {
+  if (!createdAtStr) return "N/A";
+  try {
+    const planned = addWorkingHours(createdAtStr, 2);
+    return planned ? formatToIST(planned) : "N/A";
+  } catch (err) {
+    console.error(err);
+    return "N/A";
+  }
+};
+
+// 14. Complaint - Plant Visit: call_action_actual_date + 9 working hours (1 working day)
+export const getPlannedPlantVisitTime = (callActionActualDateStr) => {
+  if (!callActionActualDateStr) return "N/A";
+  try {
+    const planned = addWorkingHours(callActionActualDateStr, 9);
+    return planned ? formatToIST(planned) : "N/A";
+  } catch (err) {
+    console.error(err);
+    return "N/A";
+  }
+};
+
+/* =========================================================================
+   Stage-Specific Late Hours Getters (Elapsed Working Hours)
+   ========================================================================= */
+
+// SO Generation Late Hours
+export const getLateHoursSO = (createdAtStr, completedAtStr) => {
+  if (!createdAtStr) return null;
+  try {
+    const planned = addWorkingHours(createdAtStr, 2);
+    if (!planned) return null;
+    const diff = getWorkingHoursDiff(planned, completedAtStr);
+    if (completedAtStr) return diff;
+    return diff > 0 ? diff : null;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+};
+
+// PO Generation Late Hours
+export const getLateHoursPo = (sentForSoAtStr, poCompletedAtStr) => {
+  if (!sentForSoAtStr) return null;
+  try {
+    const planned = addWorkingHours(sentForSoAtStr, 24);
+    if (!planned) return null;
+    const diff = getWorkingHoursDiff(planned, poCompletedAtStr);
+    if (poCompletedAtStr) return diff;
+    return diff > 0 ? diff : null;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+};
+
+// Generic Late Hours for Delivery / Vehicle Arrangement
+export const getLateHours = (deliveryDateStr, actualDateStr) => {
+  if (!deliveryDateStr) return null;
+  try {
+    const planned = getPlannedDeliveryTargetDate(deliveryDateStr);
+    if (!planned) return null;
+    const diff = getWorkingHoursDiff(planned, actualDateStr);
+    if (actualDateStr) return diff;
+    return diff > 0 ? diff : null;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+};
+
+// Invoice Late Hours
+export const getLateHoursInvoice = (deliveryDateStr, invoiceCompletedAtStr) => {
+  if (!deliveryDateStr) return null;
+  try {
+    const planned = getPlannedDeliveryTargetDate(deliveryDateStr);
+    if (!planned) return null;
+    const diff = getWorkingHoursDiff(planned, invoiceCompletedAtStr);
+    if (invoiceCompletedAtStr) return diff;
+    return diff > 0 ? diff : null;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+};
+
+// Dispatch Late Hours
+export const getLateHoursDispatch = (deliveryDateStr, completedAtStr) => {
+  return getLateHoursInvoice(deliveryDateStr, completedAtStr);
+};
+
+// Intimation Late Hours
+export const getLateHoursIntimation = (invoiceCompletedAtStr, intimatedCompletedAtStr) => {
+  if (!invoiceCompletedAtStr) return null;
+  try {
+    const planned = addWorkingHours(invoiceCompletedAtStr, 17);
+    if (!planned) return null;
+    const diff = getWorkingHoursDiff(planned, intimatedCompletedAtStr);
+    if (intimatedCompletedAtStr) return diff;
+    return diff > 0 ? diff : null;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+};
+
+// Receiving Proof Late Hours
+export const getLateHoursReceiving = (
+  intimationCompletedAtStr,
+  invoiceCompletedAtStr,
+  receivingCompletedAtStr
+) => {
+  try {
+    let planned = null;
+    if (intimationCompletedAtStr) {
+      planned = addWorkingHours(intimationCompletedAtStr, 9);
+    } else if (invoiceCompletedAtStr) {
+      const intimationPlanned = addWorkingHours(invoiceCompletedAtStr, 17);
+      planned = addWorkingHours(intimationPlanned, 9);
+    }
+
+    if (!planned) return null;
+    const diff = getWorkingHoursDiff(planned, receivingCompletedAtStr);
+    if (receivingCompletedAtStr) return diff;
+    return diff > 0 ? diff : null;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+};
+
+// Delivery & Weight Late Hours
+export const getLateHoursDeliveryAndWeight = (actualDispatchDateStr, actualDeliveryDateStr) => {
+  if (!actualDispatchDateStr) return null;
+  try {
+    const planned = addWorkingHours(actualDispatchDateStr, 9);
+    if (!planned) return null;
+    const diff = getWorkingHoursDiff(planned, actualDeliveryDateStr);
+    if (actualDeliveryDateStr) return diff;
+    return diff > 0 ? diff : null;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+};
+
+// CN / DN Late Hours
+export const getLateHoursCnDn = (actualDeliveryDateStr, cnOrDnIssueTimestampStr) => {
+  if (!actualDeliveryDateStr) return null;
+  try {
+    const planned = addWorkingHours(actualDeliveryDateStr, 9);
+    if (!planned) return null;
+    const diff = getWorkingHoursDiff(planned, cnOrDnIssueTimestampStr);
+    if (cnOrDnIssueTimestampStr) return diff;
+    return diff > 0 ? diff : null;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+};
+
+// Payment Late Hours
+export const getLateHoursPayment = (actualDispatchDateStr, paymentDoneAtStr) => {
+  if (!actualDispatchDateStr) return null;
+  try {
+    const planned = addWorkingHours(actualDispatchDateStr, 90);
+    if (!planned) return null;
+    const diff = getWorkingHoursDiff(planned, paymentDoneAtStr);
+    if (paymentDoneAtStr) return diff;
+    return diff > 0 ? diff : null;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+};
+
+// Interest Note Late Hours
+export const getLateHoursInterestNote = (paymentDoneAtStr, interestNoteIssuedOnTimestampStr) => {
+  if (!paymentDoneAtStr) return null;
+  try {
+    const planned = addWorkingHours(paymentDoneAtStr, 9);
+    if (!planned) return null;
+    const diff = getWorkingHoursDiff(planned, interestNoteIssuedOnTimestampStr);
+    if (interestNoteIssuedOnTimestampStr) return diff;
+    return diff > 0 ? diff : null;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+};
+
+// Interest Note Collection Late Hours
+export const getLateHoursInterestNoteCollection = (
+  interestNoteIssuedOnTimestampStr,
+  interestNoteCollectedOnTimestampStr
+) => {
+  if (!interestNoteIssuedOnTimestampStr) return null;
+  try {
+    const planned = addWorkingHours(interestNoteIssuedOnTimestampStr, 45);
+    if (!planned) return null;
+    const diff = getWorkingHoursDiff(planned, interestNoteCollectedOnTimestampStr);
+    if (interestNoteCollectedOnTimestampStr) return diff;
+    return diff > 0 ? diff : null;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+};
+
+// Quality Confirmation Late Hours
+export const getLateHoursQualityConfirmation = (
+  actualDeliveryDateStr,
+  qualityConfirmationTimestampStr
+) => {
+  if (!actualDeliveryDateStr) return null;
+  try {
+    const planned = addWorkingHours(actualDeliveryDateStr, 36);
+    if (!planned) return null;
+    const diff = getWorkingHoursDiff(planned, qualityConfirmationTimestampStr);
+    if (qualityConfirmationTimestampStr) return diff;
+    return diff > 0 ? diff : null;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+};
+
+// Call Action Late Hours (Complaints)
+export const getLateHoursCallAction = (createdAtStr, actualDateStr) => {
+  if (!createdAtStr) return null;
+  try {
+    const planned = addWorkingHours(createdAtStr, 2);
+    if (!planned) return null;
+    const diff = getWorkingHoursDiff(planned, actualDateStr);
+    if (actualDateStr) return diff;
+    return diff > 0 ? diff : null;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+};
+
+// Plant Visit Late Hours (Complaints)
+export const getLateHoursPlantVisit = (actualDateStr, callActionActualDateStr) => {
+  if (!callActionActualDateStr) return null;
+  try {
+    const planned = addWorkingHours(callActionActualDateStr, 9);
+    if (!planned) return null;
+    const diff = getWorkingHoursDiff(planned, actualDateStr);
+    if (actualDateStr) return diff;
+    return diff > 0 ? diff : null;
   } catch (err) {
     console.error(err);
     return null;
@@ -516,36 +1004,42 @@ export const formatWorkingDelay = (
   return rounded > 0 ? `${rounded}h late` : `< 1h late`;
 };
 
+/**
+ * Calculates working delay and status for Vehicle Executive based on WORK_CONFIG.
+ * Considers 18:00 (6:00 PM IST) cutoff and rolls Sunday/holiday to next working day.
+ */
 export const getVehicleWorkingDelay = (
   deliveryDateInput,
   actualDateInput = new Date(),
   config = WORK_CONFIG
 ) => {
   if (!deliveryDateInput) {
-    return { isOverdue: false, delayText: "Pending", plannedDate: "Not Set" };
+    return {
+      isOverdue: false,
+      delayText: "Pending",
+      plannedDate: "Not Set",
+      plannedTargetDate: null,
+    };
   }
 
-  const comp = getISTComponents(deliveryDateInput);
-  if (!comp) {
-    return { isOverdue: false, delayText: "Pending", plannedDate: "Not Set" };
+  const plannedTargetDate = getPlannedDeliveryTargetDate(deliveryDateInput, config);
+  if (!plannedTargetDate) {
+    return {
+      isOverdue: false,
+      delayText: "Pending",
+      plannedDate: "Not Set",
+      plannedTargetDate: null,
+    };
   }
 
-  // End of working window on delivery date (6:30 PM IST)
-  const plannedDate = createISTDate(
-    comp.year,
-    comp.month,
-    comp.day,
-    config.DEFAULT_END_TIME.hour,
-    config.DEFAULT_END_TIME.minute
-  );
-
-  const diffHours = getWorkingHoursDiff(plannedDate, actualDateInput, config);
+  const diffHours = getWorkingHoursDiff(plannedTargetDate, actualDateInput, config);
 
   if (diffHours === null) {
     return {
       isOverdue: false,
       delayText: "Pending",
-      plannedDate: dateFormatter.format(plannedDate),
+      plannedDate: dateFormatter.format(plannedTargetDate),
+      plannedTargetDate,
     };
   }
 
@@ -553,7 +1047,8 @@ export const getVehicleWorkingDelay = (
     return {
       isOverdue: false,
       delayText: "Within Limit",
-      plannedDate: dateFormatter.format(plannedDate),
+      plannedDate: dateFormatter.format(plannedTargetDate),
+      plannedTargetDate,
     };
   }
 
@@ -572,7 +1067,8 @@ export const getVehicleWorkingDelay = (
   return {
     isOverdue: true,
     delayText,
-    plannedDate: dateFormatter.format(plannedDate),
+    plannedDate: dateFormatter.format(plannedTargetDate),
+    plannedTargetDate,
   };
 };
 

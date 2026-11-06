@@ -12,6 +12,7 @@ import {
   formatWorkingDelay,
   getISTComponents,
   getPlannedDeliveryAndWeightDate,
+  getPlannedDeliveryTargetDate,
   getPlannedIntimationDate,
   getPlannedReceivingDate,
   getVehicleWorkingDelay,
@@ -62,7 +63,11 @@ class O2dService {
       sale_rate,
     } = data;
     const resolvedDispatchType =
-      String(rod_size || "").trim().toLowerCase() === "dross" ? "Dross" : dispatch_type;
+      String(rod_size || "")
+        .trim()
+        .toLowerCase() === "dross"
+        ? "Dross"
+        : dispatch_type;
 
     // Check CRM
     const getCrm = await pool.query(
@@ -2994,9 +2999,7 @@ class O2dService {
       const filters = [];
       const filterValues = [];
       filterValues.push(Boolean(isDrossOrder));
-      filters.push(
-        `(LOWER(BTRIM(COALESCE(rod_size, ''))) = 'dross') = $${filterValues.length}`
-      );
+      filters.push(`(LOWER(BTRIM(COALESCE(rod_size, ''))) = 'dross') = $${filterValues.length}`);
       if (deliveryStartDate) {
         filterValues.push(deliveryStartDate);
         filters.push(`delivery_date::date >= $${filterValues.length}::date`);
@@ -5506,7 +5509,6 @@ class O2dService {
       }
 
       // 2. Fetch pending work for Vehicle Executive (Vikas)
-      // Only include orders whose delivery date is before today.
       const pendingVikasOrders = await pool.query(`
       SELECT
         id,
@@ -5519,7 +5521,8 @@ class O2dService {
       FROM public.sales_orders
       WHERE vehicle_arrangement @> '{"assigned_to_vehicle_executive": true}'::jsonb
         AND NOT (vehicle_arrangement ? 'actual_deliver_date')
-        AND delivery_date < CURRENT_DATE
+        AND dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Order Cancel'
+        AND delivery_date IS NOT NULL
       ORDER BY id ASC;
     `);
 
@@ -5571,36 +5574,44 @@ class O2dService {
               FROM jsonb_array_elements(
                   CASE
                       WHEN jsonb_typeof(so.invoice_and_dispatch->'invoices') = 'array'
-                      THEN so.invoice_and_dispatch->'invoices'
-                      ELSE '[]'::jsonb
-                  END
-              ) AS inv
-              WHERE NULLIF(TRIM(inv->>'invoice'), '') IS NOT NULL
-          ) AS invoice_numbers
+                  THEN so.invoice_and_dispatch->'invoices'
+                  ELSE '[]'::jsonb
+              END
+          ) AS inv
+          WHERE NULLIF(TRIM(inv->>'invoice'), '') IS NOT NULL
+      ) AS invoice_numbers
 
       FROM public.sales_orders so
 
       WHERE
-          EXISTS (
-              SELECT 1
-              FROM jsonb_array_elements(
-                  CASE
-                      WHEN jsonb_typeof(so.invoice_and_dispatch->'invoices') = 'array'
-                      THEN so.invoice_and_dispatch->'invoices'
-                      ELSE '[]'::jsonb
-                  END
-              ) AS inv
-              WHERE NULLIF(TRIM(inv->>'invoice'), '') IS NOT NULL
-                AND (
-                    NOT (inv ? 'invoice_url')
-                    OR inv->'invoice_url' = 'null'::jsonb
-                    OR NULLIF(TRIM(inv->>'invoice_url'), '') IS NULL
-                )
+          so.dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Order Cancel'
+          AND so.delivery_date IS NOT NULL
+          AND so.vehicle_arrangement ? 'actual_deliver_date'
+          AND so.vehicle_arrangement->>'actual_deliver_date' IS NOT NULL
+          AND so.vehicle_arrangement->>'actual_deliver_date' <> ''
+
+          AND (
+              EXISTS (
+                  SELECT 1
+                  FROM jsonb_array_elements(
+                      CASE
+                          WHEN jsonb_typeof(so.invoice_and_dispatch->'invoices') = 'array'
+                          THEN so.invoice_and_dispatch->'invoices'
+                          ELSE '[]'::jsonb
+                      END
+                  ) AS inv
+                  WHERE NULLIF(TRIM(inv->>'invoice'), '') IS NOT NULL
+                    AND (
+                        NOT (inv ? 'invoice_url')
+                        OR inv->'invoice_url' = 'null'::jsonb
+                        OR NULLIF(TRIM(inv->>'invoice_url'), '') IS NULL
+                    )
+              )
+
+              OR NULLIF(TRIM(so.vehicle_arrangement->>'bilty_url'), '') IS NULL
+
+              OR NULLIF(TRIM(so.vehicle_arrangement->>'kanta_parchi_url'), '') IS NULL
           )
-
-          OR NULLIF(TRIM(so.vehicle_arrangement->>'bilty_url'), '') IS NULL
-
-          OR NULLIF(TRIM(so.vehicle_arrangement->>'kanta_parchi_url'), '') IS NULL
 
       ORDER BY so.id;
     `);
@@ -5656,14 +5667,18 @@ class O2dService {
         ORDER BY so.id ASC;
       `);
 
-      // 5. Prepare report date
-      const reportDateStr = emailDateFormatter.format(new Date());
+      // 5. Reference date and time
+      const now = new Date();
+      const reportDateStr = emailDateFormatter.format(now);
 
-      // 6. Process Vehicle Executive tasks using WORK_CONFIG company working hours
-      const vikasItems = pendingVikasOrders.rows.map((order) => {
-        const delay = getVehicleWorkingDelay(order.delivery_date);
+      // 6. Process Vehicle Executive tasks: ONLY LATE orders (current time > planned delivery cutoff in working calendar)
+      const vikasItems = [];
+      for (const order of pendingVikasOrders.rows) {
+        const delay = getVehicleWorkingDelay(order.delivery_date, now);
+        // Exclude orders that are pending but within limit / not late
+        if (!delay.isOverdue) continue;
 
-        return {
+        vikasItems.push({
           id: order.id,
           client_name: order.client_name || "-",
           quantity_mt: order.quantity_mt ? `${order.quantity_mt} MT` : "-",
@@ -5672,13 +5687,21 @@ class O2dService {
             ? dateFormatter.format(new Date(order.delivery_date))
             : "-",
           planned_date: delay.plannedDate,
-          isOverdue: delay.isOverdue,
+          isOverdue: true,
           delayText: delay.delayText,
-        };
-      });
+        });
+      }
 
-      // 7. Process Invoice Executive tasks (Documents: Invoice, Kanta Parchi, Bilty)
-      const gaganItems = pendingGaganOrders.rows.map((order) => {
+      // 7. Process Invoice Executive tasks: ONLY LATE orders (current time > planned delivery cutoff at 18:00 IST in working hours)
+      const gaganItems = [];
+      for (const order of pendingGaganOrders.rows) {
+        const plannedTarget = getPlannedDeliveryTargetDate(order.delivery_date);
+        if (!plannedTarget) continue;
+
+        const diffHours = getWorkingHoursDiff(plannedTarget, now);
+        // Exclude orders that are pending but not yet late
+        if (diffHours === null || diffHours <= 0) continue;
+
         const pendingDocs = Array.isArray(order.pending_documents) ? order.pending_documents : [];
         const invoiceNums = Array.isArray(order.invoice_numbers)
           ? order.invoice_numbers.filter(Boolean)
@@ -5695,17 +5718,17 @@ class O2dService {
 
         const invoiceNumStr = invoiceNums.length > 0 ? invoiceNums.join(", ") : "-";
 
-        return {
+        gaganItems.push({
           id: order.sale_order_id,
           client_name: order.client_name || "-",
           invoice_number: invoiceNumStr,
           isInvoicePresent,
           isKantaParchiPresent,
           isBiltyPresent,
-        };
-      });
+        });
+      }
 
-      // 8. Process CRM Executive tasks (Checklist: Order ID, Intimation, Receiving Proof, Delivery & Weight) using WORK_CONFIG
+      // 8. Process CRM Executive tasks: ONLY include orders with AT LEAST ONE LATE task
       const crmItems = [];
 
       for (const order of pendingCrmOrders.rows) {
@@ -5725,7 +5748,7 @@ class O2dService {
         } else if (invoiceCompletedAt) {
           const plannedIntimation = getPlannedIntimationDate(invoiceCompletedAt);
           if (plannedIntimation) {
-            const delayText = formatWorkingDelay(plannedIntimation);
+            const delayText = formatWorkingDelay(plannedIntimation, now);
             if (delayText) {
               intimationStatus = { state: "overdue", delayText };
             } else {
@@ -5749,7 +5772,7 @@ class O2dService {
             invoiceCompletedAt
           );
           if (plannedReceiving) {
-            const delayText = formatWorkingDelay(plannedReceiving);
+            const delayText = formatWorkingDelay(plannedReceiving, now);
             if (delayText) {
               receivingStatus = { state: "overdue", delayText };
             } else {
@@ -5758,7 +5781,7 @@ class O2dService {
           }
         }
 
-        // C. Delivery & Weight & Quality (invoice/dispatch + 9 working hours)
+        // C. Delivery & Weight & Quality (actual_dispatch_date + 9 working hours, fallback invoiceCompletedAt)
         const isDeliveryWeightCompleted = !!(
           order.delivery_and_weight?.actual_delivery_timestamp ||
           order.delivery_and_weight?.actual_delivery_date ||
@@ -5769,11 +5792,11 @@ class O2dService {
         if (isDeliveryWeightCompleted) {
           deliveryStatus = { state: "completed" };
         } else {
-          const deliveryBaseDate = invoiceCompletedAt || dispatchDate;
+          const deliveryBaseDate = dispatchDate || invoiceCompletedAt;
           if (deliveryBaseDate) {
             const plannedDeliveryWeight = getPlannedDeliveryAndWeightDate(deliveryBaseDate);
             if (plannedDeliveryWeight) {
-              const delayText = formatWorkingDelay(plannedDeliveryWeight);
+              const delayText = formatWorkingDelay(plannedDeliveryWeight, now);
               if (delayText) {
                 deliveryStatus = { state: "overdue", delayText };
               } else {
@@ -5783,7 +5806,7 @@ class O2dService {
           }
         }
 
-        // Only include order if it has at least one overdue task
+        // Only include order if it has at least one overdue/late task
         if (
           intimationStatus.state === "overdue" ||
           receivingStatus.state === "overdue" ||
@@ -5851,7 +5874,7 @@ class O2dService {
               background-color: #f0fdf4;
               font-weight: 500;
             ">
-              ✓ No pending tasks for Vehicle Executive (Vikas Kr). All work completed.
+              ✓ No late tasks for Vehicle Executive (Vikas Kr). All work completed or on schedule.
             </td>
           </tr>
         `
@@ -5881,7 +5904,7 @@ class O2dService {
               background-color: #f0fdf4;
               font-weight: 500;
             ">
-              ✓ No pending documents for Invoice Executive (Gagan Sharma). All Invoices, Kanta Parchi, and Bilty uploaded.
+              ✓ No late documents for Invoice Executive (Gagan Sharma). All Invoices, Kanta Parchi, and Bilty uploaded or on schedule.
             </td>
           </tr>
         `
@@ -5926,7 +5949,7 @@ class O2dService {
               background-color: #f0fdf4;
               font-weight: 500;
             ">
-              ✓ No pending tasks for CRM Executive. All Intimation, Receiving, and Delivery details completed.
+              ✓ No late tasks for CRM Executive. All Intimation, Receiving, and Delivery details completed or on schedule.
             </td>
           </tr>
         `
@@ -5958,14 +5981,14 @@ class O2dService {
 
       // 13. Prepare email subject and shared replacements
       const appName = "Vinayak Enterprises";
-      const formattedDate = dateFormatter.format(new Date());
+      const formattedDate = dateFormatter.format(now);
 
       const subject =
         totalPending > 0
-          ? `⚠️ Daily Pending Work Report: ${totalPending} Task${
+          ? `⚠️ Daily Late Work Report: ${totalPending} Overdue Task${
               totalPending > 1 ? "s" : ""
-            } Pending - ${formattedDate}`
-          : `✅ Daily Work Report: All Clear (No Pending Tasks) - ${formattedDate}`;
+            } - ${formattedDate}`
+          : `✅ Daily Work Report: All Clear (No Overdue Tasks) - ${formattedDate}`;
 
       const replacements = {
         appName,
