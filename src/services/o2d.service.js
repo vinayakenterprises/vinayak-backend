@@ -3284,6 +3284,56 @@ class O2dService {
         throw new Error("No fields provided to update.");
       }
 
+      const collectionReasons = new Set([
+        "tds_settlement",
+        "material_return_credit_note",
+        "advance_payment_received",
+        "remaining_amount_settled",
+        "custom",
+      ]);
+      const collectionDetails = body.collection_details;
+      if (body.is_collected === true && !collectionDetails) {
+        const error = new Error("A completion basis is required to mark payment collected.");
+        error.statusCode = 400;
+        error.isOperational = true;
+        throw error;
+      }
+      if (collectionDetails !== undefined && collectionDetails !== null) {
+        if (
+          typeof collectionDetails !== "object" ||
+          Array.isArray(collectionDetails) ||
+          !collectionReasons.has(collectionDetails.reason)
+        ) {
+          const error = new Error("Invalid collection details or completion basis.");
+          error.statusCode = 400;
+          error.isOperational = true;
+          throw error;
+        }
+
+        const referenceReasons = new Set([
+          "tds_settlement",
+          "material_return_credit_note",
+          "advance_payment_received",
+          "remaining_amount_settled",
+          "custom",
+        ]);
+        if (
+          (collectionDetails.reference !== undefined &&
+            collectionDetails.reference !== null &&
+            (typeof collectionDetails.reference !== "string" ||
+              !referenceReasons.has(collectionDetails.reason))) ||
+          (collectionDetails.customReason !== undefined &&
+            collectionDetails.customReason !== null &&
+            (typeof collectionDetails.customReason !== "string" ||
+              collectionDetails.reason !== "custom"))
+        ) {
+          const error = new Error("Invalid collection reference or custom reason.");
+          error.statusCode = 400;
+          error.isOperational = true;
+          throw error;
+        }
+      }
+
       const setClauses = [];
       const values = [];
       let paramIndex = 1;
@@ -3296,12 +3346,18 @@ class O2dService {
         "balance",
         "is_deleted",
         "is_collected",
+        "collection_details",
       ];
 
       for (const key of keys) {
         if (allowedFields.includes(key)) {
-          setClauses.push(`${key} = $${paramIndex}`);
-          values.push(body[key]);
+          if (key === "collection_details") {
+            setClauses.push(`${key} = $${paramIndex}::jsonb`);
+            values.push(body[key] === null ? null : JSON.stringify(body[key]));
+          } else {
+            setClauses.push(`${key} = $${paramIndex}`);
+            values.push(body[key]);
+          }
           paramIndex++;
         }
       }
