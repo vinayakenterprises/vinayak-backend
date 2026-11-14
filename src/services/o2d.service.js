@@ -1569,7 +1569,13 @@ class O2dService {
     }
   }
 
-  async getQualityUncheckedData(userId, page = 1, requestedPageSize = 25, isAdmin = false) {
+  async getQualityUncheckedData(
+    userId,
+    page = 1,
+    requestedPageSize = 25,
+    isAdmin = false,
+    search = ""
+  ) {
     try {
       const requestedPage = Number(page);
 
@@ -1604,6 +1610,27 @@ class O2dService {
               so.client_name = c.company_name
               OR so.client_name = ANY(c.child_companies)
             )
+        )`);
+      }
+
+      const searchTerm = String(search || "").trim();
+      if (searchTerm) {
+        filterValues.push(`%${searchTerm}%`);
+        const searchParameter = `$${filterValues.length}`;
+        conditions.push(`(
+          so.client_name ILIKE ${searchParameter}
+          OR so.id::text ILIKE ${searchParameter}
+          OR EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(
+              CASE
+                WHEN jsonb_typeof(so.invoice_and_dispatch->'invoices') = 'array'
+                  THEN so.invoice_and_dispatch->'invoices'
+                ELSE '[]'::jsonb
+              END
+            ) AS invoice
+            WHERE COALESCE(invoice->>'invoice', '') ILIKE ${searchParameter}
+          )
         )`);
       }
 
@@ -1984,7 +2011,8 @@ class O2dService {
     deliveryEndDate,
     orderStatus,
     dispatchType,
-    delayReason
+    delayReason,
+    search = ""
   ) {
     try {
       const requestedPage = Number(page);
@@ -2029,6 +2057,17 @@ class O2dService {
       if (delayReason && delayReason !== "all") {
         filterValues.push(delayReason);
         filteredWhereClause += ` AND so.dispatch_info->>'delay_reason' = $${filterValues.length}`;
+      }
+      const searchTerm = String(search || "").trim();
+      if (searchTerm) {
+        filterValues.push(`%${searchTerm}%`);
+        const searchParameter = `$${filterValues.length}`;
+        filteredWhereClause += ` AND (
+          so.client_name ILIKE ${searchParameter}
+          OR so.sales_person_name ILIKE ${searchParameter}
+          OR so.id::text ILIKE ${searchParameter}
+          OR so.sale_order_generation->'sale_order_details'->>'orderno' ILIKE ${searchParameter}
+        )`;
       }
 
       const summaryQuery = `
@@ -3085,7 +3124,8 @@ class O2dService {
     orderStatus,
     page = 1,
     requestedPageSize = 25,
-    isDrossOrder = false
+    isDrossOrder = false,
+    search = ""
   ) {
     try {
       const requestedPage = Number(page);
@@ -3111,6 +3151,16 @@ class O2dService {
       if (orderStatus && orderStatus !== "all") {
         filterValues.push(orderStatus);
         filters.push(`order_status = $${filterValues.length}`);
+      }
+      const searchTerm = String(search || "").trim();
+      if (searchTerm) {
+        filterValues.push(`%${searchTerm}%`);
+        const searchParameter = `$${filterValues.length}`;
+        filters.push(`(
+          client_name ILIKE ${searchParameter}
+          OR id::text ILIKE ${searchParameter}
+          OR sale_order_generation->'sale_order_details'->>'orderno' ILIKE ${searchParameter}
+        )`);
       }
       const whereClause = filters.length ? ` WHERE ${filters.join(" AND ")}` : "";
 

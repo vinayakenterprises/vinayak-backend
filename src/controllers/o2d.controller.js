@@ -424,6 +424,7 @@ class O2dController {
         orderStatus,
         dispatchType,
         delayReason,
+        search,
       } = req.query;
       const result = await o2dService.getAssignedSOByCRM(
         userId,
@@ -433,7 +434,8 @@ class O2dController {
         deliveryEndDate,
         orderStatus,
         dispatchType,
-        delayReason
+        delayReason,
+        search
       );
       return res.status(200).json({
         status: "success",
@@ -788,6 +790,7 @@ class O2dController {
         page,
         pageSize,
         is_dross_order,
+        search,
       } = req.body;
       const result = await o2dService.getActiveSaleOrdersAdminDashboard(
         userId,
@@ -796,7 +799,8 @@ class O2dController {
         order_status,
         page,
         pageSize,
-        is_dross_order === true
+        is_dross_order === true,
+        search
       );
       return res.status(200).json({
         status: "success",
@@ -2032,9 +2036,15 @@ class O2dController {
       const isAdmin =
         req.user?.role?.toLowerCase() === "admin" &&
         req.user?.department?.toLowerCase() === "admin";
-      const { page, pageSize } = req.query;
+      const { page, pageSize, search } = req.query;
 
-      const result = await o2dService.getQualityUncheckedData(userId, page, pageSize, isAdmin);
+      const result = await o2dService.getQualityUncheckedData(
+        userId,
+        page,
+        pageSize,
+        isAdmin,
+        search
+      );
 
       return res.status(200).json({
         status: "success",
