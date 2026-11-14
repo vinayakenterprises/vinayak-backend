@@ -2357,6 +2357,95 @@ class O2dService {
     }
   }
 
+  // async createComplaintForSaleOrder(saleOrderId, data, userId) {
+  //   try {
+  //     const {
+  //       description,
+  //       documents,
+  //       contact_person_name,
+  //       contact_person_number,
+  //       priority_level,
+  //       remark,
+  //     } = data;
+
+  //     if (!description?.trim()) {
+  //       throw new Error("Description is required");
+  //     }
+
+  //     if (!priority_level?.trim()) {
+  //       throw new Error("Priority level is required");
+  //     }
+
+  //     // const orderExists = await pool.query(
+  //     //   `
+  //     // SELECT id
+  //     // FROM sales_orders
+  //     // WHERE id = $1
+  //     // `,
+  //     //   [saleOrderId]
+  //     // );
+
+  //     const orderExists = await pool.query(
+  //       `
+  //     SELECT
+  //       id,
+  //       delivery_and_weight->>'quality_confirmation_status' AS quality_confirmation_status
+  //     FROM sales_orders
+  //     WHERE id = $1
+  //     `,
+  //       [saleOrderId]
+  //     );
+
+  //     if (!orderExists.rows.length) {
+  //       throw new Error("Sales order not found");
+  //     }
+
+  //     const qualityConfirmationStatus = orderExists.rows[0].quality_confirmation_status;
+
+  //     // Complaint TAT calculation
+  //     const isWithinTat = qualityConfirmationStatus === "No within TAT";
+
+  //     const { rows } = await pool.query(
+  //       `
+  //     INSERT INTO complaint_info (
+  //       sale_order_id,
+  //       description,
+  //       documents,
+  //       contact_person_name,
+  //       contact_person_number,
+  //       priority_level,
+  //       remark,
+  //        is_within_tat,
+  //       created_by,
+  //       updated_by
+  //     )
+  //     VALUES (
+  //       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10
+  //     )
+  //     RETURNING *;
+  //     `,
+  //       [
+  //         saleOrderId,
+  //         description,
+  //         JSON.stringify(documents || []),
+  //         // documents || [],
+  //         contact_person_name || null,
+  //         contact_person_number || null,
+  //         priority_level,
+  //         remark || null,
+  //         isWithinTat,
+  //         userId,
+  //         userId,
+  //       ]
+  //     );
+
+  //     return rows[0];
+  //   } catch (error) {
+  //     console.error("Error in createComplaintForSaleOrder:", error);
+  //     throw error;
+  //   }
+  // }
+
   async createComplaintForSaleOrder(saleOrderId, data, userId) {
     try {
       const {
@@ -2378,7 +2467,9 @@ class O2dService {
 
       const orderExists = await pool.query(
         `
-      SELECT id
+      SELECT
+        id,
+        delivery_and_weight->>'quality_confirmation_status' AS quality_confirmation_status
       FROM sales_orders
       WHERE id = $1
       `,
@@ -2388,6 +2479,14 @@ class O2dService {
       if (!orderExists.rows.length) {
         throw new Error("Sales order not found");
       }
+
+      const qualityConfirmationStatus = orderExists.rows[0].quality_confirmation_status;
+
+      // Complaint TAT calculation
+      const isWithinTat = qualityConfirmationStatus?.trim().toLowerCase() === "no within tat";
+
+      // console.log("Quality Confirmation Status:", qualityConfirmationStatus);
+      console.log("Complaint Within TAT:", isWithinTat);
 
       const { rows } = await pool.query(
         `
@@ -2399,27 +2498,28 @@ class O2dService {
         contact_person_number,
         priority_level,
         remark,
+        is_within_tat,
         created_by,
         updated_by
       )
-      VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9
-      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       RETURNING *;
       `,
         [
           saleOrderId,
           description,
           JSON.stringify(documents || []),
-          // documents || [],
           contact_person_name || null,
           contact_person_number || null,
           priority_level,
           remark || null,
+          isWithinTat,
           userId,
           userId,
         ]
       );
+
+      console.log("Inserted Complaint TAT:", rows[0].is_within_tat);
 
       return rows[0];
     } catch (error) {
@@ -4393,8 +4493,9 @@ class O2dService {
         FROM public.sales_orders
         WHERE vehicle_arrangement->>'assigned_to_vehicle_executive' = 'true'
           AND NOT (vehicle_arrangement ? 'actual_deliver_date')
+          AND dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Order Cancel'
         ORDER BY id DESC;
-        `;
+      `;
       const { rows } = await pool.query(query, []);
       return rows;
     } catch (error) {
@@ -4423,18 +4524,22 @@ class O2dService {
         ? "client_name ILIKE $1 OR sales_person_name ILIKE $1"
         : "TRUE";
       const query = `
-        SELECT * FROM public.sales_orders
-        WHERE vehicle_arrangement->>'actual_deliver_date' is not null
+        SELECT *
+        FROM public.sales_orders
+        WHERE vehicle_arrangement->>'actual_deliver_date' IS NOT NULL
+          AND dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Order Cancel'
           ${searchClause}
         ORDER BY id DESC
         LIMIT $${limitParameter} OFFSET $${limitParameter + 1}
-        `;
-      const countQuery = `
-        SELECT COUNT(*) AS total_count,
-          COUNT(*) FILTER (WHERE ${searchPredicate}) AS total_items
-        FROM public.sales_orders
-        WHERE vehicle_arrangement->>'actual_deliver_date' IS NOT NULL
       `;
+      const countQuery = `
+      SELECT
+        COUNT(*) AS total_count,
+        COUNT(*) FILTER (WHERE ${searchPredicate}) AS total_items
+      FROM public.sales_orders
+      WHERE vehicle_arrangement->>'actual_deliver_date' IS NOT NULL
+        AND dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Order Cancel'
+    `;
       const [countResult, ordersResult] = await Promise.all([
         pool.query(countQuery, filterValues),
         pool.query(query, [...filterValues, pageSize, offset]),
