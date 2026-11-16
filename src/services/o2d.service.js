@@ -1,4 +1,5 @@
 import pool from "../config/database.js";
+import config from "../config/env.js";
 import { HTTP_STATUS, ORDER_STAGES } from "../utils/constants.js";
 import { emitToUser } from "../utils/socket.js";
 import { createNotification } from "./notification.service.js";
@@ -6191,7 +6192,7 @@ class O2dService {
               .join("");
 
       // 13. Prepare email subject and shared replacements
-      const appName = "Vinayak Enterprises";
+      const appName = config.branding.companyName;
       const formattedDate = dateFormatter.format(now);
 
       const subject =
