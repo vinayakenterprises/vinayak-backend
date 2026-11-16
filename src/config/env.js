@@ -13,14 +13,22 @@ const nodeEnv = process.env.NODE_ENV || "development";
 // Dynamic database selection based on environment
 const defaultDbName =
   nodeEnv === "production"
-    ? process.env.DB_DATABASE_PROD || "vinayak_db"
-    : process.env.DB_DATABASE_DEV || "vinayak_db_dev";
+    ? process.env.DB_DATABASE_PROD
+    : process.env.DB_DATABASE_DEV;
 
 const dbName = process.env.DB_DATABASE || defaultDbName;
+if (!dbName) {
+  const databaseVariable =
+    nodeEnv === "production" ? "DB_DATABASE_PROD" : "DB_DATABASE_DEV";
+  throw new Error(`Database name is not configured. Set DB_DATABASE or ${databaseVariable}.`);
+}
+
+const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
 
 const config = {
   port: parseInt(process.env.PORT || "3000", 10),
   nodeEnv,
+  frontendUrl,
   db: {
     user: process.env.DB_USER || "postgres",
     host: process.env.DB_HOST || "localhost",
@@ -37,6 +45,11 @@ const config = {
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
     region: process.env.AWS_REGION || "us-east-1",
     bucketName: process.env.AWS_BUCKET_NAME || "",
+    uploadPrefix: (process.env.S3_UPLOAD_PREFIX || "mittalu").replace(/^\/+|\/+$/g, ""),
+  },
+  branding: {
+    companyName: process.env.COMPANY_NAME || "Mittalu Pvt Ltd",
+    companyShortName: process.env.COMPANY_SHORT_NAME || "MPL",
   },
 };
 
