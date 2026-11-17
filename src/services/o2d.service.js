@@ -6842,18 +6842,19 @@ async saveCrmKpiPromises(promises) {
       // 2. Fetch pending work for Vehicle Executive (Vikas)
       const pendingVikasOrders = await pool.query(`
       SELECT
-        id,
-        client_name,
-        quantity_mt,
-        rod_size,
-        delivery_date,
-        vehicle_arrangement,
-        order_status
+      id,
+      client_name,
+      quantity_mt,
+      rod_size,
+      delivery_date,
+      vehicle_arrangement,
+      order_status
       FROM public.sales_orders
       WHERE vehicle_arrangement @> '{"assigned_to_vehicle_executive": true}'::jsonb
         AND NOT (vehicle_arrangement ? 'actual_deliver_date')
         AND dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Order Cancel'
         AND delivery_date IS NOT NULL
+        AND created_at >= NOW() - INTERVAL '10 days'
       ORDER BY id ASC;
     `);
 
@@ -6866,136 +6867,117 @@ async saveCrmKpiPromises(promises) {
 
           ARRAY_REMOVE(
               ARRAY[
-                  CASE
-                      WHEN EXISTS (
-                          SELECT 1
-                          FROM jsonb_array_elements(
-                              CASE
-                                  WHEN jsonb_typeof(so.invoice_and_dispatch->'invoices') = 'array'
-                                  THEN so.invoice_and_dispatch->'invoices'
-                                  ELSE '[]'::jsonb
-                              END
-                          ) AS inv
-                          WHERE NULLIF(TRIM(inv->>'invoice'), '') IS NOT NULL
-                            AND (
-                                NOT (inv ? 'invoice_url')
-                                OR inv->'invoice_url' = 'null'::jsonb
-                                OR NULLIF(TRIM(inv->>'invoice_url'), '') IS NULL
-                            )
-                      )
-                      THEN 'Invoice'
-                  END,
-
-                  CASE
-                      WHEN NULLIF(TRIM(so.vehicle_arrangement->>'bilty_url'), '') IS NULL
-                      THEN 'Bilty'
-                  END,
-
-                  CASE
-                      WHEN NULLIF(TRIM(so.vehicle_arrangement->>'kanta_parchi_url'), '') IS NULL
-                      THEN 'Kanta Parchi'
-                  END
+                  CASE WHEN inv.has_pending_invoice THEN 'Invoice' END,
+                  CASE WHEN NULLIF(TRIM(so.vehicle_arrangement->>'bilty_url'), '') IS NULL
+                      THEN 'Bilty' END,
+                  CASE WHEN NULLIF(TRIM(so.vehicle_arrangement->>'kanta_parchi_url'), '') IS NULL
+                      THEN 'Kanta Parchi' END
               ],
               NULL
           ) AS pending_documents,
 
-          -- All invoice numbers for this sales order
-          ARRAY(
-              SELECT inv->>'invoice'
-              FROM jsonb_array_elements(
-                  CASE
-                      WHEN jsonb_typeof(so.invoice_and_dispatch->'invoices') = 'array'
-                  THEN so.invoice_and_dispatch->'invoices'
-                  ELSE '[]'::jsonb
-              END
-          ) AS inv
-          WHERE NULLIF(TRIM(inv->>'invoice'), '') IS NOT NULL
-      ) AS invoice_numbers
+          inv.invoice_numbers
 
       FROM public.sales_orders so
 
+      CROSS JOIN LATERAL (
+          SELECT
+              COALESCE(
+                  BOOL_OR(
+                      NULLIF(TRIM(invoice->>'invoice'), '') IS NOT NULL
+                      AND NULLIF(TRIM(invoice->>'invoice_url'), '') IS NULL
+                  ),
+                  FALSE
+              ) AS has_pending_invoice,
+
+              ARRAY_AGG(invoice->>'invoice') FILTER (
+                  WHERE NULLIF(TRIM(invoice->>'invoice'), '') IS NOT NULL
+              ) AS invoice_numbers
+
+          FROM jsonb_array_elements(
+              CASE
+                  WHEN jsonb_typeof(so.invoice_and_dispatch->'invoices') = 'array'
+                  THEN so.invoice_and_dispatch->'invoices'
+                  ELSE '[]'::jsonb
+              END
+          ) AS invoice
+      ) inv
+
       WHERE
+          -- Exclude cancelled orders
           so.dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Order Cancel'
+
+          -- Require delivery date and actual delivery date
           AND so.delivery_date IS NOT NULL
-          AND so.vehicle_arrangement ? 'actual_deliver_date'
-          AND so.vehicle_arrangement->>'actual_deliver_date' IS NOT NULL
-          AND so.vehicle_arrangement->>'actual_deliver_date' <> ''
+          AND NULLIF(TRIM(so.vehicle_arrangement->>'actual_deliver_date'), '') IS NOT NULL
 
+          -- Orders created within the last 10 days
+          AND so.created_at >= NOW() - INTERVAL '10 days'
+          AND so.created_at <= NOW()
+
+          -- At least one pending document
           AND (
-              EXISTS (
-                  SELECT 1
-                  FROM jsonb_array_elements(
-                      CASE
-                          WHEN jsonb_typeof(so.invoice_and_dispatch->'invoices') = 'array'
-                          THEN so.invoice_and_dispatch->'invoices'
-                          ELSE '[]'::jsonb
-                      END
-                  ) AS inv
-                  WHERE NULLIF(TRIM(inv->>'invoice'), '') IS NOT NULL
-                    AND (
-                        NOT (inv ? 'invoice_url')
-                        OR inv->'invoice_url' = 'null'::jsonb
-                        OR NULLIF(TRIM(inv->>'invoice_url'), '') IS NULL
-                    )
-              )
-
+              inv.has_pending_invoice
               OR NULLIF(TRIM(so.vehicle_arrangement->>'bilty_url'), '') IS NULL
-
               OR NULLIF(TRIM(so.vehicle_arrangement->>'kanta_parchi_url'), '') IS NULL
           )
 
-      ORDER BY so.id;
+      ORDER BY so.id ASC;
     `);
 
       // 4. Fetch pending work for CRM Executive (Intimation, Receiving Proof, Delivery & Weight & Quality)
       const pendingCrmOrders = await pool.query(`
         SELECT
-          so.id,
-          so.client_name,
-          so.delivery_date,
-          so.invoice_and_dispatch,
-          so.intimation_thankyou,
-          so.receiving_details,
-          so.delivery_and_weight
-        FROM public.sales_orders so
-        WHERE (
-          so.invoice_and_dispatch ? 'invoice_completed_at'
-          OR so.invoice_and_dispatch ? 'actual_dispatch_date'
+        so.id,
+        so.client_name,
+        so.delivery_date,
+        so.invoice_and_dispatch,
+        so.intimation_thankyou,
+        so.receiving_details,
+        so.delivery_and_weight
+
+    FROM public.sales_orders so
+
+    WHERE
+        -- Invoice completion or actual dispatch must exist
+        (
+            so.invoice_and_dispatch ? 'invoice_completed_at'
+            OR so.invoice_and_dispatch ? 'actual_dispatch_date'
         )
+
+        -- Orders created within the last 10 days
+        AND so.created_at >= NOW() - INTERVAL '10 days'
+        AND so.created_at <= NOW()
+
         AND (
-          -- A. Intimation pending
-          (
-            so.invoice_and_dispatch ? 'invoice_completed_at'
-            AND NULLIF(TRIM(so.invoice_and_dispatch->>'invoice_completed_at'), '') IS NOT NULL
-            AND (
-              so.intimation_thankyou IS NULL
-              OR NOT (so.intimation_thankyou ? 'completed_at')
-              OR NULLIF(TRIM(so.intimation_thankyou->>'completed_at'), '') IS NULL
+            -- A. Intimation pending
+            (
+                NULLIF(TRIM(so.invoice_and_dispatch->>'invoice_completed_at'), '') IS NOT NULL
+                AND NULLIF(TRIM(so.intimation_thankyou->>'completed_at'), '') IS NULL
             )
-          )
-          OR
-          -- B. Receiving Proof pending
-          (
-            so.invoice_and_dispatch ? 'invoice_completed_at'
-            AND NULLIF(TRIM(so.invoice_and_dispatch->>'invoice_completed_at'), '') IS NOT NULL
-            AND (
-              so.receiving_details IS NULL
-              OR NOT (so.receiving_details ? 'completion_timestamp')
-              OR NULLIF(TRIM(so.receiving_details->>'completion_timestamp'), '') IS NULL
+
+            OR
+
+            -- B. Receiving Proof pending
+            (
+                NULLIF(TRIM(so.invoice_and_dispatch->>'invoice_completed_at'), '') IS NOT NULL
+                AND NULLIF(TRIM(so.receiving_details->>'completion_timestamp'), '') IS NULL
             )
-          )
-          OR
-          -- C. Delivery & Weight & Quality pending
-          (
-            so.delivery_and_weight IS NULL
-            OR (
-              NULLIF(TRIM(so.delivery_and_weight->>'actual_delivery_timestamp'), '') IS NULL
-              AND NULLIF(TRIM(so.delivery_and_weight->>'actual_delivery_date'), '') IS NULL
-              AND COALESCE(NULLIF(TRIM(so.delivery_and_weight->>'delivery_status'), ''), '') != 'Delivered'
+
+            OR
+
+            -- C. Delivery & Weight & Quality pending
+            (
+                NULLIF(TRIM(so.delivery_and_weight->>'actual_delivery_timestamp'), '') IS NULL
+                AND NULLIF(TRIM(so.delivery_and_weight->>'actual_delivery_date'), '') IS NULL
+                AND COALESCE(
+                    NULLIF(TRIM(so.delivery_and_weight->>'delivery_status'), ''),
+                    ''
+                ) <> 'Delivered'
             )
-          )
         )
-        ORDER BY so.id ASC;
+
+    ORDER BY so.id ASC;
       `);
 
       // 5. Reference date and time
