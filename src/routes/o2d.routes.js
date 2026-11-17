@@ -346,4 +346,46 @@ router.post(
 
 router.get("/get-quality-unchecked-data", authMiddleware, o2dController.getQualityUncheckedData);
 
+router.get(
+  "/get-crm-kpi-total-dispatch-plan-by-date",
+  authMiddleware,
+  o2dController.getCrmKpiTotalDispatchPlanByDate
+);
+
+router.get(
+  "/get-crm-kpi-total-dispatch-actual-by-date",
+  authMiddleware,
+  o2dController.getCrmKpiTotalDispatchActualByDate
+);
+
+router.get(
+  "/get-crm-kpi-total-payment-collection-plan-by-date",
+  authMiddleware,
+  o2dController.getCrmKpiTotalPaymentCollectionPlanByDate
+);
+
+router.get(
+  "/get-crm-kpi-total-payment-collection-actual-by-date",
+  authMiddleware,
+  o2dController.getCrmKpiTotalPaymentCollectionActualByDate
+);
+
+router.get(
+  "/get-crm-kpi-complaint-counts-by-date",
+  authMiddleware,
+  o2dController.getCrmKpiComplaintCountsByDate
+);
+
+router.get(
+  "/get-crm-kpi-promises",
+  authMiddleware,
+  o2dController.getCrmKpiPromises
+);
+
+router.post(
+  "/save-crm-kpi-promises",
+  authMiddleware,
+  o2dController.saveCrmKpiPromises
+);
+
 export default router;
