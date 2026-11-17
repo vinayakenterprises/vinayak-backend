@@ -87,6 +87,7 @@ class O2dService {
     }
 
     let orderStatus = null;
+    let soGenerationExecutiveId = null;
     let soGenerationExecutiveEmail = null;
     if (credit_limit_info?.credit_limit_approval_request === true) {
       orderStatus = ORDER_STAGES.credit_limit_approval_stage;
@@ -154,19 +155,20 @@ class O2dService {
         );
 
         const soGenerationExecutive = getSoGenerationExecutive.rows[0];
-        const soGenerationExecutiveId = soGenerationExecutive?.id;
+        // const soGenerationExecutiveId = soGenerationExecutive?.id;
+        soGenerationExecutiveId = soGenerationExecutive?.id;
         soGenerationExecutiveEmail = soGenerationExecutive?.email_id;
 
         if (!soGenerationExecutiveId) {
           throw new Error("Sales Executive not found");
         }
 
-        const notif = await createNotification(
-          soGenerationExecutiveId,
-          `Please create SO for ${client_name}.`,
-          "so_generation_notification"
-        );
-        emitToUser(soGenerationExecutiveId, "new_notification", notif);
+        // const notif = await createNotification(
+        //   soGenerationExecutiveId,
+        //   `Please create SO for ${client_name}.`,
+        //   "so_generation_notification"
+        // );
+        // emitToUser(soGenerationExecutiveId, "new_notification", notif);
       } catch (error) {
         console.log("error while sending notification: ", error);
       }
@@ -241,6 +243,21 @@ class O2dService {
     const { rows } = await pool.query(query, values);
 
     const createdOrder = rows[0];
+
+    if (soGenerationExecutiveId) {
+  try {
+    const notif = await createNotification(
+      soGenerationExecutiveId,
+      // `Please create SO for ${createdOrder.client_name}. Order ID: ${createdOrder.id}. Quantity: ${createdOrder.quantity_mt} MT.`,
+      `Create SO for ${createdOrder.client_name}. | Order ID: ${createdOrder.id}. | Quantity: ${createdOrder.quantity_mt} MT.`,
+      "so_generation_notification"
+    );
+
+    emitToUser(soGenerationExecutiveId, "new_notification", notif);
+  } catch (error) {
+    console.log("Error sending SO creation notification:", error);
+  }
+}
 
     if (soGenerationExecutiveEmail) {
       try {
