@@ -2,6 +2,7 @@ import cron from "node-cron";
 import { createNotification } from "../services/notification.service.js";
 import { emitToUser } from "../utils/socket.js";
 import pool from "../config/database.js";
+import config from "../config/env.js";
 import { sendMail } from "../services/mail.service.js";
 import imsService from "../services/ims.service.js";
 import {
@@ -69,7 +70,7 @@ export const initCronJobs = () => {
               replacements: {
                 tender_id: tender.tender_id,
                 tender_title: tender.tender_title,
-                appName: "Mittalu Pvt Ltd",
+                appName: config.branding.companyName,
               },
             });
           } catch (mailError) {

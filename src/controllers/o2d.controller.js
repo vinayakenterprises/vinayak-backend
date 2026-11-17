@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import config from "../config/env.js";
 import o2dService from "../services/o2d.service.js";
 import uploadFileToS3 from "../utils/helpers/uploadSOToS3.js";
 import uploadPdfToS3 from "../utils/helpers/uploadSOToS3.js";
@@ -424,6 +425,7 @@ class O2dController {
         orderStatus,
         dispatchType,
         delayReason,
+        search,
       } = req.query;
       const result = await o2dService.getAssignedSOByCRM(
         userId,
@@ -433,7 +435,8 @@ class O2dController {
         deliveryEndDate,
         orderStatus,
         dispatchType,
-        delayReason
+        delayReason,
+        search
       );
       return res.status(200).json({
         status: "success",
@@ -958,6 +961,7 @@ saveCrmKpiPromises = async (req, res, next) => {
         page,
         pageSize,
         is_dross_order,
+        search,
       } = req.body;
       const result = await o2dService.getActiveSaleOrdersAdminDashboard(
         userId,
@@ -966,7 +970,8 @@ saveCrmKpiPromises = async (req, res, next) => {
         order_status,
         page,
         pageSize,
-        is_dross_order === true
+        is_dross_order === true,
+        search
       );
       return res.status(200).json({
         status: "success",
@@ -1385,7 +1390,7 @@ saveCrmKpiPromises = async (req, res, next) => {
       if (receivingProofFiles.length > 0) {
         const uploadedReceivingProofUrls = await Promise.all(
           receivingProofFiles.map((file) =>
-            uploadFileToS3(file, `vinayak-enterprises/sales-orders/${orderId}/crm/receiving-proof`)
+            uploadFileToS3(file, `${config.s3.uploadPrefix}/sales-orders/${orderId}/crm/receiving-proof`)
           )
         );
         documents = [...(documents || []), ...uploadedReceivingProofUrls];
@@ -1394,7 +1399,7 @@ saveCrmKpiPromises = async (req, res, next) => {
       if (receivingKantaParchiFile) {
         receivingKantaParchiUrl = await uploadFileToS3(
           receivingKantaParchiFile,
-          `vinayak-enterprises/sales-orders/${orderId}/crm/receiving-kanta-parchi`
+          `${config.s3.uploadPrefix}/sales-orders/${orderId}/crm/receiving-kanta-parchi`
         );
       }
 
@@ -1438,7 +1443,7 @@ saveCrmKpiPromises = async (req, res, next) => {
 
       // Permanent JWT without expiresIn
       const token = jwt.sign({ orderId: id }, process.env.DOC_SHARE_JWT_SECRET);
-      const shareUrl = `${process.env.FRONTEND_URL}/public/order-documents?token=${token}`;
+      const shareUrl = `${config.frontendUrl}/public/order-documents?token=${token}`;
       return res.json({
         status: "success",
         data: { shareUrl, token },
@@ -1578,19 +1583,19 @@ saveCrmKpiPromises = async (req, res, next) => {
       if (allBundlesFile) {
         vehicleData.all_bundles_image = await uploadFileToS3(
           allBundlesFile,
-          `vinayak-enterprises/sales-orders/${id}/transport-executive/all-bundles`
+          `${config.s3.uploadPrefix}/sales-orders/${id}/transport-executive/all-bundles`
         );
       }
       if (driverVehicleFile) {
         vehicleData.driver_and_vehicle_number_image = await uploadFileToS3(
           driverVehicleFile,
-          `vinayak-enterprises/sales-orders/${id}/transport-executive/driver-vehicle`
+          `${config.s3.uploadPrefix}/sales-orders/${id}/transport-executive/driver-vehicle`
         );
       }
       if (driverLicenseFile) {
         vehicleData.driver_license_image = await uploadFileToS3(
           driverLicenseFile,
-          `vinayak-enterprises/sales-orders/${id}/transport-executive/driver-license`
+          `${config.s3.uploadPrefix}/sales-orders/${id}/transport-executive/driver-license`
         );
       }
 
@@ -2202,9 +2207,15 @@ saveCrmKpiPromises = async (req, res, next) => {
       const isAdmin =
         req.user?.role?.toLowerCase() === "admin" &&
         req.user?.department?.toLowerCase() === "admin";
-      const { page, pageSize } = req.query;
+      const { page, pageSize, search } = req.query;
 
-      const result = await o2dService.getQualityUncheckedData(userId, page, pageSize, isAdmin);
+      const result = await o2dService.getQualityUncheckedData(
+        userId,
+        page,
+        pageSize,
+        isAdmin,
+        search
+      );
 
       return res.status(200).json({
         status: "success",

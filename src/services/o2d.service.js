@@ -1,4 +1,5 @@
 import pool from "../config/database.js";
+import config from "../config/env.js";
 import { HTTP_STATUS, ORDER_STAGES } from "../utils/constants.js";
 import { emitToUser } from "../utils/socket.js";
 import { createNotification } from "./notification.service.js";
@@ -1569,7 +1570,13 @@ class O2dService {
     }
   }
 
-  async getQualityUncheckedData(userId, page = 1, requestedPageSize = 25, isAdmin = false) {
+  async getQualityUncheckedData(
+    userId,
+    page = 1,
+    requestedPageSize = 25,
+    isAdmin = false,
+    search = ""
+  ) {
     try {
       const requestedPage = Number(page);
 
@@ -1604,6 +1611,27 @@ class O2dService {
               so.client_name = c.company_name
               OR so.client_name = ANY(c.child_companies)
             )
+        )`);
+      }
+
+      const searchTerm = String(search || "").trim();
+      if (searchTerm) {
+        filterValues.push(`%${searchTerm}%`);
+        const searchParameter = `$${filterValues.length}`;
+        conditions.push(`(
+          so.client_name ILIKE ${searchParameter}
+          OR so.id::text ILIKE ${searchParameter}
+          OR EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(
+              CASE
+                WHEN jsonb_typeof(so.invoice_and_dispatch->'invoices') = 'array'
+                  THEN so.invoice_and_dispatch->'invoices'
+                ELSE '[]'::jsonb
+              END
+            ) AS invoice
+            WHERE COALESCE(invoice->>'invoice', '') ILIKE ${searchParameter}
+          )
         )`);
       }
 
@@ -1984,7 +2012,8 @@ class O2dService {
     deliveryEndDate,
     orderStatus,
     dispatchType,
-    delayReason
+    delayReason,
+    search = ""
   ) {
     try {
       const requestedPage = Number(page);
@@ -2029,6 +2058,17 @@ class O2dService {
       if (delayReason && delayReason !== "all") {
         filterValues.push(delayReason);
         filteredWhereClause += ` AND so.dispatch_info->>'delay_reason' = $${filterValues.length}`;
+      }
+      const searchTerm = String(search || "").trim();
+      if (searchTerm) {
+        filterValues.push(`%${searchTerm}%`);
+        const searchParameter = `$${filterValues.length}`;
+        filteredWhereClause += ` AND (
+          so.client_name ILIKE ${searchParameter}
+          OR so.sales_person_name ILIKE ${searchParameter}
+          OR so.id::text ILIKE ${searchParameter}
+          OR so.sale_order_generation->'sale_order_details'->>'orderno' ILIKE ${searchParameter}
+        )`;
       }
 
       const summaryQuery = `
@@ -2357,6 +2397,95 @@ class O2dService {
     }
   }
 
+  // async createComplaintForSaleOrder(saleOrderId, data, userId) {
+  //   try {
+  //     const {
+  //       description,
+  //       documents,
+  //       contact_person_name,
+  //       contact_person_number,
+  //       priority_level,
+  //       remark,
+  //     } = data;
+
+  //     if (!description?.trim()) {
+  //       throw new Error("Description is required");
+  //     }
+
+  //     if (!priority_level?.trim()) {
+  //       throw new Error("Priority level is required");
+  //     }
+
+  //     // const orderExists = await pool.query(
+  //     //   `
+  //     // SELECT id
+  //     // FROM sales_orders
+  //     // WHERE id = $1
+  //     // `,
+  //     //   [saleOrderId]
+  //     // );
+
+  //     const orderExists = await pool.query(
+  //       `
+  //     SELECT
+  //       id,
+  //       delivery_and_weight->>'quality_confirmation_status' AS quality_confirmation_status
+  //     FROM sales_orders
+  //     WHERE id = $1
+  //     `,
+  //       [saleOrderId]
+  //     );
+
+  //     if (!orderExists.rows.length) {
+  //       throw new Error("Sales order not found");
+  //     }
+
+  //     const qualityConfirmationStatus = orderExists.rows[0].quality_confirmation_status;
+
+  //     // Complaint TAT calculation
+  //     const isWithinTat = qualityConfirmationStatus === "No within TAT";
+
+  //     const { rows } = await pool.query(
+  //       `
+  //     INSERT INTO complaint_info (
+  //       sale_order_id,
+  //       description,
+  //       documents,
+  //       contact_person_name,
+  //       contact_person_number,
+  //       priority_level,
+  //       remark,
+  //        is_within_tat,
+  //       created_by,
+  //       updated_by
+  //     )
+  //     VALUES (
+  //       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10
+  //     )
+  //     RETURNING *;
+  //     `,
+  //       [
+  //         saleOrderId,
+  //         description,
+  //         JSON.stringify(documents || []),
+  //         // documents || [],
+  //         contact_person_name || null,
+  //         contact_person_number || null,
+  //         priority_level,
+  //         remark || null,
+  //         isWithinTat,
+  //         userId,
+  //         userId,
+  //       ]
+  //     );
+
+  //     return rows[0];
+  //   } catch (error) {
+  //     console.error("Error in createComplaintForSaleOrder:", error);
+  //     throw error;
+  //   }
+  // }
+
   async createComplaintForSaleOrder(saleOrderId, data, userId) {
     try {
       const {
@@ -2378,7 +2507,9 @@ class O2dService {
 
       const orderExists = await pool.query(
         `
-      SELECT id
+      SELECT
+        id,
+        delivery_and_weight->>'quality_confirmation_status' AS quality_confirmation_status
       FROM sales_orders
       WHERE id = $1
       `,
@@ -2388,6 +2519,14 @@ class O2dService {
       if (!orderExists.rows.length) {
         throw new Error("Sales order not found");
       }
+
+      const qualityConfirmationStatus = orderExists.rows[0].quality_confirmation_status;
+
+      // Complaint TAT calculation
+      const isWithinTat = qualityConfirmationStatus?.trim().toLowerCase() === "no within tat";
+
+      // console.log("Quality Confirmation Status:", qualityConfirmationStatus);
+      console.log("Complaint Within TAT:", isWithinTat);
 
       const { rows } = await pool.query(
         `
@@ -2399,27 +2538,28 @@ class O2dService {
         contact_person_number,
         priority_level,
         remark,
+        is_within_tat,
         created_by,
         updated_by
       )
-      VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9
-      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       RETURNING *;
       `,
         [
           saleOrderId,
           description,
           JSON.stringify(documents || []),
-          // documents || [],
           contact_person_name || null,
           contact_person_number || null,
           priority_level,
           remark || null,
+          isWithinTat,
           userId,
           userId,
         ]
       );
+
+      console.log("Inserted Complaint TAT:", rows[0].is_within_tat);
 
       return rows[0];
     } catch (error) {
@@ -4087,7 +4227,8 @@ async saveCrmKpiPromises(promises) {
     orderStatus,
     page = 1,
     requestedPageSize = 25,
-    isDrossOrder = false
+    isDrossOrder = false,
+    search = ""
   ) {
     try {
       const requestedPage = Number(page);
@@ -4113,6 +4254,16 @@ async saveCrmKpiPromises(promises) {
       if (orderStatus && orderStatus !== "all") {
         filterValues.push(orderStatus);
         filters.push(`order_status = $${filterValues.length}`);
+      }
+      const searchTerm = String(search || "").trim();
+      if (searchTerm) {
+        filterValues.push(`%${searchTerm}%`);
+        const searchParameter = `$${filterValues.length}`;
+        filters.push(`(
+          client_name ILIKE ${searchParameter}
+          OR id::text ILIKE ${searchParameter}
+          OR sale_order_generation->'sale_order_details'->>'orderno' ILIKE ${searchParameter}
+        )`);
       }
       const whereClause = filters.length ? ` WHERE ${filters.join(" AND ")}` : "";
 
@@ -4286,6 +4437,56 @@ async saveCrmKpiPromises(promises) {
         throw new Error("No fields provided to update.");
       }
 
+      const collectionReasons = new Set([
+        "tds_settlement",
+        "material_return_credit_note",
+        "advance_payment_received",
+        "remaining_amount_settled",
+        "custom",
+      ]);
+      const collectionDetails = body.collection_details;
+      if (body.is_collected === true && !collectionDetails) {
+        const error = new Error("A completion basis is required to mark payment collected.");
+        error.statusCode = 400;
+        error.isOperational = true;
+        throw error;
+      }
+      if (collectionDetails !== undefined && collectionDetails !== null) {
+        if (
+          typeof collectionDetails !== "object" ||
+          Array.isArray(collectionDetails) ||
+          !collectionReasons.has(collectionDetails.reason)
+        ) {
+          const error = new Error("Invalid collection details or completion basis.");
+          error.statusCode = 400;
+          error.isOperational = true;
+          throw error;
+        }
+
+        const referenceReasons = new Set([
+          "tds_settlement",
+          "material_return_credit_note",
+          "advance_payment_received",
+          "remaining_amount_settled",
+          "custom",
+        ]);
+        if (
+          (collectionDetails.reference !== undefined &&
+            collectionDetails.reference !== null &&
+            (typeof collectionDetails.reference !== "string" ||
+              !referenceReasons.has(collectionDetails.reason))) ||
+          (collectionDetails.customReason !== undefined &&
+            collectionDetails.customReason !== null &&
+            (typeof collectionDetails.customReason !== "string" ||
+              collectionDetails.reason !== "custom"))
+        ) {
+          const error = new Error("Invalid collection reference or custom reason.");
+          error.statusCode = 400;
+          error.isOperational = true;
+          throw error;
+        }
+      }
+
       const setClauses = [];
       const values = [];
       let paramIndex = 1;
@@ -4298,12 +4499,18 @@ async saveCrmKpiPromises(promises) {
         "balance",
         "is_deleted",
         "is_collected",
+        "collection_details",
       ];
 
       for (const key of keys) {
         if (allowedFields.includes(key)) {
-          setClauses.push(`${key} = $${paramIndex}`);
-          values.push(body[key]);
+          if (key === "collection_details") {
+            setClauses.push(`${key} = $${paramIndex}::jsonb`);
+            values.push(body[key] === null ? null : JSON.stringify(body[key]));
+          } else {
+            setClauses.push(`${key} = $${paramIndex}`);
+            values.push(body[key]);
+          }
           paramIndex++;
         }
       }
@@ -5495,8 +5702,9 @@ async saveCrmKpiPromises(promises) {
         FROM public.sales_orders
         WHERE vehicle_arrangement->>'assigned_to_vehicle_executive' = 'true'
           AND NOT (vehicle_arrangement ? 'actual_deliver_date')
+          AND dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Order Cancel'
         ORDER BY id DESC;
-        `;
+      `;
       const { rows } = await pool.query(query, []);
       return rows;
     } catch (error) {
@@ -5525,18 +5733,22 @@ async saveCrmKpiPromises(promises) {
         ? "client_name ILIKE $1 OR sales_person_name ILIKE $1"
         : "TRUE";
       const query = `
-        SELECT * FROM public.sales_orders
-        WHERE vehicle_arrangement->>'actual_deliver_date' is not null
+        SELECT *
+        FROM public.sales_orders
+        WHERE vehicle_arrangement->>'actual_deliver_date' IS NOT NULL
+          AND dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Order Cancel'
           ${searchClause}
         ORDER BY id DESC
         LIMIT $${limitParameter} OFFSET $${limitParameter + 1}
-        `;
-      const countQuery = `
-        SELECT COUNT(*) AS total_count,
-          COUNT(*) FILTER (WHERE ${searchPredicate}) AS total_items
-        FROM public.sales_orders
-        WHERE vehicle_arrangement->>'actual_deliver_date' IS NOT NULL
       `;
+      const countQuery = `
+      SELECT
+        COUNT(*) AS total_count,
+        COUNT(*) FILTER (WHERE ${searchPredicate}) AS total_items
+      FROM public.sales_orders
+      WHERE vehicle_arrangement->>'actual_deliver_date' IS NOT NULL
+        AND dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Order Cancel'
+    `;
       const [countResult, ordersResult] = await Promise.all([
         pool.query(countQuery, filterValues),
         pool.query(query, [...filterValues, pageSize, offset]),
@@ -7082,7 +7294,7 @@ async saveCrmKpiPromises(promises) {
               .join("");
 
       // 13. Prepare email subject and shared replacements
-      const appName = "Vinayak Enterprises";
+      const appName = config.branding.companyName;
       const formattedDate = dateFormatter.format(now);
 
       const subject =
