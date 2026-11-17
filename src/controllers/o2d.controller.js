@@ -628,6 +628,176 @@ class O2dController {
     }
   };
 
+    getCrmKpiTotalDispatchPlanByDate = async (req, res, next) => {
+    try {
+      const role = req.user?.role?.toLowerCase();
+      const department = req.user?.department?.toLowerCase();
+
+      if (role !== "admin" || department !== "admin") {
+        return res.status(403).json({
+          status: "fail",
+          message: "Admin access required",
+        });
+      }
+
+      const data = await o2dService.getCrmKpiTotalDispatchPlanByDate();
+
+      return res.status(200).json({
+        status: "success",
+        message: "Total Dispatch plan retrieved successfully",
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+    getCrmKpiTotalDispatchActualByDate = async (req, res, next) => {
+    try {
+      const role = req.user?.role?.toLowerCase();
+      const department = req.user?.department?.toLowerCase();
+
+      if (role !== "admin" || department !== "admin") {
+        return res.status(403).json({
+          status: "fail",
+          message: "Admin access required",
+        });
+      }
+
+      const data = await o2dService.getCrmKpiTotalDispatchActualByDate();
+
+      return res.status(200).json({
+        status: "success",
+        message: "Total Dispatch actual retrieved successfully",
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getCrmKpiTotalPaymentCollectionPlanByDate = async (req, res, next) => {
+  try {
+    const role = req.user?.role?.toLowerCase();
+    const department = req.user?.department?.toLowerCase();
+
+    if (role !== "admin" || department !== "admin") {
+      return res.status(403).json({
+        status: "fail",
+        message: "Admin access required",
+      });
+    }
+
+    const data =
+      await o2dService.getCrmKpiTotalPaymentCollectionPlanByDate();
+
+    return res.status(200).json({
+      status: "success",
+      message: "Payment Collection plan retrieved successfully",
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+getCrmKpiTotalPaymentCollectionActualByDate = async (req, res, next) => {
+  try {
+    const role = req.user?.role?.toLowerCase();
+    const department = req.user?.department?.toLowerCase();
+
+    if (role !== "admin" || department !== "admin") {
+      return res.status(403).json({
+        status: "fail",
+        message: "Admin access required",
+      });
+    }
+
+    const data =
+      await o2dService.getCrmKpiTotalPaymentCollectionActualByDate();
+
+    return res.status(200).json({
+      status: "success",
+      message: "Payment Collection actual retrieved successfully",
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+getCrmKpiComplaintCountsByDate = async (req, res, next) => {
+  try {
+    const role = req.user?.role?.toLowerCase();
+    const department = req.user?.department?.toLowerCase();
+
+    if (role !== "admin" || department !== "admin") {
+      return res.status(403).json({
+        status: "fail",
+        message: "Admin access required",
+      });
+    }
+
+    const data = await o2dService.getCrmKpiComplaintCountsByDate();
+
+    return res.status(200).json({
+      status: "success",
+      message: "CRM complaint counts retrieved successfully",
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+getCrmKpiPromises = async (req, res, next) => {
+  try {
+    const role = req.user?.role?.toLowerCase();
+    const department = req.user?.department?.toLowerCase();
+
+    if (role !== "admin" || department !== "admin") {
+      return res.status(403).json({
+        status: "fail",
+        message: "Admin access required",
+      });
+    }
+
+    const data = await o2dService.getCrmKpiPromises();
+
+    return res.status(200).json({
+      status: "success",
+      message: "CRM KPI promises retrieved successfully",
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+saveCrmKpiPromises = async (req, res, next) => {
+  try {
+    const role = req.user?.role?.toLowerCase();
+    const department = req.user?.department?.toLowerCase();
+
+    if (role !== "admin" || department !== "admin") {
+      return res.status(403).json({
+        status: "fail",
+        message: "Admin access required",
+      });
+    }
+
+    const data = await o2dService.saveCrmKpiPromises(req.body?.promises);
+
+    return res.status(200).json({
+      status: "success",
+      message: "CRM KPI promises saved successfully",
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
   getCallComplaintData = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
