@@ -86,6 +86,11 @@ export const ORDER_STAGES = {
   order_splitted: "Order Splitted!",
 };
 
+export const PURCHASE_ORDER_STAGES = {
+  partial_order_receive_stage: "Partial Deliverd",
+  complete_order_receive_stage: "Order Complete",
+};
+
 export const DISPATCH_OPTIONS = [
   "Eligible to Dispatch",
   "Dispatched",

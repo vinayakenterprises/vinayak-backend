@@ -1,6 +1,7 @@
 import pool from "../config/database.js";
-import { HTTP_STATUS } from "../utils/constants.js";
+import { HTTP_STATUS, PURCHASE_ORDER_STAGES } from "../utils/constants.js";
 import { sendNotificationToAccountsTeam } from "../utils/helpers/helper-functions.js";
+import uploadFileToS3 from "../utils/helpers/uploadSOToS3.js";
 
 class PurchaseService {
   // Fetch vendors list (id and vendor_name)
@@ -335,6 +336,178 @@ class PurchaseService {
       return { rows, totalItems };
     } catch (err) {
       console.error("Error in fetching completed PO creation from Tally:", err.message);
+      throw err;
+    }
+  };
+
+  getDEOAssignedWorkData = async ({ page = 1, pageSize = 10, search = "" }) => {
+    try {
+      const offset = (page - 1) * pageSize;
+
+      const values = [];
+      let searchCondition = "";
+
+      if (search) {
+        values.push(`%${search}%`);
+
+        searchCondition = `
+        AND (
+          p.material ILIKE $1
+          OR p.purity ILIKE $1
+          OR p.purchase_type ILIKE $1
+          OR p.purchased_by ILIKE $1
+          OR p.remarks ILIKE $1
+          OR p.accounts_info->'po_information_from_tally'->>'orderno' ILIKE $1
+          OR p.accounts_info->'po_information_from_tally'->>'partyname' ILIKE $1
+          OR p.accounts_info->'po_information_from_tally'->>'itemname' ILIKE $1
+        )
+      `;
+      }
+
+      const baseCondition = `
+      WHERE
+        p.accounts_info->>'sent_for_po_at' IS NOT NULL
+        AND p.accounts_info->>'sent_for_po_at' <> ''
+        AND p.accounts_info->>'po_completed_at' IS NULL
+    `;
+
+      // Fetch total count
+      const countQuery = `
+      SELECT COUNT(*)::INTEGER AS total_items
+      FROM public.purchases p
+      ${baseCondition}
+      ${searchCondition}
+    `;
+
+      const countResult = await pool.query(countQuery, values);
+
+      const totalItems = countResult.rows[0].total_items;
+
+      // Fetch paginated records
+      const dataValues = [...values];
+
+      dataValues.push(pageSize);
+      const limitParam = dataValues.length;
+
+      dataValues.push(offset);
+      const offsetParam = dataValues.length;
+
+      const dataQuery = `
+      SELECT
+        p.*
+      FROM public.purchases p
+      ${baseCondition}
+      ${searchCondition}
+      ORDER BY
+        (p.accounts_info->>'sent_for_po_at')::TIMESTAMPTZ DESC,
+        p.id DESC
+      LIMIT $${limitParam}
+      OFFSET $${offsetParam}
+    `;
+
+      const dataResult = await pool.query(dataQuery, dataValues);
+
+      return {
+        rows: dataResult.rows,
+        totalItems,
+      };
+    } catch (err) {
+      console.error("Error in fetching DEO assigned work data:", err.message);
+      throw err;
+    }
+  };
+
+  /**
+   * Append a material receive record to public.purchases.material_receive_information
+   */
+  addMaterialReceiveEntry = async ({
+    purchaseId,
+    kanta_parchi_url,
+    loaded_vehicle_image_url,
+    driver_photo_url,
+    material_receive_date_planned,
+    material_receive_date_actual,
+    material_received_qty,
+    rate,
+    balance,
+    status,
+    user,
+  }) => {
+    try {
+      // 1. Fetch current purchase record
+      const getQuery = `
+      SELECT id, material_receive_information
+      FROM public.purchases
+      WHERE id = $1
+    `;
+      const getRes = await pool.query(getQuery, [purchaseId]);
+      if (getRes.rows.length === 0) {
+        throw new Error(`Purchase order #${purchaseId} not found`);
+      }
+
+      let receiveInfo = getRes.rows[0].material_receive_information;
+
+      // 2. Safe parse existing JSONB structure
+      if (typeof receiveInfo === "string") {
+        try {
+          receiveInfo = JSON.parse(receiveInfo);
+        } catch {
+          receiveInfo = {};
+        }
+      }
+      if (!receiveInfo || typeof receiveInfo !== "object") {
+        receiveInfo = {};
+      }
+      if (!Array.isArray(receiveInfo.material_recieved)) {
+        receiveInfo.material_recieved = [];
+      }
+
+      // 3. Compute incremented id (last id + 1)
+      const existingList = receiveInfo.material_recieved;
+      const lastId = existingList.reduce(
+        (max, item) => Math.max(max, parseInt(item.id, 10) || 0),
+        0
+      );
+      const nextId = lastId + 1;
+
+      // 4. Construct entry matching the exact schema with consistent variable names
+      const newEntry = {
+        id: nextId,
+        kanta_parchi_url: kanta_parchi_url || null,
+        loaded_vehicle_image_url: loaded_vehicle_image_url || null,
+        driver_photo_url: driver_photo_url || null,
+        material_receive_date_planned: material_receive_date_planned || null,
+        material_receive_date_actual: material_receive_date_actual || null,
+        material_recieved_qty: parseFloat(material_received_qty) || 0,
+        rate: parseFloat(rate) || 0,
+        balance: parseFloat(balance) || 0,
+        status: status || "Complete",
+      };
+
+      // 5. Append new entry
+      receiveInfo.material_recieved.push(newEntry);
+
+      const orderStatus = PURCHASE_ORDER_STAGES.partial_order_receive_stage;
+      if (status === "Complete") {
+        orderStatus = PURCHASE_ORDER_STAGES.complete_order_receive_stage;
+      }
+
+      // 6. Update database record
+      const updateQuery = `
+      UPDATE public.purchases
+      SET material_receive_information = $1, order_status = $3
+      WHERE id = $2
+      RETURNING *
+    `;
+      const updateRes = await pool.query(updateQuery, [
+        JSON.stringify(receiveInfo),
+        purchaseId,
+        orderStatus,
+      ]);
+
+      return updateRes.rows[0];
+    } catch (err) {
+      console.error("Error in addMaterialReceiveEntry service:", err.message);
       throw err;
     }
   };
