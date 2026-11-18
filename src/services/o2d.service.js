@@ -4206,6 +4206,86 @@ async getCrmKpiTotalDispatchActualByDate() {
     }
   }
 
+  async getCollectedInterestNoteData(page = 1, requestedPageSize = 25, search = "") {
+    try {
+      const requestedPage = Number(page);
+      const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+      const parsedPageSize = Number(requestedPageSize);
+      const pageSize =
+        Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
+          ? parsedPageSize
+          : 25;
+      const offset = (safePage - 1) * pageSize;
+      const searchTerm = String(search).trim();
+      const searchPattern = `%${searchTerm}%`;
+      const searchClause = searchTerm
+        ? `AND (
+            client_name ILIKE $1
+            OR sale_order_generation->'sale_order_details'->>'orderno' ILIKE $1
+            OR payment_status->'interest_note_details_from_tally'->>'original_invoice_number' ILIKE $1
+            OR id::text ILIKE $1
+          )`
+        : "";
+      const filterValues = searchTerm ? [searchPattern] : [];
+      const limitParameter = filterValues.length + 1;
+      const whereClause = `
+        WHERE payment_status->>'interest_note_issued_on_timestamp' IS NOT NULL
+          AND payment_status->>'interest_note_collected_on_timestamp' IS NOT NULL
+          AND (
+            payment_status->>'collect_interest_from_client' IS NULL
+            OR payment_status->>'collect_interest_from_client' = 'true'
+          )
+          ${searchClause}
+      `;
+      const query = `
+        SELECT
+          id,
+          client_name,
+          sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
+          payment_status->'interest_note_details_from_tally'->>'original_invoice_number' AS invoice_no,
+          (payment_status->'interest_note_details_from_tally'->>'calculated_interest_amount')::NUMERIC AS total_interest_amount,
+          payment_status->>'interest_note_issued_on_timestamp' AS interest_note_issued_on_timestamp,
+          payment_status->>'interest_note_collected_on_timestamp' AS interest_note_collected_on_timestamp,
+          payment_status->'interest_note_details_from_tally'->>'bill_date' AS bill_date,
+          payment_status->'interest_note_details_from_tally'->>'payment_cleared_date' AS payment_cleared_date
+        FROM public.sales_orders
+        ${whereClause}
+        ORDER BY payment_status->>'interest_note_collected_on_timestamp' DESC, id DESC
+        LIMIT $${limitParameter} OFFSET $${limitParameter + 1};
+      `;
+
+      const summaryQuery = `
+        SELECT
+          COUNT(*) AS total_items,
+          COALESCE(
+            SUM((payment_status->'interest_note_details_from_tally'->>'calculated_interest_amount')::NUMERIC),
+            0
+          ) AS total_interest_amount
+        FROM public.sales_orders
+        ${whereClause};
+      `;
+      const [summaryResult, ordersResult] = await Promise.all([
+        pool.query(summaryQuery, filterValues),
+        pool.query(query, [...filterValues, pageSize, offset]),
+      ]);
+      const totalItems = Number(summaryResult.rows[0]?.total_items || 0);
+
+      return {
+        orders: ordersResult.rows,
+        totalInterestAmount: Number(summaryResult.rows[0]?.total_interest_amount || 0),
+        pagination: {
+          page: safePage,
+          pageSize,
+          totalItems,
+          totalPages: Math.ceil(totalItems / pageSize),
+        },
+      };
+    } catch (error) {
+      console.error("Error in getting collected interest note data: ", error);
+      throw error;
+    }
+  }
+
   async getAdminDashboardCardsData(userId, isDrossOrder = false) {
     try {
       const query = `

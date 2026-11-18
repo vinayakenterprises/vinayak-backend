@@ -227,6 +227,11 @@ router.get(
   authMiddleware,
   o2dController.getUncollectedInterestNoteData
 );
+router.get(
+  "/get-collected-interest-note-data",
+  authMiddleware,
+  o2dController.getCollectedInterestNoteData
+);
 
 // admin dashboard related apis
 router.get(
