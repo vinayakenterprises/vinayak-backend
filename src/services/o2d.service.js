@@ -3108,125 +3108,179 @@ class O2dService {
     }
   }
 
-  async getCrmKpiTotalDispatchActualByDate() {
-    const query = `
-    WITH raw_dispatch_events AS (
-      SELECT
-        so.id AS order_id,
-        so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
-        so.client_name,
-        so.created_at AS order_created_at,
-        NULLIF(BTRIM(event.item->>'dispatch_at'), '')::timestamp AS dispatch_at,
-        event.item->>'delay_reason' AS delay_reason
-      FROM public.sales_orders so
-      CROSS JOIN LATERAL jsonb_array_elements(
-        CASE
-          WHEN jsonb_typeof(so.dispatch_info->'history') = 'array'
-            THEN so.dispatch_info->'history'
-          ELSE '[]'::jsonb
-        END
-      ) AS event(item)
-      WHERE event.item->>'dispatch_type' = 'Dispatched'
-        AND event.item->>'dispatch_status' = 'true'
-        AND NULLIF(BTRIM(event.item->>'dispatch_at'), '') IS NOT NULL
+async getCrmKpiTotalDispatchActualByDate() {
+  // const query = `
+  //   WITH raw_dispatch_events AS (
+  //     SELECT
+  //       so.id AS order_id,
+  //       so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
+  //       so.client_name,
+  //       so.created_at AS order_created_at,
+  //       NULLIF(BTRIM(event.item->>'dispatch_at'), '')::timestamp AS dispatch_at,
+  //       event.item->>'delay_reason' AS delay_reason
+  //     FROM public.sales_orders so
+  //     CROSS JOIN LATERAL jsonb_array_elements(
+  //       CASE
+  //         WHEN jsonb_typeof(so.dispatch_info->'history') = 'array'
+  //           THEN so.dispatch_info->'history'
+  //         ELSE '[]'::jsonb
+  //       END
+  //     ) AS event(item)
+  //     WHERE event.item->>'dispatch_type' = 'Dispatched'
+  //       AND event.item->>'dispatch_status' = 'true'
+  //       AND NULLIF(BTRIM(event.item->>'dispatch_at'), '') IS NOT NULL
 
-      UNION ALL
+  //     UNION ALL
 
-      SELECT
-        so.id AS order_id,
-        so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
-        so.client_name,
-        so.created_at AS order_created_at,
-        NULLIF(BTRIM(so.dispatch_info->>'dispatch_at'), '')::timestamp AS dispatch_at,
-        so.dispatch_info->>'delay_reason' AS delay_reason
-      FROM public.sales_orders so
-      WHERE so.dispatch_info->>'dispatch_type' = 'Dispatched'
-        AND so.dispatch_info->>'dispatch_status' = 'true'
-        AND NULLIF(BTRIM(so.dispatch_info->>'dispatch_at'), '') IS NOT NULL
-        AND CASE
-          WHEN jsonb_typeof(so.dispatch_info->'history') = 'array'
-            THEN jsonb_array_length(so.dispatch_info->'history') = 0
-          ELSE TRUE
-        END
-    ),
-    valid_events AS (
-      SELECT
-        order_id,
-        order_no,
-        client_name,
-        order_created_at,
-        dispatch_at::date AS dispatch_date,
-        dispatch_at,
-        delay_reason
-      FROM raw_dispatch_events
-      WHERE dispatch_at IS NOT NULL
-    ),
-    one_order_per_week AS (
-      SELECT DISTINCT ON (
-        order_id,
-        DATE_TRUNC('week', dispatch_date)::date
-      )
-        order_id,
-        order_no,
-        client_name,
-        order_created_at,
-        dispatch_date,
-        dispatch_at,
-        delay_reason
-      FROM valid_events
-      ORDER BY
-        order_id,
-        DATE_TRUNC('week', dispatch_date)::date,
-        dispatch_date,
-        dispatch_at
-    )
-    SELECT
-      dispatch_date::text AS date,
-      order_id,
-      order_no,
-      client_name,
-      order_created_at,
-      dispatch_at,
-      delay_reason
-    FROM one_order_per_week
-    ORDER BY dispatch_date, order_id;
-  `;
+  //     SELECT
+  //       so.id AS order_id,
+  //       so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
+  //       so.client_name,
+  //       so.created_at AS order_created_at,
+  //       NULLIF(BTRIM(so.dispatch_info->>'dispatch_at'), '')::timestamp AS dispatch_at,
+  //       so.dispatch_info->>'delay_reason' AS delay_reason
+  //     FROM public.sales_orders so
+  //     WHERE so.dispatch_info->>'dispatch_type' = 'Dispatched'
+  //       AND so.dispatch_info->>'dispatch_status' = 'true'
+  //       AND NULLIF(BTRIM(so.dispatch_info->>'dispatch_at'), '') IS NOT NULL
+  //       AND CASE
+  //         WHEN jsonb_typeof(so.dispatch_info->'history') = 'array'
+  //           THEN jsonb_array_length(so.dispatch_info->'history') = 0
+  //         ELSE TRUE
+  //       END
+  //   ),
+  //   valid_events AS (
+  //     SELECT
+  //       order_id,
+  //       order_no,
+  //       client_name,
+  //       order_created_at,
+  //       dispatch_at::date AS dispatch_date,
+  //       dispatch_at,
+  //       delay_reason
+  //     FROM raw_dispatch_events
+  //     WHERE dispatch_at IS NOT NULL
+  //   ),
+  //   one_order_per_week AS (
+  //     SELECT DISTINCT ON (
+  //       order_id,
+  //       DATE_TRUNC('week', dispatch_date)::date
+  //     )
+  //       order_id,
+  //       order_no,
+  //       client_name,
+  //       order_created_at,
+  //       dispatch_date,
+  //       dispatch_at,
+  //       delay_reason
+  //     FROM valid_events
+  //     ORDER BY
+  //       order_id,
+  //       DATE_TRUNC('week', dispatch_date)::date,
+  //       dispatch_date,
+  //       dispatch_at
+  //   )
+  //   SELECT
+  //     dispatch_date::text AS date,
+  //     order_id,
+  //     order_no,
+  //     client_name,
+  //     order_created_at,
+  //     dispatch_at,
+  //     delay_reason
+  //   FROM one_order_per_week
+  //   ORDER BY dispatch_date, order_id;
+  // `;
 
-    try {
-      const { rows } = await pool.query(query);
-      const groups = new Map();
+  const query = `
+  SELECT
+    so.id AS order_id,
+    so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
+    so.client_name,
+    so.created_at AS order_created_at,
+    NULLIF(BTRIM(so.vehicle_arrangement->>'actual_deliver_date'), '')
+      AS actual_deliver_date,
+    so.dispatch_info->>'delay_reason' AS delay_reason
+  FROM public.sales_orders so
+  WHERE NULLIF(
+    BTRIM(so.vehicle_arrangement->>'actual_deliver_date'),
+    ''
+  ) IS NOT NULL
+    AND so.dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Order Cancel'
+  ORDER BY so.id;
+`;
 
-      for (const row of rows) {
-        if (!groups.has(row.date)) {
-          groups.set(row.date, {
-            date: row.date,
-            actualOrders: 0,
-            onTimeOrders: 0,
-            clientDelayOrders: 0,
-            factoryDelayOrders: 0,
-            details: [],
-          });
-        }
+  try {
+    const { rows } = await pool.query(query);
+    const groups = new Map();
 
-        const group = groups.get(row.date);
-        const reason = String(row.delay_reason || "")
-          .trim()
-          .toLowerCase();
+    // for (const row of rows) {
+    //   if (!groups.has(row.date)) {
+    //     groups.set(row.date, {
+    //       date: row.date,
+    //       actualOrders: 0,
+    //       onTimeOrders: 0,
+    //       clientDelayOrders: 0,
+    //       factoryDelayOrders: 0,
+    //       details: [],
+    //     });
+    //   }
 
-        group.actualOrders += 1;
-        if (reason === "on time") group.onTimeOrders += 1;
-        if (reason === "client") group.clientDelayOrders += 1;
-        if (reason === "factory") group.factoryDelayOrders += 1;
+    //   const group = groups.get(row.date);
+    //   const reason = String(row.delay_reason || "").trim().toLowerCase();
 
-        group.details.push({
-          order_id: row.order_id,
-          order_no: row.order_no,
-          client_name: row.client_name,
-          created_at: row.order_created_at,
-          dispatch_at: row.dispatch_at,
-          delay_reason: row.delay_reason,
-        });
-      }
+    //   group.actualOrders += 1;
+    //   if (reason === "on time") group.onTimeOrders += 1;
+    //   if (reason === "client") group.clientDelayOrders += 1;
+    //   if (reason === "factory") group.factoryDelayOrders += 1;
+
+    //   group.details.push({
+    //     order_id: row.order_id,
+    //     order_no: row.order_no,
+    //     client_name: row.client_name,
+    //     created_at: row.order_created_at,
+    //     dispatch_at: row.dispatch_at,
+    //     delay_reason: row.delay_reason,
+    //   });
+    // }
+
+    for (const row of rows) {
+  const date = getISTComponents(row.actual_deliver_date)?.dateString;
+
+  if (!date) {
+    throw new Error(
+      `Invalid Dispatch / Transport actual date for sales order ${row.order_id}.`
+    );
+  }
+
+  if (!groups.has(date)) {
+    groups.set(date, {
+      date,
+      actualOrders: 0,
+      onTimeOrders: 0,
+      clientDelayOrders: 0,
+      factoryDelayOrders: 0,
+      details: [],
+    });
+  }
+
+  const group = groups.get(date);
+  const reason = String(row.delay_reason || "").trim().toLowerCase();
+
+  group.actualOrders += 1;
+  if (reason === "on time") group.onTimeOrders += 1;
+  if (reason === "client") group.clientDelayOrders += 1;
+  if (reason === "factory") group.factoryDelayOrders += 1;
+
+  group.details.push({
+    order_id: row.order_id,
+    order_no: row.order_no,
+    client_name: row.client_name,
+    created_at: row.order_created_at,
+    actual_deliver_date: row.actual_deliver_date,
+    delay_reason: row.delay_reason,
+  });
+}
 
       return [...groups.values()];
     } catch (error) {
@@ -3246,6 +3300,7 @@ class O2dService {
         AS actual_dispatch_date
     FROM public.sales_orders
     WHERE NULLIF(BTRIM(invoice_and_dispatch->>'actual_dispatch_date'), '') IS NOT NULL
+     AND LOWER(BTRIM(COALESCE(rod_size, ''))) <> 'dross'
       AND dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Order Cancel'
     ORDER BY id;
   `;
@@ -3310,6 +3365,7 @@ class O2dService {
     FROM public.sales_orders
     WHERE payment_status->>'payment_status' = 'true'
       AND NULLIF(BTRIM(payment_status->>'payment_done_at'), '') IS NOT NULL
+       AND LOWER(BTRIM(COALESCE(rod_size, ''))) <> 'dross'
     ORDER BY id;
   `;
 
