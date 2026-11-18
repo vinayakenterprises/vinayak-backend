@@ -1,6 +1,7 @@
 import pool from "../config/database.js";
-import { HTTP_STATUS } from "../utils/constants.js";
+import { HTTP_STATUS, PURCHASE_ORDER_STAGES } from "../utils/constants.js";
 import { sendNotificationToAccountsTeam } from "../utils/helpers/helper-functions.js";
+import uploadFileToS3 from "../utils/helpers/uploadSOToS3.js";
 
 class PurchaseService {
   // Fetch vendors list (id and vendor_name)
@@ -412,6 +413,101 @@ class PurchaseService {
       };
     } catch (err) {
       console.error("Error in fetching DEO assigned work data:", err.message);
+      throw err;
+    }
+  };
+
+  /**
+   * Append a material receive record to public.purchases.material_receive_information
+   */
+  addMaterialReceiveEntry = async ({
+    purchaseId,
+    kanta_parchi_url,
+    loaded_vehicle_image_url,
+    driver_photo_url,
+    material_receive_date_planned,
+    material_receive_date_actual,
+    material_received_qty,
+    rate,
+    balance,
+    status,
+    user,
+  }) => {
+    try {
+      // 1. Fetch current purchase record
+      const getQuery = `
+      SELECT id, material_receive_information
+      FROM public.purchases
+      WHERE id = $1
+    `;
+      const getRes = await pool.query(getQuery, [purchaseId]);
+      if (getRes.rows.length === 0) {
+        throw new Error(`Purchase order #${purchaseId} not found`);
+      }
+
+      let receiveInfo = getRes.rows[0].material_receive_information;
+
+      // 2. Safe parse existing JSONB structure
+      if (typeof receiveInfo === "string") {
+        try {
+          receiveInfo = JSON.parse(receiveInfo);
+        } catch {
+          receiveInfo = {};
+        }
+      }
+      if (!receiveInfo || typeof receiveInfo !== "object") {
+        receiveInfo = {};
+      }
+      if (!Array.isArray(receiveInfo.material_recieved)) {
+        receiveInfo.material_recieved = [];
+      }
+
+      // 3. Compute incremented id (last id + 1)
+      const existingList = receiveInfo.material_recieved;
+      const lastId = existingList.reduce(
+        (max, item) => Math.max(max, parseInt(item.id, 10) || 0),
+        0
+      );
+      const nextId = lastId + 1;
+
+      // 4. Construct entry matching the exact schema with consistent variable names
+      const newEntry = {
+        id: nextId,
+        kanta_parchi_url: kanta_parchi_url || null,
+        loaded_vehicle_image_url: loaded_vehicle_image_url || null,
+        driver_photo_url: driver_photo_url || null,
+        material_receive_date_planned: material_receive_date_planned || null,
+        material_receive_date_actual: material_receive_date_actual || null,
+        material_recieved_qty: parseFloat(material_received_qty) || 0,
+        rate: parseFloat(rate) || 0,
+        balance: parseFloat(balance) || 0,
+        status: status || "Complete",
+      };
+
+      // 5. Append new entry
+      receiveInfo.material_recieved.push(newEntry);
+
+      const orderStatus = PURCHASE_ORDER_STAGES.partial_order_receive_stage;
+      if (status === "Complete") {
+        orderStatus = PURCHASE_ORDER_STAGES.complete_order_receive_stage;
+      }
+
+      // 6. Update database record
+      const updateQuery = `
+      UPDATE public.purchases
+      SET material_receive_information = $1, order_status = $3
+      WHERE id = $2
+      RETURNING *
+    `;
+      const updateRes = await pool.query(updateQuery, [
+        JSON.stringify(receiveInfo),
+        purchaseId,
+        orderStatus,
+      ]);
+
+      return updateRes.rows[0];
+    } catch (err) {
+      console.error("Error in addMaterialReceiveEntry service:", err.message);
       throw err;
     }
   };

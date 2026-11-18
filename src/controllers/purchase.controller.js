@@ -1,5 +1,6 @@
 import purchaseService from "../services/purchase.service.js";
 import { HTTP_STATUS } from "../utils/constants.js";
+import uploadFileToS3 from "../utils/helpers/uploadSOToS3.js";
 
 class PurchaseController {
   // GET: Fetch vendors
@@ -149,6 +150,74 @@ class PurchaseController {
           hasNextPage: page * pageSize < totalItems,
           hasPreviousPage: page > 1,
         },
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /**
+   * Add a new material receiving entry to public.purchases.material_receive_information
+   */
+  addMaterialReceiveEntry = async (req, res, next) => {
+    try {
+      const purchaseId = parseInt(req.body.purchase_id || req.body.id, 10);
+      if (!purchaseId) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          status: "error",
+          message: "purchase_id is required",
+        });
+      }
+      const {
+        material_receive_date_planned,
+        material_receive_date_actual,
+        material_received_qty,
+        rate,
+        balance,
+        status,
+      } = req.body;
+      const files = req.files || {};
+      // 1. Upload files to S3 using your uploadFileToS3 helper
+      let kanta_parchi_url = null;
+      let loaded_vehicle_image_url = null;
+      let driver_photo_url = null;
+      const companyName = process.env.COMPANY_NAME || "default-company";
+      if (files.kanta_parchi?.[0]) {
+        kanta_parchi_url = await uploadFileToS3(
+          files.kanta_parchi[0],
+          `${companyName}/purchase-orders/${purchaseId}/deo/kanta-parchi-document`
+        );
+      }
+      if (files.loaded_vehicle_image?.[0]) {
+        loaded_vehicle_image_url = await uploadFileToS3(
+          files.loaded_vehicle_image[0],
+          `${companyName}/purchase-orders/${purchaseId}/deo/loaded-vehicle-image`
+        );
+      }
+      if (files.driver_photo?.[0]) {
+        driver_photo_url = await uploadFileToS3(
+          files.driver_photo[0],
+          `${companyName}/purchase-orders/${purchaseId}/deo/driver-photo`
+        );
+      }
+      // 2. Pass the resolved S3 URLs to the service
+      const updatedPurchase = await purchaseService.addMaterialReceiveEntry({
+        purchaseId,
+        kanta_parchi_url,
+        loaded_vehicle_image_url,
+        driver_photo_url,
+        material_receive_date_planned,
+        material_receive_date_actual,
+        material_received_qty,
+        rate,
+        balance,
+        status,
+        user: req.user,
+      });
+      return res.status(HTTP_STATUS.OK).json({
+        status: "success",
+        message: "Material receiving entry added successfully",
+        data: updatedPurchase,
       });
     } catch (err) {
       next(err);
