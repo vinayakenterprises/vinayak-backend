@@ -933,6 +933,23 @@ saveCrmKpiPromises = async (req, res, next) => {
     }
   };
 
+  getCollectedInterestNoteData = async (req, res, next) => {
+    try {
+      const { page, pageSize, search } = req.query;
+      const result = await o2dService.getCollectedInterestNoteData(page, pageSize, search);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Collected Interest Note Data retrieved successfully",
+        data: result.orders,
+        pagination: result.pagination,
+        totalInterestAmount: result.totalInterestAmount,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   getAdminDashboardCardsData = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
