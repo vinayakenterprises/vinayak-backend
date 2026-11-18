@@ -338,6 +338,83 @@ class PurchaseService {
       throw err;
     }
   };
+
+  getDEOAssignedWorkData = async ({ page = 1, pageSize = 10, search = "" }) => {
+    try {
+      const offset = (page - 1) * pageSize;
+
+      const values = [];
+      let searchCondition = "";
+
+      if (search) {
+        values.push(`%${search}%`);
+
+        searchCondition = `
+        AND (
+          p.material ILIKE $1
+          OR p.purity ILIKE $1
+          OR p.purchase_type ILIKE $1
+          OR p.purchased_by ILIKE $1
+          OR p.remarks ILIKE $1
+          OR p.accounts_info->'po_information_from_tally'->>'orderno' ILIKE $1
+          OR p.accounts_info->'po_information_from_tally'->>'partyname' ILIKE $1
+          OR p.accounts_info->'po_information_from_tally'->>'itemname' ILIKE $1
+        )
+      `;
+      }
+
+      const baseCondition = `
+      WHERE
+        p.accounts_info->>'sent_for_po_at' IS NOT NULL
+        AND p.accounts_info->>'sent_for_po_at' <> ''
+        AND p.accounts_info->>'po_completed_at' IS NULL
+    `;
+
+      // Fetch total count
+      const countQuery = `
+      SELECT COUNT(*)::INTEGER AS total_items
+      FROM public.purchases p
+      ${baseCondition}
+      ${searchCondition}
+    `;
+
+      const countResult = await pool.query(countQuery, values);
+
+      const totalItems = countResult.rows[0].total_items;
+
+      // Fetch paginated records
+      const dataValues = [...values];
+
+      dataValues.push(pageSize);
+      const limitParam = dataValues.length;
+
+      dataValues.push(offset);
+      const offsetParam = dataValues.length;
+
+      const dataQuery = `
+      SELECT
+        p.*
+      FROM public.purchases p
+      ${baseCondition}
+      ${searchCondition}
+      ORDER BY
+        (p.accounts_info->>'sent_for_po_at')::TIMESTAMPTZ DESC,
+        p.id DESC
+      LIMIT $${limitParam}
+      OFFSET $${offsetParam}
+    `;
+
+      const dataResult = await pool.query(dataQuery, dataValues);
+
+      return {
+        rows: dataResult.rows,
+        totalItems,
+      };
+    } catch (err) {
+      console.error("Error in fetching DEO assigned work data:", err.message);
+      throw err;
+    }
+  };
 }
 
 export default new PurchaseService();

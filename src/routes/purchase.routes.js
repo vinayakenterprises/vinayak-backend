@@ -23,4 +23,6 @@ router.post(
   purchaseController.getCompletePOCreationFromTallyData
 );
 
+router.post("/deo-assigned-work-data", authMiddleware, purchaseController.getDEOAssignedWorkData);
+
 export default router;
