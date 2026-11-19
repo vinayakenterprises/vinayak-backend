@@ -394,4 +394,22 @@ router.post(
   o2dController.saveCrmKpiPromises
 );
 
+router.get(
+  "/get-crm-kpi-week-freezes",
+  authMiddleware,
+  o2dController.getCrmKpiWeekFreezes
+);
+
+router.post(
+  "/freeze-crm-kpi-weeks",
+  authMiddleware,
+  o2dController.freezeCrmKpiWeeks
+);
+
+router.post(
+  "/defreeze-crm-kpi-weeks",
+  authMiddleware,
+  o2dController.defreezeCrmKpiWeeks
+);
+
 export default router;

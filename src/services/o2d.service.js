@@ -3827,6 +3827,216 @@ async getCrmKpiTotalDispatchActualByDate() {
     }
   }
 
+  async getCrmKpiWeekFreezes() {
+  // const { rows } = await pool.query(`
+  //   SELECT
+  //     TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart",
+  //     snapshot
+  //   FROM public.crm_kpi_promises
+  //   ORDER BY week_start;
+  // `);
+ const { rows } = await pool.query(`
+    SELECT
+      TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart",
+      snapshot
+    FROM public.crm_kpi_promises
+WHERE snapshot IS NOT NULL
+ORDER BY week_start;
+  `);
+
+  return rows;
+}
+
+async freezeCrmKpiWeeks(weeks, frozenBy) {
+  if (!Array.isArray(weeks) || weeks.length === 0) {
+    throw new BadRequestError("At least one completed week is required.");
+  }
+
+  if (
+    frozenBy !== null &&
+    frozenBy !== undefined &&
+    !Number.isInteger(Number(frozenBy))
+  ) {
+    throw new BadRequestError("Invalid user ID.");
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const { rows: currentWeekRows } = await client.query(`
+      SELECT TO_CHAR(
+        DATE_TRUNC('week', NOW() AT TIME ZONE 'Asia/Kolkata')::date,
+        'YYYY-MM-DD'
+      ) AS "currentWeekStart";
+    `);
+
+    const currentWeekStart = currentWeekRows[0].currentWeekStart;
+    const seen = new Set();
+
+    const records = weeks.map((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new BadRequestError("Each week must be an object.");
+      }
+
+      const { weekStart, weekEnd, snapshot } = entry;
+
+      if (
+        typeof weekStart !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)
+      ) {
+        throw new BadRequestError("weekStart must use YYYY-MM-DD.");
+      }
+
+      const start = new Date(`${weekStart}T00:00:00.000Z`);
+
+      if (
+        Number.isNaN(start.getTime()) ||
+        start.toISOString().slice(0, 10) !== weekStart ||
+        start.getUTCDay() !== 1
+      ) {
+        throw new BadRequestError("weekStart must be a valid Monday.");
+      }
+
+      const expectedEnd = new Date(start);
+      expectedEnd.setUTCDate(expectedEnd.getUTCDate() + 6);
+
+      if (
+        typeof weekEnd !== "string" ||
+        expectedEnd.toISOString().slice(0, 10) !== weekEnd
+      ) {
+        throw new BadRequestError(
+          "weekEnd must be Sunday, six days after weekStart."
+        );
+      }
+
+      if (weekStart >= currentWeekStart) {
+        throw new BadRequestError("Only completed weeks can be frozen.");
+      }
+
+      if (seen.has(weekStart)) {
+        throw new BadRequestError("Duplicate weekStart.");
+      }
+      seen.add(weekStart);
+
+      if (
+        !snapshot ||
+        typeof snapshot !== "object" ||
+        Array.isArray(snapshot) ||
+        snapshot.weekStart !== weekStart ||
+        snapshot.weekEnd !== weekEnd ||
+        !snapshot.week ||
+        !snapshot.metrics ||
+        !snapshot.promisedData
+      ) {
+        throw new BadRequestError("Invalid KPI snapshot.");
+      }
+
+      return { weekStart, snapshot };
+    });
+
+    for (const record of records) {
+      // await client.query(
+      //   `
+      //     INSERT INTO public.crm_kpi_week_freezes
+      //       (week_start, snapshot, frozen_by)
+      //     VALUES ($1::date, $2::jsonb, $3)
+      //     ON CONFLICT (week_start) DO NOTHING;
+      //   `,
+      //   [
+      //     record.weekStart,
+      //     JSON.stringify(record.snapshot),
+      //     frozenBy == null ? null : Number(frozenBy),
+      //   ]
+      // );
+await client.query(
+  `
+    INSERT INTO public.crm_kpi_promises AS existing
+      (week_start, promised_data, snapshot, frozen_by, frozen_at)
+    VALUES ($1::date, '{}'::jsonb, $2::jsonb, $3, NOW())
+    ON CONFLICT (week_start)
+    DO UPDATE SET
+      snapshot = EXCLUDED.snapshot,
+      frozen_by = EXCLUDED.frozen_by,
+      frozen_at = EXCLUDED.frozen_at
+    WHERE existing.snapshot IS NULL;
+  `,
+  [
+    record.weekStart,
+    JSON.stringify(record.snapshot),
+    frozenBy == null ? null : Number(frozenBy),
+  ]
+);
+
+    }
+
+    const weekStarts = records.map((record) => record.weekStart);
+
+    const { rows } = await client.query(
+      `
+        SELECT
+          TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart",
+          snapshot
+        FROM public.crm_kpi_promises
+        WHERE week_start = ANY($1::date[])
+        ORDER BY week_start;
+      `,
+      [weekStarts]
+    );
+
+    await client.query("COMMIT");
+    return rows;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async defreezeCrmKpiWeeks(weekStarts) {
+  if (!Array.isArray(weekStarts) || weekStarts.length === 0) {
+    throw new BadRequestError("At least one weekStart is required.");
+  }
+
+  for (const weekStart of weekStarts) {
+    if (
+      typeof weekStart !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)
+    ) {
+      throw new BadRequestError("weekStart must use YYYY-MM-DD.");
+    }
+
+    const start = new Date(`${weekStart}T00:00:00.000Z`);
+
+    if (
+      Number.isNaN(start.getTime()) ||
+      start.toISOString().slice(0, 10) !== weekStart ||
+      start.getUTCDay() !== 1
+    ) {
+      throw new BadRequestError("Every weekStart must be a valid Monday.");
+    }
+  }
+
+  const { rows } = await pool.query(
+  `
+    UPDATE public.crm_kpi_promises
+    SET snapshot = NULL,
+        frozen_by = NULL,
+        frozen_at = NULL
+    WHERE week_start = ANY($1::date[])
+      AND snapshot IS NOT NULL
+      AND week_start <
+        DATE_TRUNC('week', NOW() AT TIME ZONE 'Asia/Kolkata')::date
+    RETURNING TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart";
+  `,
+  [weekStarts]
+);
+
+  return rows;
+}
+
   // async getCrmKpiComplaintCountsByDate() {
   //   const query = `
   //     SELECT

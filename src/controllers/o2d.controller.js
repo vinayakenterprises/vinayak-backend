@@ -798,6 +798,71 @@ saveCrmKpiPromises = async (req, res, next) => {
   }
 };
 
+getCrmKpiWeekFreezes = async (req, res, next) => {
+  try {
+    const role = req.user?.role?.toLowerCase();
+    const department = req.user?.department?.toLowerCase();
+
+    if (role !== "admin" || department !== "admin") {
+      return res.status(403).json({
+        status: "fail",
+        message: "Admin access required",
+      });
+    }
+
+    const data = await o2dService.getCrmKpiWeekFreezes();
+
+    return res.status(200).json({ status: "success", data });
+  } catch (error) {
+    next(error);
+  }
+};
+
+freezeCrmKpiWeeks = async (req, res, next) => {
+  try {
+    const role = req.user?.role?.toLowerCase();
+    const department = req.user?.department?.toLowerCase();
+
+    if (role !== "admin" || department !== "admin") {
+      return res.status(403).json({
+        status: "fail",
+        message: "Admin access required",
+      });
+    }
+
+    const data = await o2dService.freezeCrmKpiWeeks(
+      req.body?.weeks,
+      req.user?.id
+    );
+
+    return res.status(200).json({ status: "success", data });
+  } catch (error) {
+    next(error);
+  }
+};
+
+defreezeCrmKpiWeeks = async (req, res, next) => {
+  try {
+    const role = req.user?.role?.toLowerCase();
+    const department = req.user?.department?.toLowerCase();
+
+    if (role !== "admin" || department !== "admin") {
+      return res.status(403).json({
+        status: "fail",
+        message: "Admin access required",
+      });
+    }
+
+    const data = await o2dService.defreezeCrmKpiWeeks(
+      req.body?.weekStarts
+    );
+
+    return res.status(200).json({ status: "success", data });
+  } catch (error) {
+    next(error);
+  }
+};
+
   getCallComplaintData = async (req, res, next) => {
     try {
       const userId = req.user?.id || null;
