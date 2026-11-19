@@ -814,6 +814,21 @@ saveCrmKpiPromises = async (req, res, next) => {
     }
   };
 
+  getCrmPendingTasks = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+      const tasks = await o2dService.getCrmPendingTasks(userId);
+
+      return res.status(200).json({
+        status: "success",
+        message: "CRM pending tasks retrieved successfully",
+        data: tasks,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   updatePlantVisitInformation = async (req, res, next) => {
     try {
       const { id } = req.body;

@@ -206,6 +206,7 @@ router.post(
   o2dController.updateCallActionInformation
 );
 router.get("/get-call-complaint-data", authMiddleware, o2dController.getCallComplaintData);
+router.get("/get-crm-pending-tasks", authMiddleware, o2dController.getCrmPendingTasks);
 router.post("/plant-visit-info-update", authMiddleware, o2dController.updatePlantVisitInformation);
 router.post(
   "/complaint-closure-info-update",

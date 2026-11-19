@@ -3929,6 +3929,82 @@ async getCrmKpiTotalDispatchActualByDate() {
     }
   }
 
+  async getCrmPendingTasks() {
+    try {
+      const query = `
+        SELECT
+          so.id AS order_id,
+          so.client_name,
+          so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
+          task.task_name,
+          task.complaint_id,
+          task.complaint_status
+        FROM public.sales_orders so
+        CROSS JOIN LATERAL (
+          SELECT 'Assign to Vehicle Executive'::text AS task_name, NULL::integer AS complaint_id, NULL::text AS complaint_status
+          WHERE so.sale_order_generation->>'sent_for_so' = 'true'
+            AND so.vehicle_arrangement->>'assigned_to_vehicle_executive' IS DISTINCT FROM 'true'
+
+          UNION ALL
+
+          SELECT 'Intimation & Thank You', NULL::integer, NULL::text
+          WHERE NULLIF(BTRIM(so.invoice_and_dispatch->>'invoice_completed_at'), '') IS NOT NULL
+            AND NULLIF(BTRIM(so.intimation_thankyou->>'completed_at'), '') IS NULL
+
+          UNION ALL
+
+          SELECT 'Upload Receiving Proof', NULL::integer, NULL::text
+          WHERE NULLIF(BTRIM(so.invoice_and_dispatch->>'invoice_completed_at'), '') IS NOT NULL
+            AND NULLIF(BTRIM(so.receiving_details->>'completion_timestamp'), '') IS NULL
+
+          UNION ALL
+
+          SELECT 'Mark Delivery & Weight', NULL::integer, NULL::text
+          WHERE (
+              NULLIF(BTRIM(so.invoice_and_dispatch->>'actual_dispatch_date'), '') IS NOT NULL
+              OR NULLIF(BTRIM(so.invoice_and_dispatch->>'invoice_completed_at'), '') IS NOT NULL
+            )
+            AND NULLIF(BTRIM(so.delivery_and_weight->>'actual_delivery_timestamp'), '') IS NULL
+            AND NULLIF(BTRIM(so.delivery_and_weight->>'actual_delivery_date'), '') IS NULL
+            AND COALESCE(NULLIF(BTRIM(so.delivery_and_weight->>'delivery_status'), ''), '') <> 'Delivered'
+
+          UNION ALL
+
+          SELECT 'Quality Confirmation', NULL::integer, NULL::text
+          WHERE so.delivery_and_weight->>'delivery_status' = 'Delivered'
+            AND (
+              so.delivery_and_weight->>'quality_confirmation_status' IS NULL
+              OR so.delivery_and_weight->>'quality_confirmation_status'
+                NOT IN ('Yes', 'No within TAT', 'NO without TAT')
+            )
+        ) AS task
+        WHERE so.sale_order_generation->>'sent_for_so' = 'true'
+          AND NULLIF(BTRIM(so.sale_order_generation->>'so_order_completed_at'), '') IS NOT NULL
+          AND so.dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Order Cancel'
+
+        UNION ALL
+
+        SELECT
+          so.id AS order_id,
+          so.client_name,
+          so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
+          'Close Complaint'::text AS task_name,
+          ci.complaint_id,
+          ci.complaint_status
+        FROM public.complaint_info ci
+        JOIN public.sales_orders so ON so.id = ci.sale_order_id
+        WHERE LOWER(BTRIM(COALESCE(ci.complaint_status, ''))) <> 'closed'
+
+        ORDER BY order_id DESC, task_name ASC;
+      `;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      console.error("Error in getting CRM pending tasks: ", error);
+      throw error;
+    }
+  }
+
   async updatePlantVisitInformation(id, userId, body) {
     try {
       const { plant_visit_done_at, documents, solution, person_met_at_site, quantity_replaced } =
