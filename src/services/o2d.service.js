@@ -3353,8 +3353,86 @@ async getCrmKpiTotalDispatchActualByDate() {
     }
   }
 
-  async getCrmKpiTotalPaymentCollectionActualByDate() {
-    const query = `
+  // async getCrmKpiTotalPaymentCollectionActualByDate() {
+  //   const query = `
+  //   SELECT
+  //     id AS order_id,
+  //     sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
+  //     client_name,
+  //     created_at,
+  //     payment_status->>'payment_done_at' AS payment_done_at,
+  //     invoice_and_dispatch->>'actual_dispatch_date' AS actual_dispatch_date
+  //   FROM public.sales_orders
+  //   WHERE payment_status->>'payment_status' = 'true'
+  //     AND NULLIF(BTRIM(payment_status->>'payment_done_at'), '') IS NOT NULL
+  //      AND LOWER(BTRIM(COALESCE(rod_size, ''))) <> 'dross'
+  //   ORDER BY id;
+  // `;
+
+  //   try {
+  //     const { rows } = await pool.query(query);
+  //     const groups = new Map();
+
+  //     for (const row of rows) {
+  //       const paymentDate = getISTComponents(row.payment_done_at);
+
+  //       if (!paymentDate?.rawDate) {
+  //         throw new Error(`Invalid payment_done_at for sales order ${row.order_id}.`);
+  //       }
+
+  //       let plannedPaymentDate = null;
+  //       let onTime = false;
+
+  //       if (row.actual_dispatch_date) {
+  //         const plannedDeadline = addWorkingHours(row.actual_dispatch_date, 90);
+
+  //         if (!plannedDeadline) {
+  //           throw new Error(
+  //             `Could not calculate the planned payment deadline for sales order ${row.order_id}.`
+  //           );
+  //         }
+
+  //         plannedPaymentDate = getISTComponents(plannedDeadline)?.dateString || null;
+  //         onTime = paymentDate.rawDate <= plannedDeadline;
+  //       }
+
+  //       const date = paymentDate.dateString;
+
+  //       if (!groups.has(date)) {
+  //         groups.set(date, {
+  //           date,
+  //           actualPayments: 0,
+  //           onTimePayments: 0,
+  //           details: [],
+  //         });
+  //       }
+
+  //       const group = groups.get(date);
+  //       group.actualPayments += 1;
+  //       if (onTime) group.onTimePayments += 1;
+
+  //       group.details.push({
+  //         order_id: row.order_id,
+  //         order_no: row.order_no,
+  //         client_name: row.client_name,
+  //         created_at: row.created_at,
+  //         payment_done_at: row.payment_done_at,
+  //         actual_dispatch_date: row.actual_dispatch_date,
+  //         planned_payment_date: plannedPaymentDate,
+  //         on_time: onTime,
+  //       });
+  //     }
+
+  //     return [...groups.values()].sort((a, b) => a.date.localeCompare(b.date));
+  //   } catch (error) {
+  //     console.error("Error loading Payment Collection actual by date:", error);
+  //     throw error;
+  //   }
+  // }
+
+
+async getCrmKpiTotalPaymentCollectionActualByDate() {
+  const query = `
     SELECT
       id AS order_id,
       sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
@@ -3363,72 +3441,92 @@ async getCrmKpiTotalDispatchActualByDate() {
       payment_status->>'payment_done_at' AS payment_done_at,
       invoice_and_dispatch->>'actual_dispatch_date' AS actual_dispatch_date
     FROM public.sales_orders
-    WHERE payment_status->>'payment_status' = 'true'
-      AND NULLIF(BTRIM(payment_status->>'payment_done_at'), '') IS NOT NULL
-       AND LOWER(BTRIM(COALESCE(rod_size, ''))) <> 'dross'
+    WHERE NULLIF(
+      BTRIM(payment_status->>'payment_done_at'),
+      ''
+    ) IS NOT NULL
+      AND LOWER(BTRIM(COALESCE(rod_size, ''))) <> 'dross'
     ORDER BY id;
   `;
 
-    try {
-      const { rows } = await pool.query(query);
-      const groups = new Map();
+  try {
+    const { rows } = await pool.query(query);
+    const groups = new Map();
 
-      for (const row of rows) {
-        const paymentDate = getISTComponents(row.payment_done_at);
+    for (const row of rows) {
+      const paymentDate = getISTComponents(row.payment_done_at);
 
-        if (!paymentDate?.rawDate) {
-          throw new Error(`Invalid payment_done_at for sales order ${row.order_id}.`);
+      if (!paymentDate?.rawDate) {
+        throw new Error(
+          `Invalid payment_done_at for sales order ${row.order_id}.`
+        );
+      }
+
+      let plannedPaymentDate = null;
+      let onTime = false;
+
+      if (row.actual_dispatch_date) {
+        const plannedDeadline = addWorkingHours(
+          row.actual_dispatch_date,
+          90
+        );
+
+        if (!plannedDeadline) {
+          throw new Error(
+            `Could not calculate the planned payment deadline for sales order ${row.order_id}.`
+          );
         }
 
-        let plannedPaymentDate = null;
-        let onTime = false;
+        plannedPaymentDate =
+          getISTComponents(plannedDeadline)?.dateString || null;
 
-        if (row.actual_dispatch_date) {
-          const plannedDeadline = addWorkingHours(row.actual_dispatch_date, 90);
+        onTime = paymentDate.rawDate <= plannedDeadline;
+      }
 
-          if (!plannedDeadline) {
-            throw new Error(
-              `Could not calculate the planned payment deadline for sales order ${row.order_id}.`
-            );
-          }
+      const date = paymentDate.dateString;
 
-          plannedPaymentDate = getISTComponents(plannedDeadline)?.dateString || null;
-          onTime = paymentDate.rawDate <= plannedDeadline;
-        }
-
-        const date = paymentDate.dateString;
-
-        if (!groups.has(date)) {
-          groups.set(date, {
-            date,
-            actualPayments: 0,
-            onTimePayments: 0,
-            details: [],
-          });
-        }
-
-        const group = groups.get(date);
-        group.actualPayments += 1;
-        if (onTime) group.onTimePayments += 1;
-
-        group.details.push({
-          order_id: row.order_id,
-          order_no: row.order_no,
-          client_name: row.client_name,
-          created_at: row.created_at,
-          payment_done_at: row.payment_done_at,
-          actual_dispatch_date: row.actual_dispatch_date,
-          planned_payment_date: plannedPaymentDate,
-          on_time: onTime,
+      if (!groups.has(date)) {
+        groups.set(date, {
+          date,
+          actualPayments: 0,
+          onTimePayments: 0,
+          details: [],
         });
       }
 
-      return [...groups.values()].sort((a, b) => a.date.localeCompare(b.date));
-    } catch (error) {
-      console.error("Error loading Payment Collection actual by date:", error);
-      throw error;
+      const group = groups.get(date);
+
+      group.actualPayments += 1;
+
+      if (onTime) {
+        group.onTimePayments += 1;
+      }
+
+      group.details.push({
+        order_id: row.order_id,
+        order_no: row.order_no,
+        client_name: row.client_name,
+        created_at: row.created_at,
+        payment_done_at: row.payment_done_at,
+        actual_dispatch_date: row.actual_dispatch_date,
+        planned_payment_date: plannedPaymentDate,
+        on_time: onTime,
+      });
     }
+
+    return [...groups.values()].sort((a, b) =>
+      a.date.localeCompare(b.date)
+    );
+
+  } catch (error) {
+    console.error(
+      "Error loading Payment Collection actual by date:",
+      error
+    );
+    throw error;
   }
+}
+
 
   async getCrmKpiComplaintCountsByDate() {
     const query = `
