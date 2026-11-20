@@ -39,6 +39,12 @@ router.post(
 );
 
 router.post(
+  "/deo-pending-quality-confirmation-data",
+  authMiddleware,
+  purchaseController.getDEOPendingQualityConfirmationData
+);
+
+router.post(
   "/add-material-receive-entry",
   authMiddleware,
   upload.fields([
