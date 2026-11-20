@@ -3353,84 +3353,6 @@ async getCrmKpiTotalDispatchActualByDate() {
     }
   }
 
-  // async getCrmKpiTotalPaymentCollectionActualByDate() {
-  //   const query = `
-  //   SELECT
-  //     id AS order_id,
-  //     sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
-  //     client_name,
-  //     created_at,
-  //     payment_status->>'payment_done_at' AS payment_done_at,
-  //     invoice_and_dispatch->>'actual_dispatch_date' AS actual_dispatch_date
-  //   FROM public.sales_orders
-  //   WHERE payment_status->>'payment_status' = 'true'
-  //     AND NULLIF(BTRIM(payment_status->>'payment_done_at'), '') IS NOT NULL
-  //      AND LOWER(BTRIM(COALESCE(rod_size, ''))) <> 'dross'
-  //   ORDER BY id;
-  // `;
-
-  //   try {
-  //     const { rows } = await pool.query(query);
-  //     const groups = new Map();
-
-  //     for (const row of rows) {
-  //       const paymentDate = getISTComponents(row.payment_done_at);
-
-  //       if (!paymentDate?.rawDate) {
-  //         throw new Error(`Invalid payment_done_at for sales order ${row.order_id}.`);
-  //       }
-
-  //       let plannedPaymentDate = null;
-  //       let onTime = false;
-
-  //       if (row.actual_dispatch_date) {
-  //         const plannedDeadline = addWorkingHours(row.actual_dispatch_date, 90);
-
-  //         if (!plannedDeadline) {
-  //           throw new Error(
-  //             `Could not calculate the planned payment deadline for sales order ${row.order_id}.`
-  //           );
-  //         }
-
-  //         plannedPaymentDate = getISTComponents(plannedDeadline)?.dateString || null;
-  //         onTime = paymentDate.rawDate <= plannedDeadline;
-  //       }
-
-  //       const date = paymentDate.dateString;
-
-  //       if (!groups.has(date)) {
-  //         groups.set(date, {
-  //           date,
-  //           actualPayments: 0,
-  //           onTimePayments: 0,
-  //           details: [],
-  //         });
-  //       }
-
-  //       const group = groups.get(date);
-  //       group.actualPayments += 1;
-  //       if (onTime) group.onTimePayments += 1;
-
-  //       group.details.push({
-  //         order_id: row.order_id,
-  //         order_no: row.order_no,
-  //         client_name: row.client_name,
-  //         created_at: row.created_at,
-  //         payment_done_at: row.payment_done_at,
-  //         actual_dispatch_date: row.actual_dispatch_date,
-  //         planned_payment_date: plannedPaymentDate,
-  //         on_time: onTime,
-  //       });
-  //     }
-
-  //     return [...groups.values()].sort((a, b) => a.date.localeCompare(b.date));
-  //   } catch (error) {
-  //     console.error("Error loading Payment Collection actual by date:", error);
-  //     throw error;
-  //   }
-  // }
-
-
 async getCrmKpiTotalPaymentCollectionActualByDate() {
   const query = `
     SELECT
@@ -3924,6 +3846,196 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
       client.release();
     }
   }
+
+  async getCrmKpiWeekFreezes() {
+  const { rows } = await pool.query(`
+    SELECT
+      TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart",
+      snapshot
+    FROM public.crm_kpi_promises
+    WHERE snapshot IS NOT NULL
+    ORDER BY week_start;
+  `);
+
+  return rows;
+}
+
+async freezeCrmKpiWeeks(weeks, frozenBy) {
+  if (!Array.isArray(weeks) || weeks.length === 0) {
+    throw new BadRequestError("At least one completed week is required.");
+  }
+
+  if (
+    frozenBy !== null &&
+    frozenBy !== undefined &&
+    !Number.isInteger(Number(frozenBy))
+  ) {
+    throw new BadRequestError("Invalid user ID.");
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const { rows: currentWeekRows } = await client.query(`
+      SELECT TO_CHAR(
+        DATE_TRUNC('week', NOW() AT TIME ZONE 'Asia/Kolkata')::date,
+        'YYYY-MM-DD'
+      ) AS "currentWeekStart";
+    `);
+
+    const currentWeekStart = currentWeekRows[0].currentWeekStart;
+    const seen = new Set();
+
+    const records = weeks.map((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new BadRequestError("Each week must be an object.");
+      }
+
+      const { weekStart, weekEnd, snapshot } = entry;
+
+      if (
+        typeof weekStart !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)
+      ) {
+        throw new BadRequestError("weekStart must use YYYY-MM-DD.");
+      }
+
+      const start = new Date(`${weekStart}T00:00:00.000Z`);
+
+      if (
+        Number.isNaN(start.getTime()) ||
+        start.toISOString().slice(0, 10) !== weekStart ||
+        start.getUTCDay() !== 1
+      ) {
+        throw new BadRequestError("weekStart must be a valid Monday.");
+      }
+
+      const expectedEnd = new Date(start);
+      expectedEnd.setUTCDate(expectedEnd.getUTCDate() + 6);
+
+      if (
+        typeof weekEnd !== "string" ||
+        expectedEnd.toISOString().slice(0, 10) !== weekEnd
+      ) {
+        throw new BadRequestError(
+          "weekEnd must be Sunday, six days after weekStart."
+        );
+      }
+
+      if (weekStart >= currentWeekStart) {
+        throw new BadRequestError("Only completed weeks can be frozen.");
+      }
+
+      if (seen.has(weekStart)) {
+        throw new BadRequestError("Duplicate weekStart.");
+      }
+      seen.add(weekStart);
+
+      if (
+        !snapshot ||
+        typeof snapshot !== "object" ||
+        Array.isArray(snapshot) ||
+        snapshot.weekStart !== weekStart ||
+        snapshot.weekEnd !== weekEnd ||
+        !snapshot.week ||
+        !snapshot.metrics ||
+        !snapshot.promisedData
+      ) {
+        throw new BadRequestError("Invalid KPI snapshot.");
+      }
+
+      return { weekStart, snapshot };
+    });
+
+    for (const record of records) {
+await client.query(
+  `
+    INSERT INTO public.crm_kpi_promises AS existing
+      (week_start, promised_data, snapshot, frozen_by, frozen_at)
+    VALUES ($1::date, '{}'::jsonb, $2::jsonb, $3, NOW())
+    ON CONFLICT (week_start)
+    DO UPDATE SET
+      snapshot = EXCLUDED.snapshot,
+      frozen_by = EXCLUDED.frozen_by,
+      frozen_at = EXCLUDED.frozen_at
+    WHERE existing.snapshot IS NULL;
+  `,
+  [
+    record.weekStart,
+    JSON.stringify(record.snapshot),
+    frozenBy == null ? null : Number(frozenBy),
+  ]
+);
+
+    }
+
+    const weekStarts = records.map((record) => record.weekStart);
+
+    const { rows } = await client.query(
+      `
+        SELECT
+          TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart",
+          snapshot
+        FROM public.crm_kpi_promises
+        WHERE week_start = ANY($1::date[])
+        ORDER BY week_start;
+      `,
+      [weekStarts]
+    );
+
+    await client.query("COMMIT");
+    return rows;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async defreezeCrmKpiWeeks(weekStarts) {
+  if (!Array.isArray(weekStarts) || weekStarts.length === 0) {
+    throw new BadRequestError("At least one weekStart is required.");
+  }
+
+  for (const weekStart of weekStarts) {
+    if (
+      typeof weekStart !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)
+    ) {
+      throw new BadRequestError("weekStart must use YYYY-MM-DD.");
+    }
+
+    const start = new Date(`${weekStart}T00:00:00.000Z`);
+
+    if (
+      Number.isNaN(start.getTime()) ||
+      start.toISOString().slice(0, 10) !== weekStart ||
+      start.getUTCDay() !== 1
+    ) {
+      throw new BadRequestError("Every weekStart must be a valid Monday.");
+    }
+  }
+
+  const { rows } = await pool.query(
+  `
+    UPDATE public.crm_kpi_promises
+    SET snapshot = NULL,
+        frozen_by = NULL,
+        frozen_at = NULL
+    WHERE week_start = ANY($1::date[])
+      AND snapshot IS NOT NULL
+      AND week_start <
+        DATE_TRUNC('week', NOW() AT TIME ZONE 'Asia/Kolkata')::date
+    RETURNING TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart";
+  `,
+  [weekStarts]
+);
+
+  return rows;
+}
 
   // async getCrmKpiComplaintCountsByDate() {
   //   const query = `
