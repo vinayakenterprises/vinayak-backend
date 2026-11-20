@@ -2041,6 +2041,14 @@ class O2dService {
           ? parsedPageSize
           : 25;
       const offset = (safePage - 1) * pageSize;
+      const getFilterValues = (value) =>
+        (Array.isArray(value) ? value : value ? [value] : [])
+          .filter((item) => typeof item === "string")
+          .map((item) => item.trim())
+          .filter((item) => item && item !== "all");
+      const orderStatuses = getFilterValues(orderStatus);
+      const dispatchTypes = getFilterValues(dispatchType);
+      const delayReasons = getFilterValues(delayReason);
       const baseWhereClause = `
         WHERE so.sale_order_generation->>'sent_for_so' = 'true'
           AND EXISTS (
@@ -2064,17 +2072,17 @@ class O2dService {
         filterValues.push(deliveryEndDate);
         filteredWhereClause += ` AND so.delivery_date::date <= $${filterValues.length}::date`;
       }
-      if (orderStatus && orderStatus !== "all") {
-        filterValues.push(orderStatus);
-        filteredWhereClause += ` AND so.order_status = $${filterValues.length}`;
+      if (orderStatuses.length > 0) {
+        filterValues.push(orderStatuses);
+        filteredWhereClause += ` AND so.order_status = ANY($${filterValues.length}::text[])`;
       }
-      if (dispatchType && dispatchType !== "all") {
-        filterValues.push(dispatchType);
-        filteredWhereClause += ` AND so.dispatch_info->>'dispatch_type' = $${filterValues.length}`;
+      if (dispatchTypes.length > 0) {
+        filterValues.push(dispatchTypes);
+        filteredWhereClause += ` AND so.dispatch_info->>'dispatch_type' = ANY($${filterValues.length}::text[])`;
       }
-      if (delayReason && delayReason !== "all") {
-        filterValues.push(delayReason);
-        filteredWhereClause += ` AND so.dispatch_info->>'delay_reason' = $${filterValues.length}`;
+      if (delayReasons.length > 0) {
+        filterValues.push(delayReasons);
+        filteredWhereClause += ` AND so.dispatch_info->>'delay_reason' = ANY($${filterValues.length}::text[])`;
       }
       const searchTerm = String(search || "").trim();
       if (searchTerm) {
@@ -4628,7 +4636,13 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
     page = 1,
     requestedPageSize = 25,
     search = "",
-    status = "All"
+    status = "All",
+    invoiceDateFrom = "",
+    invoiceDateTo = "",
+    dueDateFrom = "",
+    dueDateTo = "",
+    overdueDaysMin = "",
+    overdueDaysMax = ""
   ) {
     try {
       const requestedPage = Number(page);
@@ -4656,6 +4670,14 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
           OR osr.id::text ILIKE ${searchParameter}
         )`);
       }
+      if (String(invoiceDateFrom).trim()) {
+        filterValues.push(String(invoiceDateFrom).trim());
+        filters.push(`osr.invoice_date::date >= $${filterValues.length}::date`);
+      }
+      if (String(invoiceDateTo).trim()) {
+        filterValues.push(String(invoiceDateTo).trim());
+        filters.push(`osr.invoice_date::date <= $${filterValues.length}::date`);
+      }
       const overdueStatusExpression = `CASE
         WHEN osr.invoice_date IS NOT NULL
           AND CURRENT_TIMESTAMP > GREATEST(
@@ -4673,6 +4695,34 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
       if (status && status !== "All") {
         filterValues.push(status);
         filters.push(`${overdueStatusExpression} = $${filterValues.length}`);
+      }
+      const dueDateExpression = `GREATEST(
+        osr.invoice_date::timestamp + INTERVAL '10 days',
+        CASE
+          WHEN ci.complaint_status = 'Closed' AND ci.updated_at IS NOT NULL
+            THEN ci.updated_at + INTERVAL '10 days'
+          ELSE osr.invoice_date::timestamp + INTERVAL '10 days'
+        END
+      )`;
+      if (String(dueDateFrom).trim()) {
+        filterValues.push(String(dueDateFrom).trim());
+        filters.push(`${dueDateExpression}::date >= $${filterValues.length}::date`);
+      }
+      if (String(dueDateTo).trim()) {
+        filterValues.push(String(dueDateTo).trim());
+        filters.push(`${dueDateExpression}::date <= $${filterValues.length}::date`);
+      }
+      const overdueDaysExpression = `GREATEST(
+        0,
+        FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - ${dueDateExpression})) / 86400)::integer
+      )`;
+      if (String(overdueDaysMin).trim()) {
+        filterValues.push(String(overdueDaysMin).trim());
+        filters.push(`${overdueDaysExpression} >= $${filterValues.length}::integer`);
+      }
+      if (String(overdueDaysMax).trim()) {
+        filterValues.push(String(overdueDaysMax).trim());
+        filters.push(`${overdueDaysExpression} <= $${filterValues.length}::integer`);
       }
 
       const whereClause = filters.join(" AND ");
@@ -4705,15 +4755,13 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
           ), 0) AS total_collected_amount
         FROM overdue_summary_report osr
         LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
-        WHERE osr.is_deleted = false
-          AND osr.is_collected = true
-          AND (ci.sale_order_id IS NULL OR ci.complaint_status = 'Closed')
+        WHERE ${whereClause}
       `;
 
       const [countResult, ordersResult, summaryResult] = await Promise.all([
         pool.query(countQuery, filterValues),
         pool.query(ordersQuery, [...filterValues, pageSize, offset]),
-        pool.query(summaryQuery, []),
+        pool.query(summaryQuery, filterValues),
       ]);
       const totalItems = Number(countResult.rows[0]?.total_items || 0);
       return {
