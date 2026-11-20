@@ -3827,216 +3827,6 @@ async getCrmKpiTotalDispatchActualByDate() {
     }
   }
 
-  async getCrmKpiWeekFreezes() {
-  // const { rows } = await pool.query(`
-  //   SELECT
-  //     TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart",
-  //     snapshot
-  //   FROM public.crm_kpi_promises
-  //   ORDER BY week_start;
-  // `);
- const { rows } = await pool.query(`
-    SELECT
-      TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart",
-      snapshot
-    FROM public.crm_kpi_promises
-WHERE snapshot IS NOT NULL
-ORDER BY week_start;
-  `);
-
-  return rows;
-}
-
-async freezeCrmKpiWeeks(weeks, frozenBy) {
-  if (!Array.isArray(weeks) || weeks.length === 0) {
-    throw new BadRequestError("At least one completed week is required.");
-  }
-
-  if (
-    frozenBy !== null &&
-    frozenBy !== undefined &&
-    !Number.isInteger(Number(frozenBy))
-  ) {
-    throw new BadRequestError("Invalid user ID.");
-  }
-
-  const client = await pool.connect();
-
-  try {
-    await client.query("BEGIN");
-
-    const { rows: currentWeekRows } = await client.query(`
-      SELECT TO_CHAR(
-        DATE_TRUNC('week', NOW() AT TIME ZONE 'Asia/Kolkata')::date,
-        'YYYY-MM-DD'
-      ) AS "currentWeekStart";
-    `);
-
-    const currentWeekStart = currentWeekRows[0].currentWeekStart;
-    const seen = new Set();
-
-    const records = weeks.map((entry) => {
-      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-        throw new BadRequestError("Each week must be an object.");
-      }
-
-      const { weekStart, weekEnd, snapshot } = entry;
-
-      if (
-        typeof weekStart !== "string" ||
-        !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)
-      ) {
-        throw new BadRequestError("weekStart must use YYYY-MM-DD.");
-      }
-
-      const start = new Date(`${weekStart}T00:00:00.000Z`);
-
-      if (
-        Number.isNaN(start.getTime()) ||
-        start.toISOString().slice(0, 10) !== weekStart ||
-        start.getUTCDay() !== 1
-      ) {
-        throw new BadRequestError("weekStart must be a valid Monday.");
-      }
-
-      const expectedEnd = new Date(start);
-      expectedEnd.setUTCDate(expectedEnd.getUTCDate() + 6);
-
-      if (
-        typeof weekEnd !== "string" ||
-        expectedEnd.toISOString().slice(0, 10) !== weekEnd
-      ) {
-        throw new BadRequestError(
-          "weekEnd must be Sunday, six days after weekStart."
-        );
-      }
-
-      if (weekStart >= currentWeekStart) {
-        throw new BadRequestError("Only completed weeks can be frozen.");
-      }
-
-      if (seen.has(weekStart)) {
-        throw new BadRequestError("Duplicate weekStart.");
-      }
-      seen.add(weekStart);
-
-      if (
-        !snapshot ||
-        typeof snapshot !== "object" ||
-        Array.isArray(snapshot) ||
-        snapshot.weekStart !== weekStart ||
-        snapshot.weekEnd !== weekEnd ||
-        !snapshot.week ||
-        !snapshot.metrics ||
-        !snapshot.promisedData
-      ) {
-        throw new BadRequestError("Invalid KPI snapshot.");
-      }
-
-      return { weekStart, snapshot };
-    });
-
-    for (const record of records) {
-      // await client.query(
-      //   `
-      //     INSERT INTO public.crm_kpi_week_freezes
-      //       (week_start, snapshot, frozen_by)
-      //     VALUES ($1::date, $2::jsonb, $3)
-      //     ON CONFLICT (week_start) DO NOTHING;
-      //   `,
-      //   [
-      //     record.weekStart,
-      //     JSON.stringify(record.snapshot),
-      //     frozenBy == null ? null : Number(frozenBy),
-      //   ]
-      // );
-await client.query(
-  `
-    INSERT INTO public.crm_kpi_promises AS existing
-      (week_start, promised_data, snapshot, frozen_by, frozen_at)
-    VALUES ($1::date, '{}'::jsonb, $2::jsonb, $3, NOW())
-    ON CONFLICT (week_start)
-    DO UPDATE SET
-      snapshot = EXCLUDED.snapshot,
-      frozen_by = EXCLUDED.frozen_by,
-      frozen_at = EXCLUDED.frozen_at
-    WHERE existing.snapshot IS NULL;
-  `,
-  [
-    record.weekStart,
-    JSON.stringify(record.snapshot),
-    frozenBy == null ? null : Number(frozenBy),
-  ]
-);
-
-    }
-
-    const weekStarts = records.map((record) => record.weekStart);
-
-    const { rows } = await client.query(
-      `
-        SELECT
-          TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart",
-          snapshot
-        FROM public.crm_kpi_promises
-        WHERE week_start = ANY($1::date[])
-        ORDER BY week_start;
-      `,
-      [weekStarts]
-    );
-
-    await client.query("COMMIT");
-    return rows;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-async defreezeCrmKpiWeeks(weekStarts) {
-  if (!Array.isArray(weekStarts) || weekStarts.length === 0) {
-    throw new BadRequestError("At least one weekStart is required.");
-  }
-
-  for (const weekStart of weekStarts) {
-    if (
-      typeof weekStart !== "string" ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)
-    ) {
-      throw new BadRequestError("weekStart must use YYYY-MM-DD.");
-    }
-
-    const start = new Date(`${weekStart}T00:00:00.000Z`);
-
-    if (
-      Number.isNaN(start.getTime()) ||
-      start.toISOString().slice(0, 10) !== weekStart ||
-      start.getUTCDay() !== 1
-    ) {
-      throw new BadRequestError("Every weekStart must be a valid Monday.");
-    }
-  }
-
-  const { rows } = await pool.query(
-  `
-    UPDATE public.crm_kpi_promises
-    SET snapshot = NULL,
-        frozen_by = NULL,
-        frozen_at = NULL
-    WHERE week_start = ANY($1::date[])
-      AND snapshot IS NOT NULL
-      AND week_start <
-        DATE_TRUNC('week', NOW() AT TIME ZONE 'Asia/Kolkata')::date
-    RETURNING TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart";
-  `,
-  [weekStarts]
-);
-
-  return rows;
-}
-
   // async getCrmKpiComplaintCountsByDate() {
   //   const query = `
   //     SELECT
@@ -5705,6 +5495,7 @@ async defreezeCrmKpiWeeks(weekStarts) {
           credit_debit_note_number: body.credit_debit_note_number || null,
           credit_debit_note_amount: body.credit_debit_note_amount || null,
           credit_debit_note_quantity: body.credit_debit_note_quantity || null,
+          original_invoice_number: body.original_invoice_number || null,
         };
 
         const sendNotificationToCrm = async (order_id) => {
@@ -5823,6 +5614,7 @@ async defreezeCrmKpiWeeks(weekStarts) {
         credit_debit_note_number: credit_debit_note_number,
         credit_debit_note_amount: credit_debit_note_amount,
         credit_debit_note_quantity: credit_debit_note_quantity,
+        original_invoice_number: original_invoice_number,
         cn_dn_document_url: pdfUrl,
         cn_or_dn_issue_status: true,
         // actual_delivery_timestamp: new Date().toISOString(), // e.g., "2026-07-23T06:07:55.526Z"
@@ -5835,6 +5627,65 @@ async defreezeCrmKpiWeeks(weekStarts) {
         userId,
         body
       );
+
+      const overdueInvoice = await pool.query(
+        `SELECT id, balance, transactions
+         FROM overdue_summary_report
+         WHERE sale_order_id = $2
+           AND (
+             invoice_no = $1
+             OR split_part(invoice_no, '/', ${currentCompany === "Mittalu Pvt Ltd" ? "3" : "2"}) = $1
+           )
+           AND is_deleted = false
+         ORDER BY id DESC
+         LIMIT 1`,
+        [original_invoice_number, orderId]
+      );
+
+      if (overdueInvoice.rows.length > 0) {
+        const overdueRow = overdueInvoice.rows[0];
+        const existingTransactions = Array.isArray(overdueRow.transactions)
+          ? overdueRow.transactions
+          : [];
+        const duplicateNote = existingTransactions.some(
+          (transaction) =>
+            transaction.credit_debit_note_number === credit_debit_note_number ||
+            transaction.voucher_number === credit_debit_note_number
+        );
+
+        if (!duplicateNote) {
+          const noteAmount = Number.parseFloat(String(credit_debit_note_amount));
+          if (!Number.isFinite(noteAmount)) {
+            throw new Error(`Invalid credit/debit note amount: ${credit_debit_note_amount}`);
+          }
+
+          const noteType = String(document_type || "").trim();
+          const isCreditNote =
+            /credit/i.test(noteType) ||
+            /^cn\b/i.test(noteType) ||
+            /^c\/n\b/i.test(noteType);
+          const signedAmount = isCreditNote ? -noteAmount : noteAmount;
+          const adjustment = {
+            bill_type: isCreditNote ? "Credit Note" : "Debit Note",
+            voucher_number: credit_debit_note_number,
+            credit_debit_note_number: credit_debit_note_number,
+            credit_debit_note_quantity: credit_debit_note_quantity,
+            amount: signedAmount,
+            date: new Date().toISOString(),
+            original_invoice_number,
+          };
+
+          await pool.query(
+            `UPDATE overdue_summary_report
+             SET transactions = COALESCE(transactions, '[]'::jsonb)
+                               || jsonb_build_array($1::jsonb),
+                 balance = COALESCE(balance, 0) + $2,
+                 updated_at = NOW()
+             WHERE id = $3`,
+            [JSON.stringify(adjustment), signedAmount, overdueRow.id]
+          );
+        }
+      }
 
       return updatedOrder;
     } catch (error) {
