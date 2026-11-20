@@ -3353,8 +3353,8 @@ async getCrmKpiTotalDispatchActualByDate() {
     }
   }
 
-  async getCrmKpiTotalPaymentCollectionActualByDate() {
-    const query = `
+async getCrmKpiTotalPaymentCollectionActualByDate() {
+  const query = `
     SELECT
       id AS order_id,
       sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
@@ -3363,72 +3363,92 @@ async getCrmKpiTotalDispatchActualByDate() {
       payment_status->>'payment_done_at' AS payment_done_at,
       invoice_and_dispatch->>'actual_dispatch_date' AS actual_dispatch_date
     FROM public.sales_orders
-    WHERE payment_status->>'payment_status' = 'true'
-      AND NULLIF(BTRIM(payment_status->>'payment_done_at'), '') IS NOT NULL
-       AND LOWER(BTRIM(COALESCE(rod_size, ''))) <> 'dross'
+    WHERE NULLIF(
+      BTRIM(payment_status->>'payment_done_at'),
+      ''
+    ) IS NOT NULL
+      AND LOWER(BTRIM(COALESCE(rod_size, ''))) <> 'dross'
     ORDER BY id;
   `;
 
-    try {
-      const { rows } = await pool.query(query);
-      const groups = new Map();
+  try {
+    const { rows } = await pool.query(query);
+    const groups = new Map();
 
-      for (const row of rows) {
-        const paymentDate = getISTComponents(row.payment_done_at);
+    for (const row of rows) {
+      const paymentDate = getISTComponents(row.payment_done_at);
 
-        if (!paymentDate?.rawDate) {
-          throw new Error(`Invalid payment_done_at for sales order ${row.order_id}.`);
+      if (!paymentDate?.rawDate) {
+        throw new Error(
+          `Invalid payment_done_at for sales order ${row.order_id}.`
+        );
+      }
+
+      let plannedPaymentDate = null;
+      let onTime = false;
+
+      if (row.actual_dispatch_date) {
+        const plannedDeadline = addWorkingHours(
+          row.actual_dispatch_date,
+          90
+        );
+
+        if (!plannedDeadline) {
+          throw new Error(
+            `Could not calculate the planned payment deadline for sales order ${row.order_id}.`
+          );
         }
 
-        let plannedPaymentDate = null;
-        let onTime = false;
+        plannedPaymentDate =
+          getISTComponents(plannedDeadline)?.dateString || null;
 
-        if (row.actual_dispatch_date) {
-          const plannedDeadline = addWorkingHours(row.actual_dispatch_date, 90);
+        onTime = paymentDate.rawDate <= plannedDeadline;
+      }
 
-          if (!plannedDeadline) {
-            throw new Error(
-              `Could not calculate the planned payment deadline for sales order ${row.order_id}.`
-            );
-          }
+      const date = paymentDate.dateString;
 
-          plannedPaymentDate = getISTComponents(plannedDeadline)?.dateString || null;
-          onTime = paymentDate.rawDate <= plannedDeadline;
-        }
-
-        const date = paymentDate.dateString;
-
-        if (!groups.has(date)) {
-          groups.set(date, {
-            date,
-            actualPayments: 0,
-            onTimePayments: 0,
-            details: [],
-          });
-        }
-
-        const group = groups.get(date);
-        group.actualPayments += 1;
-        if (onTime) group.onTimePayments += 1;
-
-        group.details.push({
-          order_id: row.order_id,
-          order_no: row.order_no,
-          client_name: row.client_name,
-          created_at: row.created_at,
-          payment_done_at: row.payment_done_at,
-          actual_dispatch_date: row.actual_dispatch_date,
-          planned_payment_date: plannedPaymentDate,
-          on_time: onTime,
+      if (!groups.has(date)) {
+        groups.set(date, {
+          date,
+          actualPayments: 0,
+          onTimePayments: 0,
+          details: [],
         });
       }
 
-      return [...groups.values()].sort((a, b) => a.date.localeCompare(b.date));
-    } catch (error) {
-      console.error("Error loading Payment Collection actual by date:", error);
-      throw error;
+      const group = groups.get(date);
+
+      group.actualPayments += 1;
+
+      if (onTime) {
+        group.onTimePayments += 1;
+      }
+
+      group.details.push({
+        order_id: row.order_id,
+        order_no: row.order_no,
+        client_name: row.client_name,
+        created_at: row.created_at,
+        payment_done_at: row.payment_done_at,
+        actual_dispatch_date: row.actual_dispatch_date,
+        planned_payment_date: plannedPaymentDate,
+        on_time: onTime,
+      });
     }
+
+    return [...groups.values()].sort((a, b) =>
+      a.date.localeCompare(b.date)
+    );
+
+  } catch (error) {
+    console.error(
+      "Error loading Payment Collection actual by date:",
+      error
+    );
+    throw error;
   }
+}
+
 
   async getCrmKpiComplaintCountsByDate() {
     const query = `
@@ -3827,6 +3847,196 @@ async getCrmKpiTotalDispatchActualByDate() {
     }
   }
 
+  async getCrmKpiWeekFreezes() {
+  const { rows } = await pool.query(`
+    SELECT
+      TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart",
+      snapshot
+    FROM public.crm_kpi_promises
+    WHERE snapshot IS NOT NULL
+    ORDER BY week_start;
+  `);
+
+  return rows;
+}
+
+async freezeCrmKpiWeeks(weeks, frozenBy) {
+  if (!Array.isArray(weeks) || weeks.length === 0) {
+    throw new BadRequestError("At least one completed week is required.");
+  }
+
+  if (
+    frozenBy !== null &&
+    frozenBy !== undefined &&
+    !Number.isInteger(Number(frozenBy))
+  ) {
+    throw new BadRequestError("Invalid user ID.");
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const { rows: currentWeekRows } = await client.query(`
+      SELECT TO_CHAR(
+        DATE_TRUNC('week', NOW() AT TIME ZONE 'Asia/Kolkata')::date,
+        'YYYY-MM-DD'
+      ) AS "currentWeekStart";
+    `);
+
+    const currentWeekStart = currentWeekRows[0].currentWeekStart;
+    const seen = new Set();
+
+    const records = weeks.map((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new BadRequestError("Each week must be an object.");
+      }
+
+      const { weekStart, weekEnd, snapshot } = entry;
+
+      if (
+        typeof weekStart !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)
+      ) {
+        throw new BadRequestError("weekStart must use YYYY-MM-DD.");
+      }
+
+      const start = new Date(`${weekStart}T00:00:00.000Z`);
+
+      if (
+        Number.isNaN(start.getTime()) ||
+        start.toISOString().slice(0, 10) !== weekStart ||
+        start.getUTCDay() !== 1
+      ) {
+        throw new BadRequestError("weekStart must be a valid Monday.");
+      }
+
+      const expectedEnd = new Date(start);
+      expectedEnd.setUTCDate(expectedEnd.getUTCDate() + 6);
+
+      if (
+        typeof weekEnd !== "string" ||
+        expectedEnd.toISOString().slice(0, 10) !== weekEnd
+      ) {
+        throw new BadRequestError(
+          "weekEnd must be Sunday, six days after weekStart."
+        );
+      }
+
+      if (weekStart >= currentWeekStart) {
+        throw new BadRequestError("Only completed weeks can be frozen.");
+      }
+
+      if (seen.has(weekStart)) {
+        throw new BadRequestError("Duplicate weekStart.");
+      }
+      seen.add(weekStart);
+
+      if (
+        !snapshot ||
+        typeof snapshot !== "object" ||
+        Array.isArray(snapshot) ||
+        snapshot.weekStart !== weekStart ||
+        snapshot.weekEnd !== weekEnd ||
+        !snapshot.week ||
+        !snapshot.metrics ||
+        !snapshot.promisedData
+      ) {
+        throw new BadRequestError("Invalid KPI snapshot.");
+      }
+
+      return { weekStart, snapshot };
+    });
+
+    for (const record of records) {
+await client.query(
+  `
+    INSERT INTO public.crm_kpi_promises AS existing
+      (week_start, promised_data, snapshot, frozen_by, frozen_at)
+    VALUES ($1::date, '{}'::jsonb, $2::jsonb, $3, NOW())
+    ON CONFLICT (week_start)
+    DO UPDATE SET
+      snapshot = EXCLUDED.snapshot,
+      frozen_by = EXCLUDED.frozen_by,
+      frozen_at = EXCLUDED.frozen_at
+    WHERE existing.snapshot IS NULL;
+  `,
+  [
+    record.weekStart,
+    JSON.stringify(record.snapshot),
+    frozenBy == null ? null : Number(frozenBy),
+  ]
+);
+
+    }
+
+    const weekStarts = records.map((record) => record.weekStart);
+
+    const { rows } = await client.query(
+      `
+        SELECT
+          TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart",
+          snapshot
+        FROM public.crm_kpi_promises
+        WHERE week_start = ANY($1::date[])
+        ORDER BY week_start;
+      `,
+      [weekStarts]
+    );
+
+    await client.query("COMMIT");
+    return rows;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async defreezeCrmKpiWeeks(weekStarts) {
+  if (!Array.isArray(weekStarts) || weekStarts.length === 0) {
+    throw new BadRequestError("At least one weekStart is required.");
+  }
+
+  for (const weekStart of weekStarts) {
+    if (
+      typeof weekStart !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)
+    ) {
+      throw new BadRequestError("weekStart must use YYYY-MM-DD.");
+    }
+
+    const start = new Date(`${weekStart}T00:00:00.000Z`);
+
+    if (
+      Number.isNaN(start.getTime()) ||
+      start.toISOString().slice(0, 10) !== weekStart ||
+      start.getUTCDay() !== 1
+    ) {
+      throw new BadRequestError("Every weekStart must be a valid Monday.");
+    }
+  }
+
+  const { rows } = await pool.query(
+  `
+    UPDATE public.crm_kpi_promises
+    SET snapshot = NULL,
+        frozen_by = NULL,
+        frozen_at = NULL
+    WHERE week_start = ANY($1::date[])
+      AND snapshot IS NOT NULL
+      AND week_start <
+        DATE_TRUNC('week', NOW() AT TIME ZONE 'Asia/Kolkata')::date
+    RETURNING TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart";
+  `,
+  [weekStarts]
+);
+
+  return rows;
+}
+
   // async getCrmKpiComplaintCountsByDate() {
   //   const query = `
   //     SELECT
@@ -3925,6 +4135,82 @@ async getCrmKpiTotalDispatchActualByDate() {
       return rows;
     } catch (error) {
       console.error("error in getting call complaint data: ", error);
+      throw error;
+    }
+  }
+
+  async getCrmPendingTasks() {
+    try {
+      const query = `
+        SELECT
+          so.id AS order_id,
+          so.client_name,
+          so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
+          task.task_name,
+          task.complaint_id,
+          task.complaint_status
+        FROM public.sales_orders so
+        CROSS JOIN LATERAL (
+          SELECT 'Assign to Vehicle Executive'::text AS task_name, NULL::integer AS complaint_id, NULL::text AS complaint_status
+          WHERE so.sale_order_generation->>'sent_for_so' = 'true'
+            AND so.vehicle_arrangement->>'assigned_to_vehicle_executive' IS DISTINCT FROM 'true'
+
+          UNION ALL
+
+          SELECT 'Intimation & Thank You', NULL::integer, NULL::text
+          WHERE NULLIF(BTRIM(so.invoice_and_dispatch->>'invoice_completed_at'), '') IS NOT NULL
+            AND NULLIF(BTRIM(so.intimation_thankyou->>'completed_at'), '') IS NULL
+
+          UNION ALL
+
+          SELECT 'Upload Receiving Proof', NULL::integer, NULL::text
+          WHERE NULLIF(BTRIM(so.invoice_and_dispatch->>'invoice_completed_at'), '') IS NOT NULL
+            AND NULLIF(BTRIM(so.receiving_details->>'completion_timestamp'), '') IS NULL
+
+          UNION ALL
+
+          SELECT 'Mark Delivery & Weight', NULL::integer, NULL::text
+          WHERE (
+              NULLIF(BTRIM(so.invoice_and_dispatch->>'actual_dispatch_date'), '') IS NOT NULL
+              OR NULLIF(BTRIM(so.invoice_and_dispatch->>'invoice_completed_at'), '') IS NOT NULL
+            )
+            AND NULLIF(BTRIM(so.delivery_and_weight->>'actual_delivery_timestamp'), '') IS NULL
+            AND NULLIF(BTRIM(so.delivery_and_weight->>'actual_delivery_date'), '') IS NULL
+            AND COALESCE(NULLIF(BTRIM(so.delivery_and_weight->>'delivery_status'), ''), '') <> 'Delivered'
+
+          UNION ALL
+
+          SELECT 'Quality Confirmation', NULL::integer, NULL::text
+          WHERE so.delivery_and_weight->>'delivery_status' = 'Delivered'
+            AND (
+              so.delivery_and_weight->>'quality_confirmation_status' IS NULL
+              OR so.delivery_and_weight->>'quality_confirmation_status'
+                NOT IN ('Yes', 'No within TAT', 'NO without TAT')
+            )
+        ) AS task
+        WHERE so.sale_order_generation->>'sent_for_so' = 'true'
+          AND NULLIF(BTRIM(so.sale_order_generation->>'so_order_completed_at'), '') IS NOT NULL
+          AND so.dispatch_info->>'dispatch_type' IS DISTINCT FROM 'Order Cancel'
+
+        UNION ALL
+
+        SELECT
+          so.id AS order_id,
+          so.client_name,
+          so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
+          'Close Complaint'::text AS task_name,
+          ci.complaint_id,
+          ci.complaint_status
+        FROM public.complaint_info ci
+        JOIN public.sales_orders so ON so.id = ci.sale_order_id
+        WHERE LOWER(BTRIM(COALESCE(ci.complaint_status, ''))) <> 'closed'
+
+        ORDER BY order_id DESC, task_name ASC;
+      `;
+      const { rows } = await pool.query(query, []);
+      return rows;
+    } catch (error) {
+      console.error("Error in getting CRM pending tasks: ", error);
       throw error;
     }
   }
@@ -5419,6 +5705,7 @@ async getCrmKpiTotalDispatchActualByDate() {
           credit_debit_note_number: body.credit_debit_note_number || null,
           credit_debit_note_amount: body.credit_debit_note_amount || null,
           credit_debit_note_quantity: body.credit_debit_note_quantity || null,
+          original_invoice_number: body.original_invoice_number || null,
         };
 
         const sendNotificationToCrm = async (order_id) => {
@@ -5537,6 +5824,7 @@ async getCrmKpiTotalDispatchActualByDate() {
         credit_debit_note_number: credit_debit_note_number,
         credit_debit_note_amount: credit_debit_note_amount,
         credit_debit_note_quantity: credit_debit_note_quantity,
+        original_invoice_number: original_invoice_number,
         cn_dn_document_url: pdfUrl,
         cn_or_dn_issue_status: true,
         // actual_delivery_timestamp: new Date().toISOString(), // e.g., "2026-07-23T06:07:55.526Z"
@@ -5549,6 +5837,65 @@ async getCrmKpiTotalDispatchActualByDate() {
         userId,
         body
       );
+
+      const overdueInvoice = await pool.query(
+        `SELECT id, balance, transactions
+         FROM overdue_summary_report
+         WHERE sale_order_id = $2
+           AND (
+             invoice_no = $1
+             OR split_part(invoice_no, '/', ${currentCompany === "Mittalu Pvt Ltd" ? "3" : "2"}) = $1
+           )
+           AND is_deleted = false
+         ORDER BY id DESC
+         LIMIT 1`,
+        [original_invoice_number, orderId]
+      );
+
+      if (overdueInvoice.rows.length > 0) {
+        const overdueRow = overdueInvoice.rows[0];
+        const existingTransactions = Array.isArray(overdueRow.transactions)
+          ? overdueRow.transactions
+          : [];
+        const duplicateNote = existingTransactions.some(
+          (transaction) =>
+            transaction.credit_debit_note_number === credit_debit_note_number ||
+            transaction.voucher_number === credit_debit_note_number
+        );
+
+        if (!duplicateNote) {
+          const noteAmount = Number.parseFloat(String(credit_debit_note_amount));
+          if (!Number.isFinite(noteAmount)) {
+            throw new Error(`Invalid credit/debit note amount: ${credit_debit_note_amount}`);
+          }
+
+          const noteType = String(document_type || "").trim();
+          const isCreditNote =
+            /credit/i.test(noteType) ||
+            /^cn\b/i.test(noteType) ||
+            /^c\/n\b/i.test(noteType);
+          const signedAmount = isCreditNote ? -noteAmount : noteAmount;
+          const adjustment = {
+            bill_type: isCreditNote ? "Credit Note" : "Debit Note",
+            voucher_number: credit_debit_note_number,
+            credit_debit_note_number: credit_debit_note_number,
+            credit_debit_note_quantity: credit_debit_note_quantity,
+            amount: signedAmount,
+            date: new Date().toISOString(),
+            original_invoice_number,
+          };
+
+          await pool.query(
+            `UPDATE overdue_summary_report
+             SET transactions = COALESCE(transactions, '[]'::jsonb)
+                               || jsonb_build_array($1::jsonb),
+                 balance = COALESCE(balance, 0) + $2,
+                 updated_at = NOW()
+             WHERE id = $3`,
+            [JSON.stringify(adjustment), signedAmount, overdueRow.id]
+          );
+        }
+      }
 
       return updatedOrder;
     } catch (error) {
