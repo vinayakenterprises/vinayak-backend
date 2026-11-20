@@ -369,6 +369,10 @@ class PurchaseService {
         p.accounts_info->>'sent_for_po_at' IS NOT NULL
         AND p.accounts_info->>'sent_for_po_at' <> ''
         AND p.accounts_info->>'po_completed_at' IS NULL
+        and (
+          p.order_status IS NULL
+          OR p.order_status != 'Order Complete'
+        )
     `;
 
       // Fetch total count
@@ -487,7 +491,7 @@ class PurchaseService {
       // 5. Append new entry
       receiveInfo.material_recieved.push(newEntry);
 
-      const orderStatus = PURCHASE_ORDER_STAGES.partial_order_receive_stage;
+      let orderStatus = PURCHASE_ORDER_STAGES.partial_order_receive_stage;
       if (status === "Complete") {
         orderStatus = PURCHASE_ORDER_STAGES.complete_order_receive_stage;
       }
