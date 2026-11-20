@@ -561,6 +561,140 @@ class PurchaseService {
     }
   };
 
+  getDEOQualityConfirmationData = async ({ page = 1, pageSize = 10, search = "" }) => {
+    try {
+      const offset = (page - 1) * pageSize;
+
+      const values = [];
+      let searchCondition = "";
+
+      if (search) {
+        values.push(`%${search}%`);
+
+        searchCondition = `
+        AND (
+          p.material ILIKE $1
+          OR p.purity ILIKE $1
+          OR p.purchase_type ILIKE $1
+          OR p.purchased_by ILIKE $1
+          OR p.remarks ILIKE $1
+          OR vd.vendor_name ILIKE $1
+          OR p.accounts_info->'po_information_from_tally'->>'orderno' ILIKE $1
+          OR p.accounts_info->'po_information_from_tally'->>'partyname' ILIKE $1
+          OR p.accounts_info->'po_information_from_tally'->>'itemname' ILIKE $1
+          OR EXISTS (
+            SELECT 1 FROM public.material_received_information m_search
+            WHERE m_search.purchase_id = p.id
+              AND (
+                m_search.quality_information->>'status' ILIKE $1
+                OR m_search.quality_information->>'remarks' ILIKE $1
+                OR m_search.quality_information->>'notes' ILIKE $1
+              )
+          )
+        )
+      `;
+      }
+
+      const baseCondition = `
+      WHERE
+        p.accounts_info->>'sent_for_po_at' IS NOT NULL
+        AND p.accounts_info->>'sent_for_po_at' <> ''
+        AND p.order_status = 'Order Complete'
+        AND EXISTS (
+          SELECT 1
+          FROM public.material_received_information m
+          WHERE m.purchase_id = p.id
+            AND m.quality_information ? 'status'
+            AND m.quality_information->>'status' IS NOT NULL
+            AND m.quality_information->>'status' <> ''
+        )
+    `;
+
+      // Fetch total count
+      const countQuery = `
+      SELECT COUNT(*)::INTEGER AS total_items
+      FROM public.purchases p
+      LEFT JOIN public.vendors_data vd ON p.vendor_id = vd.id
+      ${baseCondition}
+      ${searchCondition}
+    `;
+
+      const countResult = await pool.query(countQuery, values);
+      const totalItems = countResult.rows[0].total_items;
+
+      // Fetch paginated records
+      const dataValues = [...values];
+
+      dataValues.push(pageSize);
+      const limitParam = dataValues.length;
+
+      dataValues.push(offset);
+      const offsetParam = dataValues.length;
+
+      const dataQuery = `
+      SELECT
+        p.*,
+        vd.vendor_name,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', m.id,
+                'purchase_id', m.purchase_id,
+                'rate', m.rate,
+                'status', m.status,
+                'material_received_qty_mt', m.material_received_qty_mt,
+                'material_recieved_qty', m.material_received_qty_mt,
+                'balance', m.balance,
+                'material_received_planned_date', m.material_received_planned_date,
+                'material_receive_date_planned', m.material_received_planned_date,
+                'material_received_actual_date', m.material_received_actual_date,
+                'material_receive_date_actual', m.material_received_actual_date,
+                'kanta_parchi_url', m.geo_tagged_images->>'kanta_parchi_url',
+                'loaded_vehicle_image_url', m.geo_tagged_images->>'loaded_vehicle_image_url',
+                'driver_photo_url', m.geo_tagged_images->>'driver_photo_url',
+                'geo_tagged_images', m.geo_tagged_images,
+                'quality_information', m.quality_information,
+                'created_at', m.created_at
+              ) ORDER BY m.created_at ASC
+            )
+            FROM public.material_received_information m
+            WHERE m.purchase_id = p.id
+          ),
+          '[]'::json
+        ) AS material_received_entries,
+        (
+          SELECT m.quality_information
+          FROM public.material_received_information m
+          WHERE m.purchase_id = p.id
+            AND m.quality_information ? 'status'
+            AND m.quality_information->>'status' IS NOT NULL
+          ORDER BY m.created_at DESC
+          LIMIT 1
+        ) AS latest_quality_information
+      FROM public.purchases p
+      LEFT JOIN public.vendors_data vd ON p.vendor_id = vd.id
+      ${baseCondition}
+      ${searchCondition}
+      ORDER BY
+        p.updated_at DESC,
+        p.id DESC
+      LIMIT $${limitParam}
+      OFFSET $${offsetParam}
+    `;
+
+      const dataResult = await pool.query(dataQuery, dataValues);
+
+      return {
+        rows: dataResult.rows,
+        totalItems,
+      };
+    } catch (err) {
+      console.error("Error in fetching DEO quality confirmation data:", err.message);
+      throw err;
+    }
+  };
+
   /**
    * Add a material receive record to public.material_received_information
    * and update public.purchases.order_status

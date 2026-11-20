@@ -33,6 +33,12 @@ router.post("/deo-assigned-work-data", authMiddleware, purchaseController.getDEO
 router.post("/deo-work-history-data", authMiddleware, purchaseController.getDEOWorkHistoryData);
 
 router.post(
+  "/deo-quality-confirmation-data",
+  authMiddleware,
+  purchaseController.getDEOQualityConfirmationData
+);
+
+router.post(
   "/add-material-receive-entry",
   authMiddleware,
   upload.fields([

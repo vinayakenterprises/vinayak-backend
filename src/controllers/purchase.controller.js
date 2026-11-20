@@ -173,7 +173,7 @@ class PurchaseController {
         search,
       });
 
-      console.log({
+      return res.status(HTTP_STATUS.OK).json({
         status: "success",
         data: rows,
         pagination: {
@@ -184,6 +184,27 @@ class PurchaseController {
           hasNextPage: page * pageSize < totalItems,
           hasPreviousPage: page > 1,
         },
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getDEOQualityConfirmationData = async (req, res, next) => {
+    try {
+      const page = Math.max(1, parseInt(req.body.page || req.query.page, 10) || 1);
+
+      const pageSize = Math.max(
+        1,
+        Math.min(100, parseInt(req.body.pageSize || req.query.pageSize, 10) || 10)
+      );
+
+      const search = (req.body.search || req.query.search || "").trim();
+
+      const { rows, totalItems } = await purchaseService.getDEOQualityConfirmationData({
+        page,
+        pageSize,
+        search,
       });
 
       return res.status(HTTP_STATUS.OK).json({
