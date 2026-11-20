@@ -156,6 +156,53 @@ class PurchaseController {
     }
   };
 
+  getDEOWorkHistoryData = async (req, res, next) => {
+    try {
+      const page = Math.max(1, parseInt(req.body.page || req.query.page, 10) || 1);
+
+      const pageSize = Math.max(
+        1,
+        Math.min(100, parseInt(req.body.pageSize || req.query.pageSize, 10) || 10)
+      );
+
+      const search = (req.body.search || req.query.search || "").trim();
+
+      const { rows, totalItems } = await purchaseService.getDEOWorkHistoryData({
+        page,
+        pageSize,
+        search,
+      });
+
+      console.log({
+        status: "success",
+        data: rows,
+        pagination: {
+          page,
+          pageSize,
+          totalItems,
+          totalPages: Math.ceil(totalItems / pageSize),
+          hasNextPage: page * pageSize < totalItems,
+          hasPreviousPage: page > 1,
+        },
+      });
+
+      return res.status(HTTP_STATUS.OK).json({
+        status: "success",
+        data: rows,
+        pagination: {
+          page,
+          pageSize,
+          totalItems,
+          totalPages: Math.ceil(totalItems / pageSize),
+          hasNextPage: page * pageSize < totalItems,
+          hasPreviousPage: page > 1,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   /**
    * Add a new material receiving entry to public.material_received_information
    */
