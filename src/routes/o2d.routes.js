@@ -206,6 +206,7 @@ router.post(
   o2dController.updateCallActionInformation
 );
 router.get("/get-call-complaint-data", authMiddleware, o2dController.getCallComplaintData);
+router.get("/get-crm-pending-tasks", authMiddleware, o2dController.getCrmPendingTasks);
 router.post("/plant-visit-info-update", authMiddleware, o2dController.updatePlantVisitInformation);
 router.post(
   "/complaint-closure-info-update",
@@ -391,6 +392,24 @@ router.post(
   "/save-crm-kpi-promises",
   authMiddleware,
   o2dController.saveCrmKpiPromises
+);
+
+router.get(
+  "/get-crm-kpi-week-freezes",
+  authMiddleware,
+  o2dController.getCrmKpiWeekFreezes
+);
+
+router.post(
+  "/freeze-crm-kpi-weeks",
+  authMiddleware,
+  o2dController.freezeCrmKpiWeeks
+);
+
+router.post(
+  "/defreeze-crm-kpi-weeks",
+  authMiddleware,
+  o2dController.defreezeCrmKpiWeeks
 );
 
 export default router;
