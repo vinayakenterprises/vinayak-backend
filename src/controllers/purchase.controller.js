@@ -157,7 +157,7 @@ class PurchaseController {
   };
 
   /**
-   * Add a new material receiving entry to public.purchases.material_receive_information
+   * Add a new material receiving entry to public.material_received_information
    */
   addMaterialReceiveEntry = async (req, res, next) => {
     try {

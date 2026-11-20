@@ -398,7 +398,35 @@ class PurchaseService {
 
       const dataQuery = `
       SELECT
-        p.*
+        p.*,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', m.id,
+                'purchase_id', m.purchase_id,
+                'rate', m.rate,
+                'status', m.status,
+                'material_received_qty_mt', m.material_received_qty_mt,
+                'material_recieved_qty', m.material_received_qty_mt,
+                'balance', m.balance,
+                'material_received_planned_date', m.material_received_planned_date,
+                'material_receive_date_planned', m.material_received_planned_date,
+                'material_received_actual_date', m.material_received_actual_date,
+                'material_receive_date_actual', m.material_received_actual_date,
+                'kanta_parchi_url', m.geo_tagged_images->>'kanta_parchi_url',
+                'loaded_vehicle_image_url', m.geo_tagged_images->>'loaded_vehicle_image_url',
+                'driver_photo_url', m.geo_tagged_images->>'driver_photo_url',
+                'geo_tagged_images', m.geo_tagged_images,
+                'quality_information', m.quality_information,
+                'created_at', m.created_at
+              ) ORDER BY m.created_at ASC
+            )
+            FROM public.material_received_information m
+            WHERE m.purchase_id = p.id
+          ),
+          '[]'::json
+        ) AS material_received_entries
       FROM public.purchases p
       ${baseCondition}
       ${searchCondition}
@@ -422,7 +450,8 @@ class PurchaseService {
   };
 
   /**
-   * Append a material receive record to public.purchases.material_receive_information
+   * Add a material receive record to public.material_received_information
+   * and update public.purchases.order_status
    */
   addMaterialReceiveEntry = async ({
     purchaseId,
@@ -437,82 +466,115 @@ class PurchaseService {
     status,
     user,
   }) => {
+    const client = await pool.connect();
     try {
+      await client.query("BEGIN");
+
       // 1. Fetch current purchase record
       const getQuery = `
-      SELECT id, material_receive_information
-      FROM public.purchases
-      WHERE id = $1
-    `;
-      const getRes = await pool.query(getQuery, [purchaseId]);
+        SELECT id, order_status
+        FROM public.purchases
+        WHERE id = $1
+      `;
+      const getRes = await client.query(getQuery, [purchaseId]);
       if (getRes.rows.length === 0) {
         throw new Error(`Purchase order #${purchaseId} not found`);
       }
 
-      let receiveInfo = getRes.rows[0].material_receive_information;
-
-      // 2. Safe parse existing JSONB structure
-      if (typeof receiveInfo === "string") {
-        try {
-          receiveInfo = JSON.parse(receiveInfo);
-        } catch {
-          receiveInfo = {};
-        }
-      }
-      if (!receiveInfo || typeof receiveInfo !== "object") {
-        receiveInfo = {};
-      }
-      if (!Array.isArray(receiveInfo.material_recieved)) {
-        receiveInfo.material_recieved = [];
-      }
-
-      // 3. Compute incremented id (last id + 1)
-      const existingList = receiveInfo.material_recieved;
-      const lastId = existingList.reduce(
-        (max, item) => Math.max(max, parseInt(item.id, 10) || 0),
-        0
-      );
-      const nextId = lastId + 1;
-
-      // 4. Construct entry matching the exact schema with consistent variable names
-      const newEntry = {
-        id: nextId,
+      // 2. Prepare payload for material_received_information
+      const geo_tagged_images = {
         kanta_parchi_url: kanta_parchi_url || null,
         loaded_vehicle_image_url: loaded_vehicle_image_url || null,
         driver_photo_url: driver_photo_url || null,
-        material_receive_date_planned: material_receive_date_planned || null,
-        material_receive_date_actual: material_receive_date_actual || null,
-        material_recieved_qty: parseFloat(material_received_qty) || 0,
-        rate: parseFloat(rate) || 0,
-        balance: parseFloat(balance) || 0,
-        status: status || "Complete",
       };
 
-      // 5. Append new entry
-      receiveInfo.material_recieved.push(newEntry);
+      const parsedQty = parseFloat(material_received_qty) || 0;
+      const parsedRate = parseFloat(rate) || 0;
+      const parsedBalance = parseFloat(balance) || 0;
+      const finalStatus = status || "Complete";
 
+      // 3. Insert into public.material_received_information
+      const insertQuery = `
+        INSERT INTO public.material_received_information (
+          purchase_id,
+          rate,
+          status,
+          geo_tagged_images,
+          material_received_qty_mt,
+          balance,
+          material_received_planned_date,
+          material_received_actual_date,
+          created_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6,
+          COALESCE($7::timestamptz, CURRENT_TIMESTAMP),
+          COALESCE($8::timestamptz, CURRENT_TIMESTAMP),
+          CURRENT_TIMESTAMP
+        )
+        RETURNING *
+      `;
+      const insertValues = [
+        purchaseId,
+        parsedRate,
+        finalStatus,
+        JSON.stringify(geo_tagged_images),
+        parsedQty,
+        parsedBalance,
+        material_receive_date_planned || null,
+        material_receive_date_actual || null,
+      ];
+      await client.query(insertQuery, insertValues);
+
+      // 4. Update order status in public.purchases
       let orderStatus = PURCHASE_ORDER_STAGES.partial_order_receive_stage;
-      if (status === "Complete") {
+      if (finalStatus === "Complete") {
         orderStatus = PURCHASE_ORDER_STAGES.complete_order_receive_stage;
       }
 
-      // 6. Update database record
       const updateQuery = `
-      UPDATE public.purchases
-      SET material_receive_information = $1, order_status = $3
-      WHERE id = $2
-      RETURNING *
-    `;
-      const updateRes = await pool.query(updateQuery, [
-        JSON.stringify(receiveInfo),
-        purchaseId,
-        orderStatus,
-      ]);
+        UPDATE public.purchases
+        SET order_status = $1, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+        RETURNING *
+      `;
+      const updateRes = await client.query(updateQuery, [orderStatus, purchaseId]);
+      const updatedPurchase = updateRes.rows[0];
 
-      return updateRes.rows[0];
+      // 5. Fetch all material received entries for this purchase order
+      const entriesQuery = `
+        SELECT
+          m.id,
+          m.purchase_id,
+          m.rate,
+          m.status,
+          m.material_received_qty_mt,
+          m.material_received_qty_mt AS material_recieved_qty,
+          m.balance,
+          m.material_received_planned_date,
+          m.material_received_planned_date AS material_receive_date_planned,
+          m.material_received_actual_date,
+          m.material_received_actual_date AS material_receive_date_actual,
+          m.geo_tagged_images->>'kanta_parchi_url' AS kanta_parchi_url,
+          m.geo_tagged_images->>'loaded_vehicle_image_url' AS loaded_vehicle_image_url,
+          m.geo_tagged_images->>'driver_photo_url' AS driver_photo_url,
+          m.geo_tagged_images,
+          m.quality_information,
+          m.created_at
+        FROM public.material_received_information m
+        WHERE m.purchase_id = $1
+        ORDER BY m.created_at ASC
+      `;
+      const entriesRes = await client.query(entriesQuery, [purchaseId]);
+      updatedPurchase.material_received_entries = entriesRes.rows;
+
+      await client.query("COMMIT");
+      return updatedPurchase;
     } catch (err) {
+      await client.query("ROLLBACK");
       console.error("Error in addMaterialReceiveEntry service:", err.message);
       throw err;
+    } finally {
+      client.release();
     }
   };
 }
