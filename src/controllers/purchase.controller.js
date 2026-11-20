@@ -223,6 +223,39 @@ class PurchaseController {
       next(err);
     }
   };
+
+  getCompletedPOGenerationRequestData = async (req, res, next) => {
+    try {
+      const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+      const pageSize = Math.max(
+        1,
+        Math.min(100, parseInt(req.query.pageSize, 10) || 10)
+      );
+      const search = (req.query.search || "").trim();
+
+      const { rows, totalItems } = await purchaseService.getCompletedPOGenerationRequestData({
+        page,
+        pageSize,
+        search,
+      });
+
+      return res.status(HTTP_STATUS.OK).json({
+        status: "success",
+        message: "Fetched completed PO generation requests successfully",
+        data: rows,
+        pagination: {
+          page,
+          pageSize,
+          totalItems,
+          totalPages: Math.ceil(totalItems / pageSize),
+          hasNextPage: page * pageSize < totalItems,
+          hasPreviousPage: page > 1,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 }
 
 export default new PurchaseController();

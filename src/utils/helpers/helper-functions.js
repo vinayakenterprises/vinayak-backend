@@ -74,6 +74,24 @@ export const sendNotificationToExecutiveAssistantDash = async (message, message_
   }
 };
 
+export const sendNotificationToDeo = async (order_id, message, message_id) => {
+  try {
+    const userDetails = await pool.query(
+      `select * from public.users where role = 'Data Entry Operator' and department = 'Data Entry' limit 1`
+    );
+
+    if (userDetails.rows.length === 0 || userDetails.rows[0].id === null) {
+      throw new Error("Please assign DEO first");
+    }
+    const deoUserId = userDetails.rows[0].id;
+
+    const notif = await createNotification(deoUserId, `${message}`, `${message_id}`);
+    emitToUser(deoUserId, "new_notification", notif);
+  } catch (error) {
+    console.log("error while sending notification to deo ", error);
+  }
+};
+
 export const dateFormatter = new Intl.DateTimeFormat("en-IN", {
   day: "2-digit",
   month: "short",

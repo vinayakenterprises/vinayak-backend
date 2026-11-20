@@ -1,6 +1,9 @@
 import pool from "../config/database.js";
 import { HTTP_STATUS, PURCHASE_ORDER_STAGES } from "../utils/constants.js";
-import { sendNotificationToAccountsTeam } from "../utils/helpers/helper-functions.js";
+import {
+  sendNotificationToAccountsTeam,
+  sendNotificationToDeo,
+} from "../utils/helpers/helper-functions.js";
 import uploadFileToS3 from "../utils/helpers/uploadSOToS3.js";
 
 class PurchaseService {
@@ -83,7 +86,7 @@ class PurchaseService {
       const { rows } = await pool.query(query, values);
       sendNotificationToAccountsTeam(
         rows[0].id,
-        `A new purchase order request (#${rows[0].id}) has been created for vendor: ${rows[0].vendor_name || "N/A"}. Material: ${material}. Please review the details and proceed with PO creation.`,
+        `Create PO for ${rows[0].vendor_name || "N/A"} | Order ID: ${rows[0].id} | Material: ${material} | Quantity: ${quantity}MT.`,
         "new_purchase_record"
       );
       return rows[0];
@@ -259,6 +262,12 @@ class PurchaseService {
 
       const updateResult = await client.query(updateQuery, [crn, JSON.stringify(poData)]);
 
+      sendNotificationToDeo(
+        rows[0].id,
+        `PO for ${rows[0].vendor_name || "N/A"} | Order ID: ${rows[0].id} | Quantity: ${quantity}MT, has been assigned.`,
+        "send_notification_deo_po_updated_in_tally"
+      );
+
       await client.query("COMMIT");
 
       return {
@@ -279,6 +288,8 @@ class PurchaseService {
 
   getCompletePOCreationFromTallyData = async ({ page = 1, pageSize = 10, search = "" }) => {
     try {
+      emi;
+
       const offset = (page - 1) * pageSize;
       const queryParams = [];
       let paramIndex = 1;
@@ -357,6 +368,7 @@ class PurchaseService {
           OR p.purchase_type ILIKE $1
           OR p.purchased_by ILIKE $1
           OR p.remarks ILIKE $1
+          OR v.vendor_name ILIKE $1
           OR p.accounts_info->'po_information_from_tally'->>'orderno' ILIKE $1
           OR p.accounts_info->'po_information_from_tally'->>'partyname' ILIKE $1
           OR p.accounts_info->'po_information_from_tally'->>'itemname' ILIKE $1
@@ -375,6 +387,8 @@ class PurchaseService {
       const countQuery = `
       SELECT COUNT(*)::INTEGER AS total_items
       FROM public.purchases p
+      LEFT JOIN public.vendors_data v
+      ON p.vendor_id = v.id
       ${baseCondition}
       ${searchCondition}
     `;
@@ -394,10 +408,15 @@ class PurchaseService {
 
       const dataQuery = `
       SELECT
-        p.*
-      FROM public.purchases p
-      ${baseCondition}
-      ${searchCondition}
+        p.*,
+        v.vendor_name AS vendor_name
+      FROM public.purchases AS p
+      LEFT JOIN public.vendors_data AS v
+        ON p.vendor_id = v.id
+      WHERE
+        p.accounts_info->>'sent_for_po_at' IS NOT NULL
+        AND p.accounts_info->>'sent_for_po_at' <> ''
+        AND p.accounts_info->>'po_completed_at' IS NULL
       ORDER BY
         (p.accounts_info->>'sent_for_po_at')::TIMESTAMPTZ DESC,
         p.id DESC
@@ -508,6 +527,86 @@ class PurchaseService {
       return updateRes.rows[0];
     } catch (err) {
       console.error("Error in addMaterialReceiveEntry service:", err.message);
+      throw err;
+    }
+  };
+
+  getCompletedPOGenerationRequestData = async ({ page = 1, pageSize = 10, search = "" }) => {
+    try {
+      const offset = (page - 1) * pageSize;
+
+      const values = [];
+      let searchCondition = "";
+
+      if (search) {
+        values.push(`%${search}%`);
+
+        searchCondition = `
+        AND (
+          p.material ILIKE $1
+          OR p.purity ILIKE $1
+          OR p.purchase_type ILIKE $1
+          OR p.purchased_by ILIKE $1
+          OR p.remarks ILIKE $1
+          OR v.vendor_name ILIKE $1
+          OR p.accounts_info->'po_information_from_tally'->>'orderno' ILIKE $1
+          OR p.accounts_info->'po_information_from_tally'->>'partyname' ILIKE $1
+          OR p.accounts_info->'po_information_from_tally'->>'itemname' ILIKE $1
+        )
+      `;
+      }
+
+      const baseCondition = `
+      WHERE
+        p.order_status = 'Order Complete'
+    `;
+
+      // Fetch total count
+      const countQuery = `
+      SELECT COUNT(*)::INTEGER AS total_items
+      FROM public.purchases p
+      LEFT JOIN public.vendors_data v
+      ON p.vendor_id = v.id
+      ${baseCondition}
+      ${searchCondition}
+    `;
+
+      const countResult = await pool.query(countQuery, values);
+      const totalItems = countResult.rows[0].total_items;
+
+      // Fetch paginated records
+      const dataValues = [...values];
+
+      dataValues.push(pageSize);
+      const limitParam = dataValues.length;
+
+      dataValues.push(offset);
+      const offsetParam = dataValues.length;
+
+      const dataQuery = `
+      SELECT
+        p.*,
+        v.vendor_name AS vendor_name
+      FROM public.purchases AS p
+      LEFT JOIN public.vendors_data AS v
+        ON p.vendor_id = v.id
+      WHERE
+        p.order_status = 'Order Complete'
+      ${searchCondition}
+      ORDER BY
+        p.id DESC
+      LIMIT $${limitParam}
+      OFFSET $${offsetParam}
+    `;
+
+      const dataResult = await pool.query(dataQuery, dataValues);
+
+      return {
+        rows: dataResult.rows,
+        totalItems,
+      };
+    } catch (err) {
+      console.error("Error in fetching completed PO generation request data:", err.message);
       throw err;
     }
   };

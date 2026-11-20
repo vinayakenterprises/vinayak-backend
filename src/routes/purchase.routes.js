@@ -41,4 +41,10 @@ router.post(
   purchaseController.addMaterialReceiveEntry
 );
 
+router.post(
+  "/get-completed-po-generation-request-data",
+  authMiddleware,
+  purchaseController.getCompletedPOGenerationRequestData
+);
+
 export default router;
