@@ -7235,15 +7235,29 @@ class O2dService {
       // 1. Fetch report recipients
       let recipients = [];
 
-      if (process.env.COMPANY_NAME) {
+      if (process.env.COMPANY_NAME === "Vinayak Enterprises") {
         recipients.push(
           {
-            email_id: "soumya@ve.com",
+            email_id: "soumya@vinayak-enterprises.com",
             username: "Soumya",
             role: "Management",
           },
           {
             email_id: "ea@vinayak-enterprises.com",
+            username: "Versha",
+            role: "Executive Assistant",
+          }
+        );
+      } else if (process.env.COMPANY_NAME === "Mittalu Pvt Ltd") {
+        // Send mail from Mittalu DB
+        recipients.push(
+          {
+            email_id: "om.soumya@mitt-alu.com",
+            username: "Soumya",
+            role: "Management",
+          },
+          {
+            email_id: "ea@mitt-alu.com",
             username: "Versha",
             role: "Executive Assistant",
           }
