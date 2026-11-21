@@ -22,6 +22,7 @@ import {
   sendNotificationToCrm,
   sendNotificationToSalesTeamLead,
   WORK_CONFIG,
+    getDayWorkingWindow,
 } from "../utils/helpers/helper-functions.js";
 
 const emailDateTimeFormatter = new Intl.DateTimeFormat("en-IN", {
@@ -42,6 +43,39 @@ const emailDateFormatter = new Intl.DateTimeFormat("en-IN", {
 });
 
 const formatEmailDate = (value) => (value ? emailDateFormatter.format(new Date(value)) : "-");
+
+const countComplaintWorkingDays = (startDate, endDate) => {
+  if (!startDate || !endDate || endDate < startDate) return null;
+
+  const [startYear, startMonth, startDay] = startDate
+    .split("-")
+    .map(Number);
+  const [endYear, endMonth, endDay] = endDate
+    .split("-")
+    .map(Number);
+
+  let cursor = Date.UTC(startYear, startMonth - 1, startDay + 1);
+  const end = Date.UTC(endYear, endMonth - 1, endDay);
+  let workingDays = 0;
+
+  while (cursor <= end) {
+    const current = new Date(cursor);
+    const dayToCheck = createISTDate(
+      current.getUTCFullYear(),
+      current.getUTCMonth(),
+      current.getUTCDate(),
+      12
+    );
+
+    if (getDayWorkingWindow(dayToCheck, WORK_CONFIG)) {
+      workingDays += 1;
+    }
+
+    cursor += 24 * 60 * 60 * 1000;
+  }
+
+  return workingDays;
+};
 
 class O2dService {
   async createSaleOrder(data, userId) {
@@ -3502,7 +3536,11 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
       };
 
       for (const row of rows) {
-        const closingDays = row.closing_days === null ? null : Number(row.closing_days);
+        // const closingDays = row.closing_days === null ? null : Number(row.closing_days);
+        const closingDays =
+  row.status === "closed"
+    ? countComplaintWorkingDays(row.created_date, row.updated_date)
+    : null;
 
         if (closingDays !== null && !Number.isFinite(closingDays)) {
           throw new Error(`Invalid complaint closing duration for complaint ${row.complaint_id}.`);
