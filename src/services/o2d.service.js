@@ -2075,6 +2075,14 @@ class O2dService {
           ? parsedPageSize
           : 25;
       const offset = (safePage - 1) * pageSize;
+      const getFilterValues = (value) =>
+        (Array.isArray(value) ? value : value ? [value] : [])
+          .filter((item) => typeof item === "string")
+          .map((item) => item.trim())
+          .filter((item) => item && item !== "all");
+      const orderStatuses = getFilterValues(orderStatus);
+      const dispatchTypes = getFilterValues(dispatchType);
+      const delayReasons = getFilterValues(delayReason);
       const baseWhereClause = `
         WHERE so.sale_order_generation->>'sent_for_so' = 'true'
           AND EXISTS (
@@ -2098,17 +2106,17 @@ class O2dService {
         filterValues.push(deliveryEndDate);
         filteredWhereClause += ` AND so.delivery_date::date <= $${filterValues.length}::date`;
       }
-      if (orderStatus && orderStatus !== "all") {
-        filterValues.push(orderStatus);
-        filteredWhereClause += ` AND so.order_status = $${filterValues.length}`;
+      if (orderStatuses.length > 0) {
+        filterValues.push(orderStatuses);
+        filteredWhereClause += ` AND so.order_status = ANY($${filterValues.length}::text[])`;
       }
-      if (dispatchType && dispatchType !== "all") {
-        filterValues.push(dispatchType);
-        filteredWhereClause += ` AND so.dispatch_info->>'dispatch_type' = $${filterValues.length}`;
+      if (dispatchTypes.length > 0) {
+        filterValues.push(dispatchTypes);
+        filteredWhereClause += ` AND so.dispatch_info->>'dispatch_type' = ANY($${filterValues.length}::text[])`;
       }
-      if (delayReason && delayReason !== "all") {
-        filterValues.push(delayReason);
-        filteredWhereClause += ` AND so.dispatch_info->>'delay_reason' = $${filterValues.length}`;
+      if (delayReasons.length > 0) {
+        filterValues.push(delayReasons);
+        filteredWhereClause += ` AND so.dispatch_info->>'delay_reason' = ANY($${filterValues.length}::text[])`;
       }
       const searchTerm = String(search || "").trim();
       if (searchTerm) {
@@ -3142,91 +3150,91 @@ class O2dService {
     }
   }
 
-async getCrmKpiTotalDispatchActualByDate() {
-  // const query = `
-  //   WITH raw_dispatch_events AS (
-  //     SELECT
-  //       so.id AS order_id,
-  //       so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
-  //       so.client_name,
-  //       so.created_at AS order_created_at,
-  //       NULLIF(BTRIM(event.item->>'dispatch_at'), '')::timestamp AS dispatch_at,
-  //       event.item->>'delay_reason' AS delay_reason
-  //     FROM public.sales_orders so
-  //     CROSS JOIN LATERAL jsonb_array_elements(
-  //       CASE
-  //         WHEN jsonb_typeof(so.dispatch_info->'history') = 'array'
-  //           THEN so.dispatch_info->'history'
-  //         ELSE '[]'::jsonb
-  //       END
-  //     ) AS event(item)
-  //     WHERE event.item->>'dispatch_type' = 'Dispatched'
-  //       AND event.item->>'dispatch_status' = 'true'
-  //       AND NULLIF(BTRIM(event.item->>'dispatch_at'), '') IS NOT NULL
+  async getCrmKpiTotalDispatchActualByDate() {
+    // const query = `
+    //   WITH raw_dispatch_events AS (
+    //     SELECT
+    //       so.id AS order_id,
+    //       so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
+    //       so.client_name,
+    //       so.created_at AS order_created_at,
+    //       NULLIF(BTRIM(event.item->>'dispatch_at'), '')::timestamp AS dispatch_at,
+    //       event.item->>'delay_reason' AS delay_reason
+    //     FROM public.sales_orders so
+    //     CROSS JOIN LATERAL jsonb_array_elements(
+    //       CASE
+    //         WHEN jsonb_typeof(so.dispatch_info->'history') = 'array'
+    //           THEN so.dispatch_info->'history'
+    //         ELSE '[]'::jsonb
+    //       END
+    //     ) AS event(item)
+    //     WHERE event.item->>'dispatch_type' = 'Dispatched'
+    //       AND event.item->>'dispatch_status' = 'true'
+    //       AND NULLIF(BTRIM(event.item->>'dispatch_at'), '') IS NOT NULL
 
-  //     UNION ALL
+    //     UNION ALL
 
-  //     SELECT
-  //       so.id AS order_id,
-  //       so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
-  //       so.client_name,
-  //       so.created_at AS order_created_at,
-  //       NULLIF(BTRIM(so.dispatch_info->>'dispatch_at'), '')::timestamp AS dispatch_at,
-  //       so.dispatch_info->>'delay_reason' AS delay_reason
-  //     FROM public.sales_orders so
-  //     WHERE so.dispatch_info->>'dispatch_type' = 'Dispatched'
-  //       AND so.dispatch_info->>'dispatch_status' = 'true'
-  //       AND NULLIF(BTRIM(so.dispatch_info->>'dispatch_at'), '') IS NOT NULL
-  //       AND CASE
-  //         WHEN jsonb_typeof(so.dispatch_info->'history') = 'array'
-  //           THEN jsonb_array_length(so.dispatch_info->'history') = 0
-  //         ELSE TRUE
-  //       END
-  //   ),
-  //   valid_events AS (
-  //     SELECT
-  //       order_id,
-  //       order_no,
-  //       client_name,
-  //       order_created_at,
-  //       dispatch_at::date AS dispatch_date,
-  //       dispatch_at,
-  //       delay_reason
-  //     FROM raw_dispatch_events
-  //     WHERE dispatch_at IS NOT NULL
-  //   ),
-  //   one_order_per_week AS (
-  //     SELECT DISTINCT ON (
-  //       order_id,
-  //       DATE_TRUNC('week', dispatch_date)::date
-  //     )
-  //       order_id,
-  //       order_no,
-  //       client_name,
-  //       order_created_at,
-  //       dispatch_date,
-  //       dispatch_at,
-  //       delay_reason
-  //     FROM valid_events
-  //     ORDER BY
-  //       order_id,
-  //       DATE_TRUNC('week', dispatch_date)::date,
-  //       dispatch_date,
-  //       dispatch_at
-  //   )
-  //   SELECT
-  //     dispatch_date::text AS date,
-  //     order_id,
-  //     order_no,
-  //     client_name,
-  //     order_created_at,
-  //     dispatch_at,
-  //     delay_reason
-  //   FROM one_order_per_week
-  //   ORDER BY dispatch_date, order_id;
-  // `;
+    //     SELECT
+    //       so.id AS order_id,
+    //       so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
+    //       so.client_name,
+    //       so.created_at AS order_created_at,
+    //       NULLIF(BTRIM(so.dispatch_info->>'dispatch_at'), '')::timestamp AS dispatch_at,
+    //       so.dispatch_info->>'delay_reason' AS delay_reason
+    //     FROM public.sales_orders so
+    //     WHERE so.dispatch_info->>'dispatch_type' = 'Dispatched'
+    //       AND so.dispatch_info->>'dispatch_status' = 'true'
+    //       AND NULLIF(BTRIM(so.dispatch_info->>'dispatch_at'), '') IS NOT NULL
+    //       AND CASE
+    //         WHEN jsonb_typeof(so.dispatch_info->'history') = 'array'
+    //           THEN jsonb_array_length(so.dispatch_info->'history') = 0
+    //         ELSE TRUE
+    //       END
+    //   ),
+    //   valid_events AS (
+    //     SELECT
+    //       order_id,
+    //       order_no,
+    //       client_name,
+    //       order_created_at,
+    //       dispatch_at::date AS dispatch_date,
+    //       dispatch_at,
+    //       delay_reason
+    //     FROM raw_dispatch_events
+    //     WHERE dispatch_at IS NOT NULL
+    //   ),
+    //   one_order_per_week AS (
+    //     SELECT DISTINCT ON (
+    //       order_id,
+    //       DATE_TRUNC('week', dispatch_date)::date
+    //     )
+    //       order_id,
+    //       order_no,
+    //       client_name,
+    //       order_created_at,
+    //       dispatch_date,
+    //       dispatch_at,
+    //       delay_reason
+    //     FROM valid_events
+    //     ORDER BY
+    //       order_id,
+    //       DATE_TRUNC('week', dispatch_date)::date,
+    //       dispatch_date,
+    //       dispatch_at
+    //   )
+    //   SELECT
+    //     dispatch_date::text AS date,
+    //     order_id,
+    //     order_no,
+    //     client_name,
+    //     order_created_at,
+    //     dispatch_at,
+    //     delay_reason
+    //   FROM one_order_per_week
+    //   ORDER BY dispatch_date, order_id;
+    // `;
 
-  const query = `
+    const query = `
   SELECT
     so.id AS order_id,
     so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
@@ -3244,77 +3252,79 @@ async getCrmKpiTotalDispatchActualByDate() {
   ORDER BY so.id;
 `;
 
-  try {
-    const { rows } = await pool.query(query);
-    const groups = new Map();
+    try {
+      const { rows } = await pool.query(query);
+      const groups = new Map();
 
-    // for (const row of rows) {
-    //   if (!groups.has(row.date)) {
-    //     groups.set(row.date, {
-    //       date: row.date,
-    //       actualOrders: 0,
-    //       onTimeOrders: 0,
-    //       clientDelayOrders: 0,
-    //       factoryDelayOrders: 0,
-    //       details: [],
-    //     });
-    //   }
+      // for (const row of rows) {
+      //   if (!groups.has(row.date)) {
+      //     groups.set(row.date, {
+      //       date: row.date,
+      //       actualOrders: 0,
+      //       onTimeOrders: 0,
+      //       clientDelayOrders: 0,
+      //       factoryDelayOrders: 0,
+      //       details: [],
+      //     });
+      //   }
 
-    //   const group = groups.get(row.date);
-    //   const reason = String(row.delay_reason || "").trim().toLowerCase();
+      //   const group = groups.get(row.date);
+      //   const reason = String(row.delay_reason || "").trim().toLowerCase();
 
-    //   group.actualOrders += 1;
-    //   if (reason === "on time") group.onTimeOrders += 1;
-    //   if (reason === "client") group.clientDelayOrders += 1;
-    //   if (reason === "factory") group.factoryDelayOrders += 1;
+      //   group.actualOrders += 1;
+      //   if (reason === "on time") group.onTimeOrders += 1;
+      //   if (reason === "client") group.clientDelayOrders += 1;
+      //   if (reason === "factory") group.factoryDelayOrders += 1;
 
-    //   group.details.push({
-    //     order_id: row.order_id,
-    //     order_no: row.order_no,
-    //     client_name: row.client_name,
-    //     created_at: row.order_created_at,
-    //     dispatch_at: row.dispatch_at,
-    //     delay_reason: row.delay_reason,
-    //   });
-    // }
+      //   group.details.push({
+      //     order_id: row.order_id,
+      //     order_no: row.order_no,
+      //     client_name: row.client_name,
+      //     created_at: row.order_created_at,
+      //     dispatch_at: row.dispatch_at,
+      //     delay_reason: row.delay_reason,
+      //   });
+      // }
 
-    for (const row of rows) {
-  const date = getISTComponents(row.actual_deliver_date)?.dateString;
+      for (const row of rows) {
+        const date = getISTComponents(row.actual_deliver_date)?.dateString;
 
-  if (!date) {
-    throw new Error(
-      `Invalid Dispatch / Transport actual date for sales order ${row.order_id}.`
-    );
-  }
+        if (!date) {
+          throw new Error(
+            `Invalid Dispatch / Transport actual date for sales order ${row.order_id}.`
+          );
+        }
 
-  if (!groups.has(date)) {
-    groups.set(date, {
-      date,
-      actualOrders: 0,
-      onTimeOrders: 0,
-      clientDelayOrders: 0,
-      factoryDelayOrders: 0,
-      details: [],
-    });
-  }
+        if (!groups.has(date)) {
+          groups.set(date, {
+            date,
+            actualOrders: 0,
+            onTimeOrders: 0,
+            clientDelayOrders: 0,
+            factoryDelayOrders: 0,
+            details: [],
+          });
+        }
 
-  const group = groups.get(date);
-  const reason = String(row.delay_reason || "").trim().toLowerCase();
+        const group = groups.get(date);
+        const reason = String(row.delay_reason || "")
+          .trim()
+          .toLowerCase();
 
-  group.actualOrders += 1;
-  if (reason === "on time") group.onTimeOrders += 1;
-  if (reason === "client") group.clientDelayOrders += 1;
-  if (reason === "factory") group.factoryDelayOrders += 1;
+        group.actualOrders += 1;
+        if (reason === "on time") group.onTimeOrders += 1;
+        if (reason === "client") group.clientDelayOrders += 1;
+        if (reason === "factory") group.factoryDelayOrders += 1;
 
-  group.details.push({
-    order_id: row.order_id,
-    order_no: row.order_no,
-    client_name: row.client_name,
-    created_at: row.order_created_at,
-    actual_deliver_date: row.actual_deliver_date,
-    delay_reason: row.delay_reason,
-  });
-}
+        group.details.push({
+          order_id: row.order_id,
+          order_no: row.order_no,
+          client_name: row.client_name,
+          created_at: row.order_created_at,
+          actual_deliver_date: row.actual_deliver_date,
+          delay_reason: row.delay_reason,
+        });
+      }
 
       return [...groups.values()];
     } catch (error) {
@@ -3387,8 +3397,8 @@ async getCrmKpiTotalDispatchActualByDate() {
     }
   }
 
-async getCrmKpiTotalPaymentCollectionActualByDate() {
-  const query = `
+  async getCrmKpiTotalPaymentCollectionActualByDate() {
+    const query = `
     SELECT
       id AS order_id,
       sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
@@ -3405,84 +3415,71 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
     ORDER BY id;
   `;
 
-  try {
-    const { rows } = await pool.query(query);
-    const groups = new Map();
+    try {
+      const { rows } = await pool.query(query);
+      const groups = new Map();
 
-    for (const row of rows) {
-      const paymentDate = getISTComponents(row.payment_done_at);
+      for (const row of rows) {
+        const paymentDate = getISTComponents(row.payment_done_at);
 
-      if (!paymentDate?.rawDate) {
-        throw new Error(
-          `Invalid payment_done_at for sales order ${row.order_id}.`
-        );
-      }
-
-      let plannedPaymentDate = null;
-      let onTime = false;
-
-      if (row.actual_dispatch_date) {
-        const plannedDeadline = addWorkingHours(
-          row.actual_dispatch_date,
-          90
-        );
-
-        if (!plannedDeadline) {
-          throw new Error(
-            `Could not calculate the planned payment deadline for sales order ${row.order_id}.`
-          );
+        if (!paymentDate?.rawDate) {
+          throw new Error(`Invalid payment_done_at for sales order ${row.order_id}.`);
         }
 
-        plannedPaymentDate =
-          getISTComponents(plannedDeadline)?.dateString || null;
+        let plannedPaymentDate = null;
+        let onTime = false;
 
-        onTime = paymentDate.rawDate <= plannedDeadline;
-      }
+        if (row.actual_dispatch_date) {
+          const plannedDeadline = addWorkingHours(row.actual_dispatch_date, 90);
 
-      const date = paymentDate.dateString;
+          if (!plannedDeadline) {
+            throw new Error(
+              `Could not calculate the planned payment deadline for sales order ${row.order_id}.`
+            );
+          }
 
-      if (!groups.has(date)) {
-        groups.set(date, {
-          date,
-          actualPayments: 0,
-          onTimePayments: 0,
-          details: [],
+          plannedPaymentDate = getISTComponents(plannedDeadline)?.dateString || null;
+
+          onTime = paymentDate.rawDate <= plannedDeadline;
+        }
+
+        const date = paymentDate.dateString;
+
+        if (!groups.has(date)) {
+          groups.set(date, {
+            date,
+            actualPayments: 0,
+            onTimePayments: 0,
+            details: [],
+          });
+        }
+
+        const group = groups.get(date);
+
+        group.actualPayments += 1;
+
+        if (onTime) {
+          group.onTimePayments += 1;
+        }
+
+        group.details.push({
+          order_id: row.order_id,
+          order_no: row.order_no,
+          client_name: row.client_name,
+          created_at: row.created_at,
+          payment_done_at: row.payment_done_at,
+          actual_dispatch_date: row.actual_dispatch_date,
+          planned_payment_date: plannedPaymentDate,
+          on_time: onTime,
         });
       }
 
-      const group = groups.get(date);
-
-      group.actualPayments += 1;
-
-      if (onTime) {
-        group.onTimePayments += 1;
-      }
-
-      group.details.push({
-        order_id: row.order_id,
-        order_no: row.order_no,
-        client_name: row.client_name,
-        created_at: row.created_at,
-        payment_done_at: row.payment_done_at,
-        actual_dispatch_date: row.actual_dispatch_date,
-        planned_payment_date: plannedPaymentDate,
-        on_time: onTime,
-      });
+      return [...groups.values()].sort((a, b) => a.date.localeCompare(b.date));
+    } catch (error) {
+      console.error("Error loading Payment Collection actual by date:", error);
+      throw error;
     }
-
-    return [...groups.values()].sort((a, b) =>
-      a.date.localeCompare(b.date)
-    );
-
-  } catch (error) {
-    console.error(
-      "Error loading Payment Collection actual by date:",
-      error
-    );
-    throw error;
   }
-}
-
 
   async getCrmKpiComplaintCountsByDate() {
     const query = `
@@ -3886,7 +3883,7 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
   }
 
   async getCrmKpiWeekFreezes() {
-  const { rows } = await pool.query(`
+    const { rows } = await pool.query(`
     SELECT
       TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart",
       snapshot
@@ -3895,101 +3892,89 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
     ORDER BY week_start;
   `);
 
-  return rows;
-}
-
-async freezeCrmKpiWeeks(weeks, frozenBy) {
-  if (!Array.isArray(weeks) || weeks.length === 0) {
-    throw new BadRequestError("At least one completed week is required.");
+    return rows;
   }
 
-  if (
-    frozenBy !== null &&
-    frozenBy !== undefined &&
-    !Number.isInteger(Number(frozenBy))
-  ) {
-    throw new BadRequestError("Invalid user ID.");
-  }
+  async freezeCrmKpiWeeks(weeks, frozenBy) {
+    if (!Array.isArray(weeks) || weeks.length === 0) {
+      throw new BadRequestError("At least one completed week is required.");
+    }
 
-  const client = await pool.connect();
+    if (frozenBy !== null && frozenBy !== undefined && !Number.isInteger(Number(frozenBy))) {
+      throw new BadRequestError("Invalid user ID.");
+    }
 
-  try {
-    await client.query("BEGIN");
+    const client = await pool.connect();
 
-    const { rows: currentWeekRows } = await client.query(`
+    try {
+      await client.query("BEGIN");
+
+      const { rows: currentWeekRows } = await client.query(`
       SELECT TO_CHAR(
         DATE_TRUNC('week', NOW() AT TIME ZONE 'Asia/Kolkata')::date,
         'YYYY-MM-DD'
       ) AS "currentWeekStart";
     `);
 
-    const currentWeekStart = currentWeekRows[0].currentWeekStart;
-    const seen = new Set();
+      const currentWeekStart = currentWeekRows[0].currentWeekStart;
+      const seen = new Set();
 
-    const records = weeks.map((entry) => {
-      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-        throw new BadRequestError("Each week must be an object.");
-      }
+      const records = weeks.map((entry) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+          throw new BadRequestError("Each week must be an object.");
+        }
 
-      const { weekStart, weekEnd, snapshot } = entry;
+        const { weekStart, weekEnd, snapshot } = entry;
 
-      if (
-        typeof weekStart !== "string" ||
-        !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)
-      ) {
-        throw new BadRequestError("weekStart must use YYYY-MM-DD.");
-      }
+        if (typeof weekStart !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+          throw new BadRequestError("weekStart must use YYYY-MM-DD.");
+        }
 
-      const start = new Date(`${weekStart}T00:00:00.000Z`);
+        const start = new Date(`${weekStart}T00:00:00.000Z`);
 
-      if (
-        Number.isNaN(start.getTime()) ||
-        start.toISOString().slice(0, 10) !== weekStart ||
-        start.getUTCDay() !== 1
-      ) {
-        throw new BadRequestError("weekStart must be a valid Monday.");
-      }
+        if (
+          Number.isNaN(start.getTime()) ||
+          start.toISOString().slice(0, 10) !== weekStart ||
+          start.getUTCDay() !== 1
+        ) {
+          throw new BadRequestError("weekStart must be a valid Monday.");
+        }
 
-      const expectedEnd = new Date(start);
-      expectedEnd.setUTCDate(expectedEnd.getUTCDate() + 6);
+        const expectedEnd = new Date(start);
+        expectedEnd.setUTCDate(expectedEnd.getUTCDate() + 6);
 
-      if (
-        typeof weekEnd !== "string" ||
-        expectedEnd.toISOString().slice(0, 10) !== weekEnd
-      ) {
-        throw new BadRequestError(
-          "weekEnd must be Sunday, six days after weekStart."
-        );
-      }
+        if (typeof weekEnd !== "string" || expectedEnd.toISOString().slice(0, 10) !== weekEnd) {
+          throw new BadRequestError("weekEnd must be Sunday, six days after weekStart.");
+        }
 
-      if (weekStart >= currentWeekStart) {
-        throw new BadRequestError("Only completed weeks can be frozen.");
-      }
+        if (weekStart >= currentWeekStart) {
+          throw new BadRequestError("Only completed weeks can be frozen.");
+        }
 
-      if (seen.has(weekStart)) {
-        throw new BadRequestError("Duplicate weekStart.");
-      }
-      seen.add(weekStart);
+        if (seen.has(weekStart)) {
+          throw new BadRequestError("Duplicate weekStart.");
+        }
+        seen.add(weekStart);
 
-      if (
-        !snapshot ||
-        typeof snapshot !== "object" ||
-        Array.isArray(snapshot) ||
-        snapshot.weekStart !== weekStart ||
-        snapshot.weekEnd !== weekEnd ||
-        !snapshot.week ||
-        !snapshot.metrics ||
-        !snapshot.promisedData
-      ) {
-        throw new BadRequestError("Invalid KPI snapshot.");
-      }
+        if (
+          !snapshot ||
+          typeof snapshot !== "object" ||
+          Array.isArray(snapshot) ||
+          snapshot.weekStart !== weekStart ||
+          snapshot.weekEnd !== weekEnd ||
+          !snapshot.week ||
+          !snapshot.metrics ||
+          !snapshot.promisedData
+        ) {
+          throw new BadRequestError("Invalid KPI snapshot.");
+        }
 
-      return { weekStart, snapshot };
-    });
+        return { weekStart, snapshot };
+      });
 
-    for (const record of records) {
-await client.query(
-  `
+      for (const record of records) {
+        await client.query(
+          `
     INSERT INTO public.crm_kpi_promises AS existing
       (week_start, promised_data, snapshot, frozen_by, frozen_at)
     VALUES ($1::date, '{}'::jsonb, $2::jsonb, $3, NOW())
@@ -4000,19 +3985,18 @@ await client.query(
       frozen_at = EXCLUDED.frozen_at
     WHERE existing.snapshot IS NULL;
   `,
-  [
-    record.weekStart,
-    JSON.stringify(record.snapshot),
-    frozenBy == null ? null : Number(frozenBy),
-  ]
-);
+          [
+            record.weekStart,
+            JSON.stringify(record.snapshot),
+            frozenBy == null ? null : Number(frozenBy),
+          ]
+        );
+      }
 
-    }
+      const weekStarts = records.map((record) => record.weekStart);
 
-    const weekStarts = records.map((record) => record.weekStart);
-
-    const { rows } = await client.query(
-      `
+      const { rows } = await client.query(
+        `
         SELECT
           TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart",
           snapshot
@@ -4020,45 +4004,42 @@ await client.query(
         WHERE week_start = ANY($1::date[])
         ORDER BY week_start;
       `,
-      [weekStarts]
-    );
+        [weekStarts]
+      );
 
-    await client.query("COMMIT");
-    return rows;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-async defreezeCrmKpiWeeks(weekStarts) {
-  if (!Array.isArray(weekStarts) || weekStarts.length === 0) {
-    throw new BadRequestError("At least one weekStart is required.");
-  }
-
-  for (const weekStart of weekStarts) {
-    if (
-      typeof weekStart !== "string" ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)
-    ) {
-      throw new BadRequestError("weekStart must use YYYY-MM-DD.");
-    }
-
-    const start = new Date(`${weekStart}T00:00:00.000Z`);
-
-    if (
-      Number.isNaN(start.getTime()) ||
-      start.toISOString().slice(0, 10) !== weekStart ||
-      start.getUTCDay() !== 1
-    ) {
-      throw new BadRequestError("Every weekStart must be a valid Monday.");
+      await client.query("COMMIT");
+      return rows;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
     }
   }
 
-  const { rows } = await pool.query(
-  `
+  async defreezeCrmKpiWeeks(weekStarts) {
+    if (!Array.isArray(weekStarts) || weekStarts.length === 0) {
+      throw new BadRequestError("At least one weekStart is required.");
+    }
+
+    for (const weekStart of weekStarts) {
+      if (typeof weekStart !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+        throw new BadRequestError("weekStart must use YYYY-MM-DD.");
+      }
+
+      const start = new Date(`${weekStart}T00:00:00.000Z`);
+
+      if (
+        Number.isNaN(start.getTime()) ||
+        start.toISOString().slice(0, 10) !== weekStart ||
+        start.getUTCDay() !== 1
+      ) {
+        throw new BadRequestError("Every weekStart must be a valid Monday.");
+      }
+    }
+
+    const { rows } = await pool.query(
+      `
     UPDATE public.crm_kpi_promises
     SET snapshot = NULL,
         frozen_by = NULL,
@@ -4069,11 +4050,11 @@ async defreezeCrmKpiWeeks(weekStarts) {
         DATE_TRUNC('week', NOW() AT TIME ZONE 'Asia/Kolkata')::date
     RETURNING TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart";
   `,
-  [weekStarts]
-);
+      [weekStarts]
+    );
 
-  return rows;
-}
+    return rows;
+  }
 
   // async getCrmKpiComplaintCountsByDate() {
   //   const query = `
@@ -4778,7 +4759,13 @@ async defreezeCrmKpiWeeks(weekStarts) {
     page = 1,
     requestedPageSize = 25,
     search = "",
-    status = "All"
+    status = "All",
+    invoiceDateFrom = "",
+    invoiceDateTo = "",
+    dueDateFrom = "",
+    dueDateTo = "",
+    overdueDaysMin = "",
+    overdueDaysMax = ""
   ) {
     try {
       const requestedPage = Number(page);
@@ -4806,6 +4793,14 @@ async defreezeCrmKpiWeeks(weekStarts) {
           OR osr.id::text ILIKE ${searchParameter}
         )`);
       }
+      if (String(invoiceDateFrom).trim()) {
+        filterValues.push(String(invoiceDateFrom).trim());
+        filters.push(`osr.invoice_date::date >= $${filterValues.length}::date`);
+      }
+      if (String(invoiceDateTo).trim()) {
+        filterValues.push(String(invoiceDateTo).trim());
+        filters.push(`osr.invoice_date::date <= $${filterValues.length}::date`);
+      }
       const overdueStatusExpression = `CASE
         WHEN osr.invoice_date IS NOT NULL
           AND CURRENT_TIMESTAMP > GREATEST(
@@ -4823,6 +4818,34 @@ async defreezeCrmKpiWeeks(weekStarts) {
       if (status && status !== "All") {
         filterValues.push(status);
         filters.push(`${overdueStatusExpression} = $${filterValues.length}`);
+      }
+      const dueDateExpression = `GREATEST(
+        osr.invoice_date::timestamp + INTERVAL '10 days',
+        CASE
+          WHEN ci.complaint_status = 'Closed' AND ci.updated_at IS NOT NULL
+            THEN ci.updated_at + INTERVAL '10 days'
+          ELSE osr.invoice_date::timestamp + INTERVAL '10 days'
+        END
+      )`;
+      if (String(dueDateFrom).trim()) {
+        filterValues.push(String(dueDateFrom).trim());
+        filters.push(`${dueDateExpression}::date >= $${filterValues.length}::date`);
+      }
+      if (String(dueDateTo).trim()) {
+        filterValues.push(String(dueDateTo).trim());
+        filters.push(`${dueDateExpression}::date <= $${filterValues.length}::date`);
+      }
+      const overdueDaysExpression = `GREATEST(
+        0,
+        FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - ${dueDateExpression})) / 86400)::integer
+      )`;
+      if (String(overdueDaysMin).trim()) {
+        filterValues.push(String(overdueDaysMin).trim());
+        filters.push(`${overdueDaysExpression} >= $${filterValues.length}::integer`);
+      }
+      if (String(overdueDaysMax).trim()) {
+        filterValues.push(String(overdueDaysMax).trim());
+        filters.push(`${overdueDaysExpression} <= $${filterValues.length}::integer`);
       }
 
       const whereClause = filters.join(" AND ");
@@ -4855,15 +4878,13 @@ async defreezeCrmKpiWeeks(weekStarts) {
           ), 0) AS total_collected_amount
         FROM overdue_summary_report osr
         LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
-        WHERE osr.is_deleted = false
-          AND osr.is_collected = true
-          AND (ci.sale_order_id IS NULL OR ci.complaint_status = 'Closed')
+        WHERE ${whereClause}
       `;
 
       const [countResult, ordersResult, summaryResult] = await Promise.all([
         pool.query(countQuery, filterValues),
         pool.query(ordersQuery, [...filterValues, pageSize, offset]),
-        pool.query(summaryQuery, []),
+        pool.query(summaryQuery, filterValues),
       ]);
       const totalItems = Number(countResult.rows[0]?.total_items || 0);
       return {
@@ -5909,9 +5930,7 @@ async defreezeCrmKpiWeeks(weekStarts) {
 
           const noteType = String(document_type || "").trim();
           const isCreditNote =
-            /credit/i.test(noteType) ||
-            /^cn\b/i.test(noteType) ||
-            /^c\/n\b/i.test(noteType);
+            /credit/i.test(noteType) || /^cn\b/i.test(noteType) || /^c\/n\b/i.test(noteType);
           const signedAmount = isCreditNote ? -noteAmount : noteAmount;
           const adjustment = {
             bill_type: isCreditNote ? "Credit Note" : "Debit Note",
@@ -7302,41 +7321,24 @@ async defreezeCrmKpiWeeks(weekStarts) {
       // 1. Fetch report recipients
       let recipients = [];
 
-      if (recipientEmailOverride?.trim()) {
-        recipients = [
+      if (process.env.COMPANY_NAME) {
+        recipients.push(
           {
-            email_id: recipientEmailOverride.trim(),
-            username: "Admin",
-            role: "Developer",
+            email_id: "soumya@ve.com",
+            username: "Soumya",
+            role: "Management",
           },
-        ];
-      } else {
-        const recipientResult = await pool.query(`
-        SELECT id, username, role, TRIM(email_id) AS email_id
-        FROM public.users
-        WHERE role IN ('Admin', 'Executive Assistant')
-          AND (is_deleted IS NULL OR is_deleted = false)
-          AND NULLIF(TRIM(email_id), '') IS NOT NULL
-        ORDER BY id ASC;
-      `);
-
-        // Remove duplicate email addresses
-        const uniqueRecipients = new Map();
-
-        for (const user of recipientResult.rows) {
-          const userEmail = user.email_id;
-
-          if (!uniqueRecipients.has(userEmail)) {
-            uniqueRecipients.set(userEmail, user);
+          {
+            email_id: "ea@vinayak-enterprises.com",
+            username: "Versha",
+            role: "Executive Assistant",
           }
-        }
+        );
+      }
 
-        recipients = [...uniqueRecipients.values()];
-
-        if (recipients.length === 0) {
-          console.log("No Admin or Executive Assistant found. Skipping email.");
-          return;
-        }
+      if (recipients.length === 0) {
+        console.log("No Admin or Executive Assistant found. Skipping email.");
+        return;
       }
 
       // 2. Fetch pending work for Vehicle Executive (Vikas)
