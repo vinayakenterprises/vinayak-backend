@@ -1101,7 +1101,18 @@ defreezeCrmKpiWeeks = async (req, res, next) => {
   getPaymentCollectedData = async (req, res, next) => {
     try {
       const { id } = req.query;
-      const { page, pageSize, search, status } = req.query;
+      const {
+        page,
+        pageSize,
+        search,
+        status,
+        invoiceDateFrom,
+        invoiceDateTo,
+        dueDateFrom,
+        dueDateTo,
+        overdueDaysMin,
+        overdueDaysMax,
+      } = req.query;
       const userId = req.user?.id || null;
 
       const result = await o2dService.getPaymentCollectedData(
@@ -1110,7 +1121,13 @@ defreezeCrmKpiWeeks = async (req, res, next) => {
         page,
         pageSize,
         search,
-        status
+        status,
+        invoiceDateFrom,
+        invoiceDateTo,
+        dueDateFrom,
+        dueDateTo,
+        overdueDaysMin,
+        overdueDaysMax
       );
 
       res.status(200).json({
