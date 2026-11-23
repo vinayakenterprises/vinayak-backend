@@ -22,7 +22,7 @@ import {
   sendNotificationToCrm,
   sendNotificationToSalesTeamLead,
   WORK_CONFIG,
-    getDayWorkingWindow,
+  getDayWorkingWindow,
 } from "../utils/helpers/helper-functions.js";
 
 const emailDateTimeFormatter = new Intl.DateTimeFormat("en-IN", {
@@ -47,12 +47,8 @@ const formatEmailDate = (value) => (value ? emailDateFormatter.format(new Date(v
 const countComplaintWorkingDays = (startDate, endDate) => {
   if (!startDate || !endDate || endDate < startDate) return null;
 
-  const [startYear, startMonth, startDay] = startDate
-    .split("-")
-    .map(Number);
-  const [endYear, endMonth, endDay] = endDate
-    .split("-")
-    .map(Number);
+  const [startYear, startMonth, startDay] = startDate.split("-").map(Number);
+  const [endYear, endMonth, endDay] = endDate.split("-").map(Number);
 
   let cursor = Date.UTC(startYear, startMonth - 1, startDay + 1);
   const end = Date.UTC(endYear, endMonth - 1, endDay);
@@ -3535,9 +3531,9 @@ class O2dService {
       for (const row of rows) {
         // const closingDays = row.closing_days === null ? null : Number(row.closing_days);
         const closingDays =
-  row.status === "closed"
-    ? countComplaintWorkingDays(row.created_date, row.updated_date)
-    : null;
+          row.status === "closed"
+            ? countComplaintWorkingDays(row.created_date, row.updated_date)
+            : null;
 
         if (closingDays !== null && !Number.isFinite(closingDays)) {
           throw new Error(`Invalid complaint closing duration for complaint ${row.complaint_id}.`);
@@ -6351,6 +6347,9 @@ class O2dService {
       }
       if (body.driver_license_image) {
         additionalVehicleData.driver_license_image = body.driver_license_image;
+      }
+      if (body.empty_vehicle_image) {
+        additionalVehicleData.empty_vehicle_image = body.empty_vehicle_image;
       }
       // if (body.loaded_proof_urls) additionalVehicleData.loaded_proof_urls = body.loaded_proof_urls;
 

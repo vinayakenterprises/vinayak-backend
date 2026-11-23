@@ -16,6 +16,7 @@ const transportExecutiveUpload = upload.fields([
   { name: "all_bundles_image", maxCount: 1 },
   { name: "driver_and_vehicle_number_image", maxCount: 1 },
   { name: "driver_license_image", maxCount: 1 },
+  { name: "empty_vehicle_image", maxCount: 1 },
 ]);
 
 const router = Router();
@@ -382,34 +383,14 @@ router.get(
   o2dController.getCrmKpiComplaintCountsByDate
 );
 
-router.get(
-  "/get-crm-kpi-promises",
-  authMiddleware,
-  o2dController.getCrmKpiPromises
-);
+router.get("/get-crm-kpi-promises", authMiddleware, o2dController.getCrmKpiPromises);
 
-router.post(
-  "/save-crm-kpi-promises",
-  authMiddleware,
-  o2dController.saveCrmKpiPromises
-);
+router.post("/save-crm-kpi-promises", authMiddleware, o2dController.saveCrmKpiPromises);
 
-router.get(
-  "/get-crm-kpi-week-freezes",
-  authMiddleware,
-  o2dController.getCrmKpiWeekFreezes
-);
+router.get("/get-crm-kpi-week-freezes", authMiddleware, o2dController.getCrmKpiWeekFreezes);
 
-router.post(
-  "/freeze-crm-kpi-weeks",
-  authMiddleware,
-  o2dController.freezeCrmKpiWeeks
-);
+router.post("/freeze-crm-kpi-weeks", authMiddleware, o2dController.freezeCrmKpiWeeks);
 
-router.post(
-  "/defreeze-crm-kpi-weeks",
-  authMiddleware,
-  o2dController.defreezeCrmKpiWeeks
-);
+router.post("/defreeze-crm-kpi-weeks", authMiddleware, o2dController.defreezeCrmKpiWeeks);
 
 export default router;
