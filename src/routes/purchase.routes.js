@@ -55,4 +55,11 @@ router.post(
   purchaseController.addMaterialReceiveEntry
 );
 
+router.post(
+  "/submit-quality-inspection",
+  authMiddleware,
+  upload.single("quality_report_pdf"),
+  purchaseController.submitQualityInspection
+);
+
 export default router;
