@@ -420,67 +420,144 @@ class O2dService {
     return rows[0];
   }
 
+  // async retrieveAllCustomersList(userId) {
+  //   try {
+  //     let whereCondition = "WHERE c.sales_person = $1 or c.crm = $1";
+  //     let inputArray = [userId];
+  //     if (userId === 15 || userId === 9 || userId === 16 || userId === 17) {
+  //       whereCondition = "";
+  //       inputArray = [];
+  //     }
+
+  //     const query = `SELECT 
+  //           c.*,
+  //           COALESCE(pending.total_pending_quantity, 0) AS total_pending_quantity,
+  //           CASE 
+  //               WHEN c.credit_limit = 0 THEN 0
+  //               ELSE c.credit_limit - COALESCE(pending.total_pending_quantity, 0)
+  //           END AS remaining_credit_limit
+  //       FROM 
+  //           public.customers c
+  //       LEFT JOIN LATERAL (
+  //           SELECT sum(quantity_mt) AS total_pending_quantity
+  //           FROM sales_orders so
+  //           WHERE 
+  //               (so.client_name = c.company_name OR so.client_name = ANY(c.child_companies))
+  //               AND (so.payment_status IS NULL OR (so.payment_status->>'payment_status')::boolean = false)
+  //       ) pending ON true
+  //       ${whereCondition}
+  //       ORDER BY 
+  //           c.id DESC;`;
+
+  //     const { rows } = await pool.query(query, inputArray);
+
+  //     // const crmIds = rows.map((item) => {
+  //     //   const {crm} = item;
+  //     //   if(crm === null){
+  //     //     continue;
+  //     //   }
+  //     //   return crm;
+  //     // });
+
+  //     const userIdsSet = new Set();
+  //     for (const item of rows) {
+  //       const { crm, sales_person } = item;
+  //       if (crm === null || sales_person === null) {
+  //         continue;
+  //       }
+  //       userIdsSet.add(crm);
+  //       userIdsSet.add(sales_person);
+  //     }
+
+  //     const userIds = [...userIdsSet];
+
+  //     const userDetails = await pool.query(
+  //       `select id, username from users where id in (${userIds.join(",")})`
+  //     );
+
+  //     return [rows, userDetails?.rows];
+  //   } catch (error) {
+  //     console.log("error in retrieving customer list: ", error);
+  //     throw error;
+  //   }
+  // }
+
   async retrieveAllCustomersList(userId) {
-    try {
-      let whereCondition = "WHERE c.sales_person = $1 or c.crm = $1";
-      let inputArray = [userId];
-      if (userId === 15 || userId === 9 || userId === 16 || userId === 17) {
-        whereCondition = "";
-        inputArray = [];
-      }
+  try {
+    let whereCondition = "WHERE c.sales_person = $1 or c.crm = $1";
+    let inputArray = [userId];
 
-      const query = `SELECT 
-            c.*,
-            COALESCE(pending.total_pending_quantity, 0) AS total_pending_quantity,
-            CASE 
-                WHEN c.credit_limit = 0 THEN 0
-                ELSE c.credit_limit - COALESCE(pending.total_pending_quantity, 0)
-            END AS remaining_credit_limit
-        FROM 
-            public.customers c
-        LEFT JOIN LATERAL (
-            SELECT sum(quantity_mt) AS total_pending_quantity
-            FROM sales_orders so
-            WHERE 
-                (so.client_name = c.company_name OR so.client_name = ANY(c.child_companies))
-                AND (so.payment_status IS NULL OR (so.payment_status->>'payment_status')::boolean = false)
-        ) pending ON true
-        ${whereCondition}
-        ORDER BY 
-            c.id DESC;`;
-
-      const { rows } = await pool.query(query, inputArray);
-
-      // const crmIds = rows.map((item) => {
-      //   const {crm} = item;
-      //   if(crm === null){
-      //     continue;
-      //   }
-      //   return crm;
-      // });
-
-      const userIdsSet = new Set();
-      for (const item of rows) {
-        const { crm, sales_person } = item;
-        if (crm === null || sales_person === null) {
-          continue;
-        }
-        userIdsSet.add(crm);
-        userIdsSet.add(sales_person);
-      }
-
-      const userIds = [...userIdsSet];
-
-      const userDetails = await pool.query(
-        `select id, username from users where id in (${userIds.join(",")})`
-      );
-
-      return [rows, userDetails?.rows];
-    } catch (error) {
-      console.log("error in retrieving customer list: ", error);
-      throw error;
+    if (userId === 15 || userId === 9 || userId === 16 || userId === 17) {
+      whereCondition = "";
+      inputArray = [];
     }
+
+    const query = `
+      SELECT
+        c.*,
+        COALESCE(pending.total_pending_quantity, 0) AS total_pending_quantity,
+        CASE
+          WHEN c.credit_limit = 0 THEN 0
+          ELSE c.credit_limit - COALESCE(pending.total_pending_quantity, 0)
+        END AS remaining_credit_limit,
+        COALESCE(pending.pending_orders, '[]'::json) AS pending_orders
+      FROM public.customers c
+      LEFT JOIN LATERAL (
+        SELECT
+          SUM(so.quantity_mt) AS total_pending_quantity,
+          COALESCE(
+            json_agg(
+              json_build_object(
+                'client_name', so.client_name,
+                'quantity_mt', so.quantity_mt,
+                'expected_delivery_date', so.delivery_date::date
+              )
+              ORDER BY so.delivery_date NULLS LAST, so.id
+            ) FILTER (WHERE so.id IS NOT NULL),
+            '[]'::json
+          ) AS pending_orders
+        FROM sales_orders so
+        WHERE
+          (
+            so.client_name = c.company_name
+            OR so.client_name = ANY(c.child_companies)
+          )
+          AND (
+            so.payment_status IS NULL
+            OR (so.payment_status->>'payment_status')::boolean = false
+          )
+      ) pending ON true
+      ${whereCondition}
+      ORDER BY c.id DESC;
+    `;
+
+    const { rows } = await pool.query(query, inputArray);
+
+    const userIdsSet = new Set();
+
+    for (const item of rows) {
+      const { crm, sales_person } = item;
+
+      if (crm === null || sales_person === null) {
+        continue;
+      }
+
+      userIdsSet.add(crm);
+      userIdsSet.add(sales_person);
+    }
+
+    const userIds = [...userIdsSet];
+
+    const userDetails = await pool.query(
+      `SELECT id, username FROM users WHERE id IN (${userIds.join(",")})`
+    );
+
+    return [rows, userDetails?.rows];
+  } catch (error) {
+    console.log("error in retrieving customer list: ", error);
+    throw error;
   }
+}
 
   async retrieveCustomerDetailsById(id) {
     const query = "SELECT * FROM public.customers WHERE id = $1";
