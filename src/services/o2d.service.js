@@ -4748,7 +4748,6 @@ class O2dService {
               ci.sale_order_id IS NULL
               OR ci.complaint_status = 'Closed'
           )
-          AND so.receiving_details ->> 'completion_timestamp' IS NOT NULL
       ORDER BY osr.id DESC;`;
 
       const { rows } = await pool.query(query, []);
