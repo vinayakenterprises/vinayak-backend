@@ -1093,8 +1093,21 @@ class O2dController {
 
   getPaymentCollectedData = async (req, res, next) => {
     try {
-      const { id } = req.query;
+      const userId = req.user?.id || null;
       const {
+        page = 1,
+        pageSize = 25,
+        search = "",
+        status = "All",
+        invoiceDateFrom = "",
+        invoiceDateTo = "",
+        dueDateFrom = "",
+        dueDateTo = "",
+        overdueDaysMin = "",
+        overdueDaysMax = "",
+      } = req.query;
+
+      const result = await o2dService.getPaymentCollectedData(userId, {
         page,
         pageSize,
         search,
@@ -1105,25 +1118,9 @@ class O2dController {
         dueDateTo,
         overdueDaysMin,
         overdueDaysMax,
-      } = req.query;
-      const userId = req.user?.id || null;
+      });
 
-      const result = await o2dService.getPaymentCollectedData(
-        id,
-        userId,
-        page,
-        pageSize,
-        search,
-        status,
-        invoiceDateFrom,
-        invoiceDateTo,
-        dueDateFrom,
-        dueDateTo,
-        overdueDaysMin,
-        overdueDaysMax
-      );
-
-      res.status(200).json({
+      return res.status(200).json({
         status: "success",
         message: "Overdue Report Data retrieved successfully",
         data: result.orders,
