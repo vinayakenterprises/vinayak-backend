@@ -4809,13 +4809,24 @@ class O2dService {
 
   async getOverdueReportData(id, userId) {
     try {
-      const query = `SELECT osr.*, ci.complaint_status, ci.updated_at
-      FROM overdue_summary_report osr 
-      LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
-      WHERE osr.is_deleted = false 
-        AND osr.is_collected = false 
-        AND (ci.sale_order_id IS NULL OR ci.complaint_status = 'Closed')
-      ORDER BY osr.id DESC`;
+      const query = `SELECT
+          osr.*,
+          ci.complaint_status,
+          ci.updated_at,
+          so.receiving_details ->> 'completion_timestamp' AS receiving_completion_timestamp
+      FROM overdue_summary_report osr
+      LEFT JOIN complaint_info ci
+          ON osr.sale_order_id = ci.sale_order_id
+      LEFT JOIN sales_orders so
+          ON osr.sale_order_id = so.id
+      WHERE osr.is_deleted = false
+          AND osr.is_collected = false
+          AND (
+              ci.sale_order_id IS NULL
+              OR ci.complaint_status = 'Closed'
+          )
+          AND so.receiving_details ->> 'completion_timestamp' IS NOT NULL
+      ORDER BY osr.id DESC;`;
 
       const { rows } = await pool.query(query, []);
 
@@ -4826,155 +4837,102 @@ class O2dService {
     }
   }
 
-  async getPaymentCollectedData(
-    id,
-    userId,
-    page = 1,
-    requestedPageSize = 25,
-    search = "",
-    status = "All",
-    invoiceDateFrom = "",
-    invoiceDateTo = "",
-    dueDateFrom = "",
-    dueDateTo = "",
-    overdueDaysMin = "",
-    overdueDaysMax = ""
-  ) {
+  async getPaymentCollectedData(userId, filters = {}) {
     try {
-      const requestedPage = Number(page);
-      const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
-      const parsedPageSize = Number(requestedPageSize);
-      const pageSize =
-        Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
-          ? parsedPageSize
-          : 25;
-      const offset = (safePage - 1) * pageSize;
-      const filterValues = [];
-      const filters = [
-        "osr.is_deleted = false",
-        "osr.is_collected = true",
-        "(ci.sale_order_id IS NULL OR ci.complaint_status = 'Closed')",
-      ];
-      const searchTerm = String(search).trim();
+      const {
+        page = 1,
+        pageSize = 25,
+        search = "",
+        invoiceDateFrom = "",
+        invoiceDateTo = "",
+      } = filters;
+
+      const safePage = Math.max(1, Number(page) || 1);
+      const safePageSize = Math.max(10, Math.min(100, Number(pageSize) || 25));
+      const offset = (safePage - 1) * safePageSize;
+
+      const conditions = ["osr.is_deleted = false", "osr.is_collected = true"];
+      const queryParams = [];
+
+      // Search filter
+      const searchTerm = String(search || "").trim();
       if (searchTerm) {
-        filterValues.push(`%${searchTerm}%`);
-        const searchParameter = `$${filterValues.length}`;
-        filters.push(`(
-          osr.client_name ILIKE ${searchParameter}
-          OR osr.invoice_no ILIKE ${searchParameter}
-          OR osr.sale_order_id::text ILIKE ${searchParameter}
-          OR osr.id::text ILIKE ${searchParameter}
-        )`);
-      }
-      if (String(invoiceDateFrom).trim()) {
-        filterValues.push(String(invoiceDateFrom).trim());
-        filters.push(`osr.invoice_date::date >= $${filterValues.length}::date`);
-      }
-      if (String(invoiceDateTo).trim()) {
-        filterValues.push(String(invoiceDateTo).trim());
-        filters.push(`osr.invoice_date::date <= $${filterValues.length}::date`);
-      }
-      const overdueStatusExpression = `CASE
-        WHEN osr.invoice_date IS NOT NULL
-          AND CURRENT_TIMESTAMP > GREATEST(
-            osr.invoice_date::timestamp + INTERVAL '10 days',
-            CASE
-              WHEN ci.complaint_status = 'Closed' AND ci.updated_at IS NOT NULL
-                THEN ci.updated_at + INTERVAL '10 days'
-              ELSE osr.invoice_date::timestamp + INTERVAL '10 days'
-            END
-          )
-          AND COALESCE(NULLIF(osr.balance::text, '')::numeric, 0) > 0
-          THEN 'Overdue'
-        ELSE 'Within TAT'
-      END`;
-      if (status && status !== "All") {
-        filterValues.push(status);
-        filters.push(`${overdueStatusExpression} = $${filterValues.length}`);
-      }
-      const dueDateExpression = `GREATEST(
-        osr.invoice_date::timestamp + INTERVAL '10 days',
-        CASE
-          WHEN ci.complaint_status = 'Closed' AND ci.updated_at IS NOT NULL
-            THEN ci.updated_at + INTERVAL '10 days'
-          ELSE osr.invoice_date::timestamp + INTERVAL '10 days'
-        END
-      )`;
-      if (String(dueDateFrom).trim()) {
-        filterValues.push(String(dueDateFrom).trim());
-        filters.push(`${dueDateExpression}::date >= $${filterValues.length}::date`);
-      }
-      if (String(dueDateTo).trim()) {
-        filterValues.push(String(dueDateTo).trim());
-        filters.push(`${dueDateExpression}::date <= $${filterValues.length}::date`);
-      }
-      const overdueDaysExpression = `GREATEST(
-        0,
-        FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - ${dueDateExpression})) / 86400)::integer
-      )`;
-      if (String(overdueDaysMin).trim()) {
-        filterValues.push(String(overdueDaysMin).trim());
-        filters.push(`${overdueDaysExpression} >= $${filterValues.length}::integer`);
-      }
-      if (String(overdueDaysMax).trim()) {
-        filterValues.push(String(overdueDaysMax).trim());
-        filters.push(`${overdueDaysExpression} <= $${filterValues.length}::integer`);
+        queryParams.push(`%${searchTerm}%`);
+        const pIdx = queryParams.length;
+        conditions.push(
+          `(osr.client_name ILIKE $${pIdx} OR osr.invoice_no ILIKE $${pIdx} OR osr.sale_order_id::text ILIKE $${pIdx})`
+        );
       }
 
-      const whereClause = filters.join(" AND ");
+      // Date range filter: check receiving_completion_timestamp (or invoice_date)
+      if (invoiceDateFrom) {
+        queryParams.push(invoiceDateFrom);
+        const pIdx = queryParams.length;
+        conditions.push(
+          `(COALESCE(so.receiving_details ->> 'completion_timestamp', osr.invoice_date::text)::date >= $${pIdx}::date)`
+        );
+      }
+      if (invoiceDateTo) {
+        queryParams.push(invoiceDateTo);
+        const pIdx = queryParams.length;
+        conditions.push(
+          `(COALESCE(so.receiving_details ->> 'completion_timestamp', osr.invoice_date::text)::date <= $${pIdx}::date)`
+        );
+      }
+
+      const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+      // 1. Data Query (includes LEFT JOIN sales_orders & receiving_completion_timestamp)
+      const dataQuery = `
+      SELECT
+        osr.*,
+        ci.complaint_status,
+        ci.updated_at AS complaint_updated_at,
+        so.receiving_details ->> 'completion_timestamp' AS receiving_completion_timestamp
+      FROM public.overdue_summary_report osr
+      LEFT JOIN public.complaint_info ci
+        ON osr.sale_order_id = ci.sale_order_id
+      LEFT JOIN public.sales_orders so
+        ON osr.sale_order_id = so.id
+      ${whereClause}
+      ORDER BY osr.id DESC
+      LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}
+    `;
+
+      // 2. Count & Summary Query
       const countQuery = `
-        SELECT COUNT(*) AS total_items
-        FROM overdue_summary_report osr
-        LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
-        WHERE ${whereClause}
-      `;
-      const limitParameter = filterValues.length + 1;
-      const ordersQuery = `
-        SELECT osr.*, ci.complaint_status, ci.updated_at
-        FROM overdue_summary_report osr
-        LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
-        WHERE ${whereClause}
-        ORDER BY osr.id DESC
-        LIMIT $${limitParameter} OFFSET $${limitParameter + 1}
-      `;
-      const summaryQuery = `
-        SELECT
-          COUNT(*) AS total_items,
-          COALESCE(SUM(
-            CASE
-              WHEN jsonb_array_length(COALESCE(osr.transactions, '[]'::jsonb)) > 0 THEN (
-                SELECT COALESCE(SUM(NULLIF(tx->>'amount', '')::numeric), 0)
-                FROM jsonb_array_elements(COALESCE(osr.transactions, '[]'::jsonb)) tx
-              )
-              ELSE COALESCE(NULLIF(osr.balance::text, '')::numeric, 0)
-            END
-          ), 0) AS total_collected_amount
-        FROM overdue_summary_report osr
-        LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
-        WHERE ${whereClause}
-      `;
+      SELECT
+        COUNT(*) AS total_items,
+        COALESCE(SUM(ABS(osr.balance)), 0) AS total_collected_amount
+      FROM public.overdue_summary_report osr
+      LEFT JOIN public.sales_orders so
+        ON osr.sale_order_id = so.id
+      ${whereClause}
+    `;
 
-      const [countResult, ordersResult, summaryResult] = await Promise.all([
-        pool.query(countQuery, filterValues),
-        pool.query(ordersQuery, [...filterValues, pageSize, offset]),
-        pool.query(summaryQuery, filterValues),
+      const [dataResult, countResult] = await Promise.all([
+        pool.query(dataQuery, [...queryParams, safePageSize, offset]),
+        pool.query(countQuery, queryParams),
       ]);
+
       const totalItems = Number(countResult.rows[0]?.total_items || 0);
+      const totalCollectedAmount = Number(countResult.rows[0]?.total_collected_amount || 0);
+
       return {
-        orders: ordersResult.rows,
+        orders: dataResult.rows,
         pagination: {
           page: safePage,
-          pageSize,
+          pageSize: safePageSize,
           totalItems,
-          totalPages: Math.ceil(totalItems / pageSize),
+          totalPages: Math.ceil(totalItems / safePageSize) || 1,
         },
         summary: {
-          totalItems: Number(summaryResult.rows[0]?.total_items || 0),
-          totalCollectedAmount: Number(summaryResult.rows[0]?.total_collected_amount || 0),
+          totalItems,
+          totalCollectedAmount,
         },
       };
     } catch (error) {
-      console.error("Error in getting overdue report data: ", error);
+      console.error("Error in getPaymentCollectedData: ", error);
       throw error;
     }
   }
