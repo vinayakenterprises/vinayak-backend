@@ -425,24 +425,24 @@ class O2dService {
   //       inputArray = [];
   //     }
 
-  //     const query = `SELECT 
+  //     const query = `SELECT
   //           c.*,
   //           COALESCE(pending.total_pending_quantity, 0) AS total_pending_quantity,
-  //           CASE 
+  //           CASE
   //               WHEN c.credit_limit = 0 THEN 0
   //               ELSE c.credit_limit - COALESCE(pending.total_pending_quantity, 0)
   //           END AS remaining_credit_limit
-  //       FROM 
+  //       FROM
   //           public.customers c
   //       LEFT JOIN LATERAL (
   //           SELECT sum(quantity_mt) AS total_pending_quantity
   //           FROM sales_orders so
-  //           WHERE 
+  //           WHERE
   //               (so.client_name = c.company_name OR so.client_name = ANY(c.child_companies))
   //               AND (so.payment_status IS NULL OR (so.payment_status->>'payment_status')::boolean = false)
   //       ) pending ON true
   //       ${whereCondition}
-  //       ORDER BY 
+  //       ORDER BY
   //           c.id DESC;`;
 
   //     const { rows } = await pool.query(query, inputArray);
@@ -479,16 +479,16 @@ class O2dService {
   // }
 
   async retrieveAllCustomersList(userId) {
-  try {
-    let whereCondition = "WHERE c.sales_person = $1 or c.crm = $1";
-    let inputArray = [userId];
+    try {
+      let whereCondition = "WHERE c.sales_person = $1 or c.crm = $1";
+      let inputArray = [userId];
 
-    if (userId === 15 || userId === 9 || userId === 16 || userId === 17) {
-      whereCondition = "";
-      inputArray = [];
-    }
+      if (userId === 15 || userId === 9 || userId === 16 || userId === 17) {
+        whereCondition = "";
+        inputArray = [];
+      }
 
-    const query = `
+      const query = `
       SELECT
         c.*,
         COALESCE(pending.total_pending_quantity, 0) AS total_pending_quantity,
@@ -527,33 +527,33 @@ class O2dService {
       ORDER BY c.id DESC;
     `;
 
-    const { rows } = await pool.query(query, inputArray);
+      const { rows } = await pool.query(query, inputArray);
 
-    const userIdsSet = new Set();
+      const userIdsSet = new Set();
 
-    for (const item of rows) {
-      const { crm, sales_person } = item;
+      for (const item of rows) {
+        const { crm, sales_person } = item;
 
-      if (crm === null || sales_person === null) {
-        continue;
+        if (crm === null || sales_person === null) {
+          continue;
+        }
+
+        userIdsSet.add(crm);
+        userIdsSet.add(sales_person);
       }
 
-      userIdsSet.add(crm);
-      userIdsSet.add(sales_person);
+      const userIds = [...userIdsSet];
+
+      const userDetails = await pool.query(
+        `SELECT id, username FROM users WHERE id IN (${userIds.join(",")})`
+      );
+
+      return [rows, userDetails?.rows];
+    } catch (error) {
+      console.log("error in retrieving customer list: ", error);
+      throw error;
     }
-
-    const userIds = [...userIdsSet];
-
-    const userDetails = await pool.query(
-      `SELECT id, username FROM users WHERE id IN (${userIds.join(",")})`
-    );
-
-    return [rows, userDetails?.rows];
-  } catch (error) {
-    console.log("error in retrieving customer list: ", error);
-    throw error;
   }
-}
 
   async retrieveCustomerDetailsById(id) {
     const query = "SELECT * FROM public.customers WHERE id = $1";
@@ -2627,6 +2627,7 @@ class O2dService {
         contact_person_number,
         priority_level,
         remark,
+        quality_confirmation_status,
       } = data;
 
       if (!description?.trim()) {
@@ -2651,14 +2652,13 @@ class O2dService {
       if (!orderExists.rows.length) {
         throw new Error("Sales order not found");
       }
+      const existingQualityStatus = orderExists.rows[0].quality_confirmation_status;
 
-      const qualityConfirmationStatus = orderExists.rows[0].quality_confirmation_status;
+      const qualityConfirmationStatus = existingQualityStatus?.trim()
+        ? existingQualityStatus
+        : quality_confirmation_status;
 
-      // Complaint TAT calculation
       const isWithinTat = qualityConfirmationStatus?.trim().toLowerCase() === "no within tat";
-
-      // console.log("Quality Confirmation Status:", qualityConfirmationStatus);
-      console.log("Complaint Within TAT:", isWithinTat);
 
       const { rows } = await pool.query(
         `
@@ -2690,8 +2690,6 @@ class O2dService {
           userId,
         ]
       );
-
-      console.log("Inserted Complaint TAT:", rows[0].is_within_tat);
 
       return rows[0];
     } catch (error) {
