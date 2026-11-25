@@ -7382,18 +7382,18 @@ if (rows.length > 0 && hasRelevantChanges) {
       let recipients = [];
 
       if (process.env.COMPANY_NAME === "Vinayak Enterprises") {
-        recipients.push(
-          {
-            email_id: "soumya@vinayak-enterprises.com",
-            username: "Soumya",
-            role: "Management",
-          },
-          {
-            email_id: "ea@vinayak-enterprises.com",
-            username: "Versha",
-            role: "Executive Assistant",
-          }
-        );
+        // recipients.push(
+        //   {
+        //     email_id: "soumya@vinayak-enterprises.com",
+        //     username: "Soumya",
+        //     role: "Management",
+        //   },
+        //   {
+        //     email_id: "ea@vinayak-enterprises.com",
+        //     username: "Versha",
+        //     role: "Executive Assistant",
+        //   }
+        // );
       } else if (process.env.COMPANY_NAME === "Mittalu Pvt Ltd") {
         // Send mail from Mittalu DB
         recipients.push(
