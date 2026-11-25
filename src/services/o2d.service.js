@@ -4823,7 +4823,6 @@ class O2dService {
               ci.sale_order_id IS NULL
               OR ci.complaint_status = 'Closed'
           )
-          AND so.receiving_details ->> 'completion_timestamp' IS NOT NULL
       ORDER BY osr.id DESC;`;
 
       const { rows } = await pool.query(query, []);
@@ -7354,18 +7353,18 @@ class O2dService {
       let recipients = [];
 
       if (process.env.COMPANY_NAME === "Vinayak Enterprises") {
-        recipients.push(
-          {
-            email_id: "soumya@vinayak-enterprises.com",
-            username: "Soumya",
-            role: "Management",
-          },
-          {
-            email_id: "ea@vinayak-enterprises.com",
-            username: "Versha",
-            role: "Executive Assistant",
-          }
-        );
+        // recipients.push(
+        //   {
+        //     email_id: "soumya@vinayak-enterprises.com",
+        //     username: "Soumya",
+        //     role: "Management",
+        //   },
+        //   {
+        //     email_id: "ea@vinayak-enterprises.com",
+        //     username: "Versha",
+        //     role: "Executive Assistant",
+        //   }
+        // );
       } else if (process.env.COMPANY_NAME === "Mittalu Pvt Ltd") {
         // Send mail from Mittalu DB
         recipients.push(
