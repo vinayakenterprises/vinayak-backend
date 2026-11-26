@@ -1,6 +1,9 @@
 import pool from "../config/database.js";
 import { HTTP_STATUS, PURCHASE_ORDER_STAGES } from "../utils/constants.js";
-import { sendNotificationToAccountsTeam } from "../utils/helpers/helper-functions.js";
+import {
+  addWorkingHours,
+  sendNotificationToAccountsTeam,
+} from "../utils/helpers/helper-functions.js";
 import uploadFileToS3 from "../utils/helpers/uploadSOToS3.js";
 
 class PurchaseService {
@@ -191,9 +194,9 @@ COALESCE(
   //   }
   // };
 
-getPOCreationRequests = async () => {
-  try {
-    const query = `
+  getPOCreationRequests = async () => {
+    try {
+      const query = `
       SELECT
         p.*,
         v.vendor_name,
@@ -205,13 +208,13 @@ getPOCreationRequests = async () => {
       ORDER BY p.created_at DESC;
     `;
 
-    const { rows } = await pool.query(query);
-    return rows;
-  } catch (err) {
-    console.error("Error in fetching PO creation requests:", err.message);
-    throw err;
-  }
-};
+      const { rows } = await pool.query(query);
+      return rows;
+    } catch (err) {
+      console.error("Error in fetching PO creation requests:", err.message);
+      throw err;
+    }
+  };
 
   completePOCreationFromTally = async (data) => {
     const client = await pool.connect();
@@ -884,44 +887,49 @@ getPOCreationRequests = async () => {
     not_okay_details,
     user,
   }) => {
+    const client = await pool.connect();
     try {
       let resolvedReceivingId = receivingId;
+
+      // 1. Check parent entry existence
       const checkQuery = `
+      SELECT m.*, p.order_status, p.id as po_id
+      FROM public.material_received_information m
+      JOIN public.purchases p ON m.purchase_id = p.id
+      WHERE m.id = $1
+    `;
+      let checkRes = await client.query(checkQuery, [resolvedReceivingId]);
+
+      // Fallback 1: Uninspected entry for purchaseId
+      if (checkRes.rows.length === 0 && purchaseId) {
+        const fallbackQuery = `
         SELECT m.*, p.order_status, p.id as po_id
         FROM public.material_received_information m
         JOIN public.purchases p ON m.purchase_id = p.id
-        WHERE m.id = $1
+        WHERE m.purchase_id = $1 AND (m.quality_information IS NULL OR m.quality_information->>'status' IS NULL OR m.quality_information->>'status' = '')
+        ORDER BY m.id ASC
+        LIMIT 1
       `;
-      let checkRes = await pool.query(checkQuery, [resolvedReceivingId]);
-
-      // Fallback 1: If not found by m.id, check if purchaseId has an uninspected receiving entry
-      if (checkRes.rows.length === 0 && purchaseId) {
-        const fallbackQuery = `
-          SELECT m.*, p.order_status, p.id as po_id
-          FROM public.material_received_information m
-          JOIN public.purchases p ON m.purchase_id = p.id
-          WHERE m.purchase_id = $1 AND (m.quality_information IS NULL OR m.quality_information->>'status' IS NULL OR m.quality_information->>'status' = '')
-          ORDER BY m.id ASC
-          LIMIT 1
-        `;
-        const fallbackRes = await pool.query(fallbackQuery, [purchaseId]);
+        const fallbackRes = await client.query(fallbackQuery, [purchaseId]);
         if (fallbackRes.rows.length > 0) {
           checkRes = fallbackRes;
           resolvedReceivingId = checkRes.rows[0].id;
         }
       }
 
-      // Fallback 2: Check if receivingId itself was actually passed as a purchase_id
+      // Fallback 2: receivingId passed was purchase_id
       if (checkRes.rows.length === 0) {
         const fallbackByPurchaseQuery = `
-          SELECT m.*, p.order_status, p.id as po_id
-          FROM public.material_received_information m
-          JOIN public.purchases p ON m.purchase_id = p.id
-          WHERE m.purchase_id = $1 AND (m.quality_information IS NULL OR m.quality_information->>'status' IS NULL OR m.quality_information->>'status' = '')
-          ORDER BY m.id ASC
-          LIMIT 1
-        `;
-        const fallbackByPurchaseRes = await pool.query(fallbackByPurchaseQuery, [resolvedReceivingId]);
+        SELECT m.*, p.order_status, p.id as po_id
+        FROM public.material_received_information m
+        JOIN public.purchases p ON m.purchase_id = p.id
+        WHERE m.purchase_id = $1 AND (m.quality_information IS NULL OR m.quality_information->>'status' IS NULL OR m.quality_information->>'status' = '')
+        ORDER BY m.id ASC
+        LIMIT 1
+      `;
+        const fallbackByPurchaseRes = await client.query(fallbackByPurchaseQuery, [
+          resolvedReceivingId,
+        ]);
         if (fallbackByPurchaseRes.rows.length > 0) {
           checkRes = fallbackByPurchaseRes;
           resolvedReceivingId = checkRes.rows[0].id;
@@ -932,6 +940,60 @@ getPOCreationRequests = async () => {
         throw new Error(`Material received entry with ID ${receivingId} not found`);
       }
 
+      const parentRow = checkRes.rows[0];
+
+      // Begin atomic transaction
+      await client.query("BEGIN");
+
+      let childMrid = null;
+      const isReplacementRaised =
+        status === "Not Okay" && not_okay_details && Boolean(not_okay_details.replacement_raised);
+
+      // 2. If replacement is raised, create the child entry
+      if (isReplacementRaised) {
+        const replacedQty =
+          parseFloat(not_okay_details.replaced_quantity_mt) ||
+          parseFloat(parentRow.material_received_qty_mt) ||
+          0;
+
+        // Calculate planned date = parent.created_at + 4 working days (4 * 9 = 36 working hours)
+        const baseCreatedAt = parentRow.created_at || new Date();
+        const plannedDate = addWorkingHours(baseCreatedAt, 36);
+
+        const childQualityInfo = {
+          parent_mrid: resolvedReceivingId,
+          replacement_type: not_okay_details.replacement_type || "Partial",
+          status: null,
+        };
+
+        const insertChildQuery = `
+        INSERT INTO public.material_received_information (
+          purchase_id,
+          rate,
+          status,
+          material_received_qty_mt,
+          balance,
+          material_received_planned_date,
+          quality_information,
+          created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        RETURNING id;
+      `;
+
+        const insertChildRes = await client.query(insertChildQuery, [
+          parentRow.purchase_id,
+          parentRow.rate,
+          "Replacement",
+          replacedQty,
+          0,
+          plannedDate, // created_at + 36 working hours (skips Sundays, non-working hours & holidays)
+          JSON.stringify(childQualityInfo),
+        ]);
+
+        childMrid = insertChildRes.rows[0].id;
+      }
+
+      // 3. Prepare parent quality_information including child_mrid
       const qualityInformation = {
         status: status === "Not Okay" ? "Not Okay" : "Okay",
         status_updated_at: new Date().toISOString(),
@@ -941,27 +1003,34 @@ getPOCreationRequests = async () => {
             ? parseFloat(purity_received)
             : null,
         not_okay_details: status === "Not Okay" && not_okay_details ? not_okay_details : null,
+        child_mrid: childMrid, // Added to parent quality_information
       };
 
-      const updateQuery = `
-        UPDATE public.material_received_information
-        SET quality_information = $1
-        WHERE id = $2
-        RETURNING *;
-      `;
-      const updateRes = await pool.query(updateQuery, [
+      // 4. Update the parent entry
+      const updateParentQuery = `
+      UPDATE public.material_received_information
+      SET quality_information = $1
+      WHERE id = $2
+      RETURNING *;
+    `;
+      const updateRes = await client.query(updateParentQuery, [
         JSON.stringify(qualityInformation),
         resolvedReceivingId,
       ]);
 
+      await client.query("COMMIT");
+
       return updateRes.rows[0];
     } catch (err) {
+      await client.query("ROLLBACK");
       console.error("Error in submitQualityInspection:", err.message);
       throw err;
+    } finally {
+      client.release();
     }
   };
 
-    addMaterialReceiveEntry = async ({
+  addMaterialReceiveEntry = async ({
     purchaseId,
     kanta_parchi_url,
     loaded_vehicle_image_url,
