@@ -24,6 +24,7 @@ import {
   WORK_CONFIG,
   getDayWorkingWindow,
 } from "../utils/helpers/helper-functions.js";
+import uploadFileToS3 from "../utils/helpers/uploadSOToS3.js";
 
 const emailDateTimeFormatter = new Intl.DateTimeFormat("en-IN", {
   timeZone: "Asia/Kolkata",
@@ -2800,6 +2801,246 @@ class O2dService {
       return rows[0];
     } catch (error) {
       console.error("Error in updateComplaintDetailsForSaleOrder:", error);
+      throw error;
+    }
+  }
+
+  async addVehicleAndInvoiceDataToComplaint(
+    saleOrderId,
+    complaintId,
+    data = {},
+    files = {},
+    userId = null
+  ) {
+    try {
+      const existingComp = await pool.query(
+        `SELECT replacement_info FROM complaint_info WHERE complaint_id = $1 AND sale_order_id = $2`,
+        [complaintId, saleOrderId]
+      );
+      if (existingComp.rows.length === 0) {
+        throw Object.assign(new Error("Complaint not found for this sales order"), {
+          statusCode: 404,
+        });
+      }
+
+      const existing = existingComp.rows[0].replacement_info || {};
+      const nowIso = new Date().toISOString();
+      const s3Folder = (folderName) =>
+        `${config.branding.companyName}/complaints/${complaintId}/${folderName}`;
+
+      // Upload single-file fields in parallel
+      const uploadFields = async (fieldMap) => {
+        const entries = await Promise.all(
+          Object.entries(fieldMap).map(async ([fileKey, { targetKey, folderName }]) => {
+            const file = files?.[fileKey]?.[0];
+            return file ? [targetKey, await uploadFileToS3(file, s3Folder(folderName))] : null;
+          })
+        );
+        return Object.fromEntries(entries.filter(Boolean));
+      };
+
+      const patchObj = {};
+
+      // 1. Dispatch Information -> replacement_info.dispatch_info
+      if (data.dispatch_type) {
+        if (!data.delay_reason) {
+          throw Object.assign(new Error("delay_reason is required"), { statusCode: 400 });
+        }
+        const prevDispatch = existing.dispatch_info;
+        const history = prevDispatch?.dispatch_type
+          ? [...(prevDispatch.history || []), { ...prevDispatch, history: undefined }]
+          : prevDispatch?.history || [];
+
+        patchObj.dispatch_info = {
+          dispatch_type: data.dispatch_type,
+          dispatch_status: data.dispatch_status === "true" || data.dispatch_status === true,
+          delay_reason: data.delay_reason,
+          dispatch_at: data.dispatch_at || nowIso,
+          history,
+          updated_by: userId,
+          updated_at: nowIso,
+        };
+      }
+
+      // 2. Arrange Vehicles -> replacement_info.vehicle_arrangement
+      const vehicleUploads = await uploadFields({
+        all_bundles_image: {
+          targetKey: "all_bundles_image",
+          folderName: "all-bundles-image",
+        },
+        driver_and_vehicle_number_image: {
+          targetKey: "driver_and_vehicle_number_image",
+          folderName: "driver-and-vehicle-number",
+        },
+        driver_license_image: {
+          targetKey: "driver_license_image",
+          folderName: "driver-license",
+        },
+        empty_vehicle_image: {
+          targetKey: "empty_vehicle_image",
+          folderName: "empty-vehicle",
+        },
+      });
+
+      if (data.vehicle_no || Object.keys(vehicleUploads).length > 0) {
+        patchObj.vehicle_arrangement = {
+          ...(existing.vehicle_arrangement || {}),
+          ...(data.vehicle_no ? { vehicle_no: data.vehicle_no.trim() } : {}),
+          ...(data.actual_deliver_date ? { actual_deliver_date: data.actual_deliver_date } : {}),
+          ...vehicleUploads,
+          updated_by: userId,
+          updated_at: nowIso,
+        };
+      }
+
+      // 3. Dispatch & Invoice (including Bilty & Kanta Parchi) -> replacement_info.invoice_and_dispatch
+      const dispatchUploads = await uploadFields({
+        bilty_pdf: { targetKey: "bilty_url", folderName: "bilty-pdf" },
+        kanta_parchi: { targetKey: "kanta_parchi_url", folderName: "kanta-parchi-pdf" },
+        invoice_pdf: { targetKey: "invoice_url", folderName: "invoice-pdf" },
+      });
+      const hasInvoiceForm = Boolean(
+        data.invoice_no || data.actual_dispatch_date || dispatchUploads.invoice_url
+      );
+
+      if (
+        hasInvoiceForm &&
+        (!data.actual_dispatch_date || !data.invoice_no || !dispatchUploads.invoice_url)
+      ) {
+        throw Object.assign(
+          new Error("actual_dispatch_date, invoice_no, and invoice_pdf are required"),
+          { statusCode: 400 }
+        );
+      }
+
+      if (hasInvoiceForm || dispatchUploads.bilty_url || dispatchUploads.kanta_parchi_url) {
+        const completedAt = data.invoice_completed_at || nowIso;
+        const { invoice_url, ...docUrls } = dispatchUploads;
+
+        patchObj.invoice_and_dispatch = {
+          ...(existing.invoice_and_dispatch || {}),
+          ...docUrls,
+          ...(hasInvoiceForm
+            ? {
+                actual_dispatch_date: data.actual_dispatch_date,
+                invoice_completed_at: completedAt,
+                invoices: [
+                  {
+                    invoice: data.invoice_no.trim(),
+                    quantity_dispatched: parseFloat(data.quantity_dispatched) || 0,
+                    invoice_url,
+                    dispatch_timestamp: completedAt,
+                  },
+                ],
+              }
+            : {}),
+          updated_by: userId,
+          updated_at: nowIso,
+        };
+      }
+
+      // 4. Receiving Proof -> replacement_info.receiving_details
+      const receivingFiles = files?.receiving_proof_files || [];
+      const hasReceivingPayload =
+        receivingFiles.length > 0 ||
+        Boolean(files?.receiving_kanta_parchi?.[0]) ||
+        data.receiving_documents !== undefined ||
+        Boolean(data.receiving_kanta_parchi_url);
+
+      if (hasReceivingPayload) {
+        let existingReceivingUrls = [];
+        if (data.receiving_documents) {
+          try {
+            const parsed = JSON.parse(data.receiving_documents);
+            if (Array.isArray(parsed)) existingReceivingUrls = parsed;
+          } catch {
+            existingReceivingUrls = existing.receiving_details?.documents || [];
+          }
+        }
+
+        const [uploadedProofUrls, kantaUpload] = await Promise.all([
+          Promise.all(
+            receivingFiles.map((file) => uploadFileToS3(file, s3Folder("receiving-proof")))
+          ),
+          uploadFields({
+            receiving_kanta_parchi: {
+              targetKey: "receiving_kanta_parchi_url",
+              folderName: "receiving-kanta-parchi",
+            },
+          }),
+        ]);
+
+        patchObj.receiving_details = {
+          ...(existing.receiving_details || {}),
+          documents: [...existingReceivingUrls, ...uploadedProofUrls],
+          receiving_kanta_parchi_url:
+            kantaUpload.receiving_kanta_parchi_url ||
+            data.receiving_kanta_parchi_url ||
+            existing.receiving_details?.receiving_kanta_parchi_url ||
+            null,
+          completion_timestamp: data.receiving_completed_at || nowIso,
+          updated_by: userId,
+          updated_at: nowIso,
+        };
+      }
+
+      // 5. Delivery & Weight & Quality -> replacement_info.delivery_and_weight
+      if (data.delivery_status || data.weight_difference_in_kg !== undefined) {
+        const parsedWeight = parseFloat(data.weight_difference_in_kg);
+        if (isNaN(parsedWeight)) {
+          throw Object.assign(new Error("Valid weight_difference_in_kg is required"), {
+            statusCode: 400,
+          });
+        }
+        const prevDelivery = existing.delivery_and_weight || {};
+        patchObj.delivery_and_weight = {
+          ...prevDelivery,
+          delivery_status: data.delivery_status || prevDelivery.delivery_status || "Not Delivered",
+          weight_difference_in_kg: parsedWeight,
+          settlement: data.settlement || prevDelivery.settlement || "Settled",
+          actual_delivery_timestamp:
+            prevDelivery.actual_delivery_timestamp || data.actual_delivery_timestamp || nowIso,
+          actual_delivery_date:
+            prevDelivery.actual_delivery_date || data.actual_delivery_timestamp || nowIso,
+          quality_confirmation_status: data.quality_confirmation_status || null,
+          quality_confirmation_timestamp: data.quality_confirmation_timestamp || null,
+          updated_by: userId,
+          updated_at: nowIso,
+        };
+      }
+
+      // 6. Payment Information -> replacement_info.payment_status
+      if (data.payment_status !== undefined) {
+        const isPaid = data.payment_status === "true" || data.payment_status === true;
+        patchObj.payment_status = {
+          ...(existing.payment_status || {}),
+          payment_status: isPaid,
+          payment_status_marked_at: isPaid ? data.payment_status_marked_at || nowIso : null,
+          payment_done_at: data.payment_done_at || null,
+          under_one_lakh: data.under_one_lakh === "true" || data.under_one_lakh === true,
+          is_interest_note_issue:
+            data.is_interest_note_issue === "true" || data.is_interest_note_issue === true,
+          updated_by: userId,
+          updated_at: nowIso,
+        };
+      }
+
+      if (Object.keys(patchObj).length === 0) {
+        throw Object.assign(new Error("No replacement data provided"), { statusCode: 400 });
+      }
+
+      const result = await pool.query(
+        `UPDATE complaint_info
+       SET replacement_info = COALESCE(replacement_info, '{}'::jsonb) || $1::jsonb,
+           updated_at = NOW()
+       WHERE complaint_id = $2 AND sale_order_id = $3
+       RETURNING *;`,
+        [JSON.stringify(patchObj), complaintId, saleOrderId]
+      );
+
+      return result.rows[0];
+    } catch (error) {
+      console.error("Error in addVehicleAndInvoiceDataToComplaint:", error);
       throw error;
     }
   }

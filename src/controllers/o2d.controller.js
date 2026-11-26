@@ -596,6 +596,30 @@ class O2dController {
     }
   };
 
+  addVehicleAndInvoiceDataToComplaint = async (req, res, next) => {
+    try {
+      const userId = req.user?.id || null;
+
+      const { id, complaintId } = req.params;
+
+      const complaint = await o2dService.addVehicleAndInvoiceDataToComplaint(
+        id,
+        complaintId,
+        req.body,
+        req.files || {},
+        userId
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Added complaint replacement data successfully",
+        data: complaint,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   deleteComplaintForSaleOrder = async (req, res, next) => {
     try {
       const { id, complaintId } = req.params;
