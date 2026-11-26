@@ -125,19 +125,41 @@ class PurchaseService {
     }
   };
 
-  getPOCreationRequests = async () => {
-    try {
-      const query = `SELECT *
-      FROM public.purchases p left join vendors_data v on p.vendor_id = v.id
-      WHERE accounts_info ? 'sent_for_po_at'
-        AND accounts_info->>'sent_for_po_at' IS NOT NULL;`;
-      const { rows } = await pool.query(query);
-      return rows;
-    } catch (err) {
-      console.error("Error in fetching PO creation requests:", err.message);
-      throw err;
-    }
-  };
+  // getPOCreationRequests = async () => {
+  //   try {
+  //     const query = `SELECT *
+  //     FROM public.purchases p left join vendors_data v on p.vendor_id = v.id
+  //     WHERE accounts_info ? 'sent_for_po_at'
+  //       AND accounts_info->>'sent_for_po_at' IS NOT NULL;`;
+  //     const { rows } = await pool.query(query);
+  //     return rows;
+  //   } catch (err) {
+  //     console.error("Error in fetching PO creation requests:", err.message);
+  //     throw err;
+  //   }
+  // };
+
+getPOCreationRequests = async () => {
+  try {
+    const query = `
+      SELECT
+        p.*,
+        v.vendor_name,
+        p.accounts_info->>'sent_for_po_at' AS po_requested_at
+      FROM public.purchases p
+      LEFT JOIN vendors_data v ON p.vendor_id = v.id
+      WHERE p.accounts_info ? 'sent_for_po_at'
+        AND p.accounts_info->>'sent_for_po_at' IS NOT NULL
+      ORDER BY p.created_at DESC;
+    `;
+
+    const { rows } = await pool.query(query);
+    return rows;
+  } catch (err) {
+    console.error("Error in fetching PO creation requests:", err.message);
+    throw err;
+  }
+};
 
   completePOCreationFromTally = async (data) => {
     const client = await pool.connect();

@@ -7250,6 +7250,33 @@ class O2dService {
 
       const { rows } = await pool.query(query, values);
 
+const notificationFields = [
+  "actual_delivery_timestamp",
+  "delivery_status",
+  "weight_difference_in_kg",
+  "settlement",
+  "quality_confirmation_status",
+  "quality_confirmation_timestamp",
+];
+
+const hasRelevantChanges = notificationFields.some(
+  (field) => deliveryPayload[field] !== undefined
+);
+
+if (rows.length > 0 && hasRelevantChanges) {
+  const savedSettlement = rows[0].delivery_and_weight?.settlement;
+
+  const settlementLabel =
+    savedSettlement === "order cancel"
+      ? "Order Cancel"
+      : savedSettlement || "Not set";
+
+  await sendNotificationToAccountsTeam(
+    id,
+    `Delivery, weight or settlement updated for Order ID: ${id}. Selected Settlement: ${settlementLabel}.`,
+    "delivery_weight_quality_updated_notification_to_accounts"
+  );
+}
       return rows.length ? rows[0] : null;
     } catch (error) {
       console.error("error in updating delivery and weight information: ", error);
