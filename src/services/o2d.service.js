@@ -577,19 +577,18 @@ class O2dService {
       temp_remaining_credit_limit,
     } = customerData;
     let tempRemainingCreditLimit = null;
+    if (Object.hasOwn(customerData, "temp_remaining_credit_limit")) {
+      if (temp_remaining_credit_limit == null) {
+        throw new BadRequestError("Temporary remaining credit limit is required.");
+      }
 
-if (Object.hasOwn(customerData, "temp_remaining_credit_limit")) {
-  if (temp_remaining_credit_limit == null) {
-    throw new BadRequestError("Temporary remaining credit limit is required.");
-  }
-
-  const value = Number(temp_remaining_credit_limit);
-
-  if (!Number.isFinite(value) || value < 0) {
-    throw new BadRequestError(
-      "Temporary remaining credit limit must be a non-negative number."
-    );
-  }
+      const value = Number(temp_remaining_credit_limit);
+      if (!Number.isFinite(value)) {
+        throw new BadRequestError(
+          "Temporary remaining credit limit must be a valid number."
+        );
+      }
+      tempRemainingCreditLimit = value;
     }
 
     // Updates based solely on primary key 'id'
@@ -860,7 +859,11 @@ if (Object.hasOwn(customerData, "temp_remaining_credit_limit")) {
       }
 
       const clientCreditLimit = await pool.query(
-        `select credit_limit from customers where company_name = $1 or $1::text = any(child_companies)`,
+        `select
+          credit_limit,
+          COALESCE(temp_remaining_credit_limit, 0) AS temp_remaining_credit_limit
+        from customers
+        where company_name = $1 or $1::text = any(child_companies)`,
         [client_name]
       );
 
@@ -869,6 +872,9 @@ if (Object.hasOwn(customerData, "temp_remaining_credit_limit")) {
       }
 
       const response = {};
+      response.temp_remaining_credit_limit = Number(
+        clientCreditLimit.rows[0].temp_remaining_credit_limit
+      );
 
       if (clientCreditLimit.rows[0].credit_limit === 0) {
         response.credit_limit = 0;
