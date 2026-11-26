@@ -173,7 +173,7 @@ class PurchaseController {
         search,
       });
 
-      console.log({
+      return res.status(HTTP_STATUS.OK).json({
         status: "success",
         data: rows,
         pagination: {
@@ -184,6 +184,61 @@ class PurchaseController {
           hasNextPage: page * pageSize < totalItems,
           hasPreviousPage: page > 1,
         },
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getDEOQualityConfirmationData = async (req, res, next) => {
+    try {
+      const page = Math.max(1, parseInt(req.body.page || req.query.page, 10) || 1);
+
+      const pageSize = Math.max(
+        1,
+        Math.min(100, parseInt(req.body.pageSize || req.query.pageSize, 10) || 10)
+      );
+
+      const search = (req.body.search || req.query.search || "").trim();
+
+      const { rows, totalItems } = await purchaseService.getDEOQualityConfirmationData({
+        page,
+        pageSize,
+        search,
+      });
+
+      return res.status(HTTP_STATUS.OK).json({
+        status: "success",
+        data: rows,
+        pagination: {
+          page,
+          pageSize,
+          totalItems,
+          totalPages: Math.ceil(totalItems / pageSize),
+          hasNextPage: page * pageSize < totalItems,
+          hasPreviousPage: page > 1,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getDEOPendingQualityConfirmationData = async (req, res, next) => {
+    try {
+      const page = Math.max(1, parseInt(req.body.page || req.query.page, 10) || 1);
+
+      const pageSize = Math.max(
+        1,
+        Math.min(100, parseInt(req.body.pageSize || req.query.pageSize, 10) || 10)
+      );
+
+      const search = (req.body.search || req.query.search || "").trim();
+
+      const { rows, totalItems } = await purchaseService.getDEOPendingQualityConfirmationData({
+        page,
+        pageSize,
+        search,
       });
 
       return res.status(HTTP_STATUS.OK).json({
@@ -265,6 +320,89 @@ class PurchaseController {
         status: "success",
         message: "Material receiving entry added successfully",
         data: updatedPurchase,
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+  /**
+   * Submit Quality Inspection for a material receiving entry
+   */
+  submitQualityInspection = async (req, res, next) => {
+    try {
+      const receivingId = parseInt(req.body.receiving_id || req.body.id, 10);
+      const purchaseId = parseInt(req.body.purchase_id, 10);
+
+      if (!receivingId) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          status: "error",
+          message: "receiving_id is required",
+        });
+      }
+
+      const {
+        status,
+        purity_received,
+        order_cancel,
+        replacement_raised,
+        replacement_type,
+        replaced_quantity_mt,
+      } = req.body;
+
+      if (!status || !["Okay", "Not Okay"].includes(status)) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          status: "error",
+          message: "Valid status ('Okay' or 'Not Okay') is required",
+        });
+      }
+
+      let quality_report_pdf = null;
+      if (req.file) {
+        const companyName = process.env.COMPANY_NAME || "Vinayak Enterprises";
+        quality_report_pdf = await uploadFileToS3(
+          req.file,
+          `${companyName}/purchase-orders/${purchaseId || receivingId}/quality-reports`
+        );
+      }
+
+      let not_okay_details = null;
+      if (status === "Not Okay") {
+        const isReplacementRaised =
+          replacement_raised === true ||
+          replacement_raised === "true" ||
+          replacement_raised === 1 ||
+          replacement_raised === "1";
+
+        not_okay_details = {
+          order_cancel:
+            order_cancel === true ||
+            order_cancel === "true" ||
+            order_cancel === 1 ||
+            order_cancel === "1",
+          replacement_raised: isReplacementRaised,
+          replacement_raised_at: isReplacementRaised ? new Date().toISOString() : null,
+          replacement_type: isReplacementRaised ? (replacement_type || "Partial") : null,
+          replaced_quantity_mt:
+            isReplacementRaised && replaced_quantity_mt !== undefined && replaced_quantity_mt !== ""
+              ? parseFloat(replaced_quantity_mt)
+              : null,
+        };
+      }
+
+      const updatedRecord = await purchaseService.submitQualityInspection({
+        receivingId,
+        purchaseId,
+        status,
+        purity_received,
+        quality_report_pdf,
+        not_okay_details,
+        user: req.user,
+      });
+
+      return res.status(HTTP_STATUS.OK).json({
+        status: "success",
+        message: "Quality inspection submitted successfully",
+        data: updatedRecord,
       });
     } catch (err) {
       next(err);

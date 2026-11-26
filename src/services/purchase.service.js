@@ -125,19 +125,41 @@ class PurchaseService {
     }
   };
 
-  getPOCreationRequests = async () => {
-    try {
-      const query = `SELECT *
-      FROM public.purchases p left join vendors_data v on p.vendor_id = v.id
-      WHERE accounts_info ? 'sent_for_po_at'
-        AND accounts_info->>'sent_for_po_at' IS NOT NULL;`;
-      const { rows } = await pool.query(query);
-      return rows;
-    } catch (err) {
-      console.error("Error in fetching PO creation requests:", err.message);
-      throw err;
-    }
-  };
+  // getPOCreationRequests = async () => {
+  //   try {
+  //     const query = `SELECT *
+  //     FROM public.purchases p left join vendors_data v on p.vendor_id = v.id
+  //     WHERE accounts_info ? 'sent_for_po_at'
+  //       AND accounts_info->>'sent_for_po_at' IS NOT NULL;`;
+  //     const { rows } = await pool.query(query);
+  //     return rows;
+  //   } catch (err) {
+  //     console.error("Error in fetching PO creation requests:", err.message);
+  //     throw err;
+  //   }
+  // };
+
+getPOCreationRequests = async () => {
+  try {
+    const query = `
+      SELECT
+        p.*,
+        v.vendor_name,
+        p.accounts_info->>'sent_for_po_at' AS po_requested_at
+      FROM public.purchases p
+      LEFT JOIN vendors_data v ON p.vendor_id = v.id
+      WHERE p.accounts_info ? 'sent_for_po_at'
+        AND p.accounts_info->>'sent_for_po_at' IS NOT NULL
+      ORDER BY p.created_at DESC;
+    `;
+
+    const { rows } = await pool.query(query);
+    return rows;
+  } catch (err) {
+    console.error("Error in fetching PO creation requests:", err.message);
+    throw err;
+  }
+};
 
   completePOCreationFromTally = async (data) => {
     const client = await pool.connect();
@@ -561,11 +583,333 @@ class PurchaseService {
     }
   };
 
+  getDEOQualityConfirmationData = async ({ page = 1, pageSize = 10, search = "" }) => {
+    try {
+      const offset = (page - 1) * pageSize;
+
+      const values = [];
+      let searchCondition = "";
+
+      if (search && search.trim() !== "") {
+        values.push(`%${search.trim()}%`);
+
+        searchCondition = `
+        AND (
+          m.id::TEXT ILIKE $1
+          OR p.id::TEXT ILIKE $1
+          OR p.material ILIKE $1
+          OR p.purity ILIKE $1
+          OR p.purchase_type ILIKE $1
+          OR p.purchased_by ILIKE $1
+          OR p.remarks ILIKE $1
+          OR vd.vendor_name ILIKE $1
+          OR m.status ILIKE $1
+          OR m.quality_information->>'status' ILIKE $1
+        )
+      `;
+      }
+
+      const baseCondition = `
+      WHERE (
+        m.quality_information IS NOT NULL 
+        AND m.quality_information ? 'status' 
+        AND m.quality_information->>'status' IS NOT NULL 
+        AND m.quality_information->>'status' <> ''
+      )
+    `;
+
+      // Fetch total count
+      const countQuery = `
+      SELECT COUNT(*)::INTEGER AS total_items
+      FROM public.material_received_information m
+      JOIN public.purchases p ON m.purchase_id = p.id
+      LEFT JOIN public.vendors_data vd ON p.vendor_id = vd.id
+      ${baseCondition}
+      ${searchCondition}
+    `;
+
+      const countResult = await pool.query(countQuery, values);
+      const totalItems = countResult.rows[0].total_items;
+
+      // Fetch paginated records
+      const dataValues = [...values];
+
+      dataValues.push(pageSize);
+      const limitParam = dataValues.length;
+
+      dataValues.push(offset);
+      const offsetParam = dataValues.length;
+
+      const dataQuery = `
+      SELECT
+        m.id,
+        m.id AS receiving_id,
+        m.purchase_id,
+        m.rate AS receiving_rate,
+        m.rate,
+        m.status AS receiving_status,
+        m.status,
+        m.material_received_qty_mt,
+        m.material_received_qty_mt AS material_recieved_qty,
+        m.balance,
+        m.material_received_planned_date,
+        m.material_received_actual_date,
+        m.geo_tagged_images,
+        m.geo_tagged_images->>'kanta_parchi_url' AS kanta_parchi_url,
+        m.geo_tagged_images->>'loaded_vehicle_image_url' AS loaded_vehicle_image_url,
+        m.geo_tagged_images->>'driver_photo_url' AS driver_photo_url,
+        m.quality_information,
+        m.created_at,
+        -- Purchase Order Information
+        p.id AS po_id,
+        p.purchase_type,
+        p.material,
+        p.purity,
+        p.quantity AS po_quantity,
+        p.rate AS po_rate,
+        p.purchased_by,
+        p.remarks AS po_remarks,
+        p.order_status,
+        p.material_receive_date,
+        p.payment_terms,
+        p.accounts_info,
+        -- Vendor Information
+        COALESCE(vd.vendor_name, 'N/A') AS vendor_name,
+        vd.id AS vendor_id
+      FROM public.material_received_information m
+      JOIN public.purchases p ON m.purchase_id = p.id
+      LEFT JOIN public.vendors_data vd ON p.vendor_id = vd.id
+      ${baseCondition}
+      ${searchCondition}
+      ORDER BY
+        (m.quality_information->>'status_updated_at') DESC NULLS LAST,
+        m.created_at DESC,
+        m.id DESC
+      LIMIT $${limitParam}
+      OFFSET $${offsetParam}
+    `;
+
+      const dataResult = await pool.query(dataQuery, dataValues);
+
+      return {
+        rows: dataResult.rows,
+        totalItems,
+      };
+    } catch (err) {
+      console.error("Error in fetching DEO quality confirmation data:", err.message);
+      throw err;
+    }
+  };
+
   /**
-   * Add a material receive record to public.material_received_information
-   * and update public.purchases.order_status
+   * Fetch DEO Pending Quality Confirmation Data
+   * From public.material_received_information where quality_information -> status IS NULL or not set
    */
-  addMaterialReceiveEntry = async ({
+  getDEOPendingQualityConfirmationData = async ({ page = 1, pageSize = 10, search = "" }) => {
+    try {
+      const offset = (page - 1) * pageSize;
+
+      let searchCondition = "";
+      const values = [];
+
+      if (search && search.trim() !== "") {
+        values.push(`%${search.trim()}%`);
+        searchCondition = `
+        AND (
+          m.id::TEXT ILIKE $1
+          OR p.id::TEXT ILIKE $1
+          OR p.material ILIKE $1
+          OR p.purity ILIKE $1
+          OR p.purchase_type ILIKE $1
+          OR p.purchased_by ILIKE $1
+          OR p.remarks ILIKE $1
+          OR vd.vendor_name ILIKE $1
+          OR m.status ILIKE $1
+        )
+      `;
+      }
+
+      const baseCondition = `
+      WHERE (
+        m.quality_information IS NULL 
+        OR NOT (m.quality_information ? 'status') 
+        OR m.quality_information->>'status' IS NULL 
+        OR m.quality_information->>'status' = ''
+      )
+    `;
+
+      // Fetch total count
+      const countQuery = `
+      SELECT COUNT(*)::INTEGER AS total_items
+      FROM public.material_received_information m
+      JOIN public.purchases p ON m.purchase_id = p.id
+      LEFT JOIN public.vendors_data vd ON p.vendor_id = vd.id
+      ${baseCondition}
+      ${searchCondition}
+    `;
+
+      const countResult = await pool.query(countQuery, values);
+      const totalItems = countResult.rows[0].total_items;
+
+      // Fetch paginated records
+      const dataValues = [...values];
+
+      dataValues.push(pageSize);
+      const limitParam = dataValues.length;
+
+      dataValues.push(offset);
+      const offsetParam = dataValues.length;
+
+      const dataQuery = `
+      SELECT
+        m.id,
+        m.id AS receiving_id,
+        m.purchase_id,
+        m.rate AS receiving_rate,
+        m.rate,
+        m.status AS receiving_status,
+        m.status,
+        m.material_received_qty_mt,
+        m.material_received_qty_mt AS material_recieved_qty,
+        m.balance,
+        m.material_received_planned_date,
+        m.material_received_actual_date,
+        m.geo_tagged_images,
+        m.geo_tagged_images->>'kanta_parchi_url' AS kanta_parchi_url,
+        m.geo_tagged_images->>'loaded_vehicle_image_url' AS loaded_vehicle_image_url,
+        m.geo_tagged_images->>'driver_photo_url' AS driver_photo_url,
+        m.quality_information,
+        m.created_at,
+        -- Purchase Order Information
+        p.id AS po_id,
+        p.purchase_type,
+        p.material,
+        p.purity,
+        p.quantity AS po_quantity,
+        p.rate AS po_rate,
+        p.purchased_by,
+        p.remarks AS po_remarks,
+        p.order_status,
+        p.material_receive_date,
+        p.payment_terms,
+        p.accounts_info,
+        -- Vendor Information
+        COALESCE(vd.vendor_name, 'N/A') AS vendor_name,
+        vd.id AS vendor_id
+      FROM public.material_received_information m
+      JOIN public.purchases p ON m.purchase_id = p.id
+      LEFT JOIN public.vendors_data vd ON p.vendor_id = vd.id
+      ${baseCondition}
+      ${searchCondition}
+      ORDER BY
+        m.created_at DESC,
+        m.id DESC
+      LIMIT $${limitParam}
+      OFFSET $${offsetParam}
+    `;
+
+      const dataResult = await pool.query(dataQuery, dataValues);
+
+      return {
+        rows: dataResult.rows,
+        totalItems,
+      };
+    } catch (err) {
+      console.error("Error in fetching DEO pending quality confirmation data:", err.message);
+      throw err;
+    }
+  };
+
+  /**
+   * Submit Quality Inspection for a material received record
+   */
+  submitQualityInspection = async ({
+    receivingId,
+    purchaseId,
+    status,
+    purity_received,
+    quality_report_pdf,
+    not_okay_details,
+    user,
+  }) => {
+    try {
+      let resolvedReceivingId = receivingId;
+      const checkQuery = `
+        SELECT m.*, p.order_status, p.id as po_id
+        FROM public.material_received_information m
+        JOIN public.purchases p ON m.purchase_id = p.id
+        WHERE m.id = $1
+      `;
+      let checkRes = await pool.query(checkQuery, [resolvedReceivingId]);
+
+      // Fallback 1: If not found by m.id, check if purchaseId has an uninspected receiving entry
+      if (checkRes.rows.length === 0 && purchaseId) {
+        const fallbackQuery = `
+          SELECT m.*, p.order_status, p.id as po_id
+          FROM public.material_received_information m
+          JOIN public.purchases p ON m.purchase_id = p.id
+          WHERE m.purchase_id = $1 AND (m.quality_information IS NULL OR m.quality_information->>'status' IS NULL OR m.quality_information->>'status' = '')
+          ORDER BY m.id ASC
+          LIMIT 1
+        `;
+        const fallbackRes = await pool.query(fallbackQuery, [purchaseId]);
+        if (fallbackRes.rows.length > 0) {
+          checkRes = fallbackRes;
+          resolvedReceivingId = checkRes.rows[0].id;
+        }
+      }
+
+      // Fallback 2: Check if receivingId itself was actually passed as a purchase_id
+      if (checkRes.rows.length === 0) {
+        const fallbackByPurchaseQuery = `
+          SELECT m.*, p.order_status, p.id as po_id
+          FROM public.material_received_information m
+          JOIN public.purchases p ON m.purchase_id = p.id
+          WHERE m.purchase_id = $1 AND (m.quality_information IS NULL OR m.quality_information->>'status' IS NULL OR m.quality_information->>'status' = '')
+          ORDER BY m.id ASC
+          LIMIT 1
+        `;
+        const fallbackByPurchaseRes = await pool.query(fallbackByPurchaseQuery, [resolvedReceivingId]);
+        if (fallbackByPurchaseRes.rows.length > 0) {
+          checkRes = fallbackByPurchaseRes;
+          resolvedReceivingId = checkRes.rows[0].id;
+        }
+      }
+
+      if (checkRes.rows.length === 0) {
+        throw new Error(`Material received entry with ID ${receivingId} not found`);
+      }
+
+      const qualityInformation = {
+        status: status === "Not Okay" ? "Not Okay" : "Okay",
+        status_updated_at: new Date().toISOString(),
+        quality_report_pdf: quality_report_pdf || null,
+        purity_received:
+          purity_received !== undefined && purity_received !== null && purity_received !== ""
+            ? parseFloat(purity_received)
+            : null,
+        not_okay_details: status === "Not Okay" && not_okay_details ? not_okay_details : null,
+      };
+
+      const updateQuery = `
+        UPDATE public.material_received_information
+        SET quality_information = $1
+        WHERE id = $2
+        RETURNING *;
+      `;
+      const updateRes = await pool.query(updateQuery, [
+        JSON.stringify(qualityInformation),
+        resolvedReceivingId,
+      ]);
+
+      return updateRes.rows[0];
+    } catch (err) {
+      console.error("Error in submitQualityInspection:", err.message);
+      throw err;
+    }
+  };
+
+    addMaterialReceiveEntry = async ({
     purchaseId,
     kanta_parchi_url,
     loaded_vehicle_image_url,

@@ -22,7 +22,9 @@ import {
   sendNotificationToCrm,
   sendNotificationToSalesTeamLead,
   WORK_CONFIG,
+  getDayWorkingWindow,
 } from "../utils/helpers/helper-functions.js";
+import uploadFileToS3 from "../utils/helpers/uploadSOToS3.js";
 
 const emailDateTimeFormatter = new Intl.DateTimeFormat("en-IN", {
   timeZone: "Asia/Kolkata",
@@ -42,6 +44,35 @@ const emailDateFormatter = new Intl.DateTimeFormat("en-IN", {
 });
 
 const formatEmailDate = (value) => (value ? emailDateFormatter.format(new Date(value)) : "-");
+
+const countComplaintWorkingDays = (startDate, endDate) => {
+  if (!startDate || !endDate || endDate < startDate) return null;
+
+  const [startYear, startMonth, startDay] = startDate.split("-").map(Number);
+  const [endYear, endMonth, endDay] = endDate.split("-").map(Number);
+
+  let cursor = Date.UTC(startYear, startMonth - 1, startDay + 1);
+  const end = Date.UTC(endYear, endMonth - 1, endDay);
+  let workingDays = 0;
+
+  while (cursor <= end) {
+    const current = new Date(cursor);
+    const dayToCheck = createISTDate(
+      current.getUTCFullYear(),
+      current.getUTCMonth(),
+      current.getUTCDate(),
+      12
+    );
+
+    if (getDayWorkingWindow(dayToCheck, WORK_CONFIG)) {
+      workingDays += 1;
+    }
+
+    cursor += 24 * 60 * 60 * 1000;
+  }
+
+  return workingDays;
+};
 
 class O2dService {
   async createSaleOrder(data, userId) {
@@ -386,51 +417,128 @@ class O2dService {
     return rows[0];
   }
 
+  // async retrieveAllCustomersList(userId) {
+  //   try {
+  //     let whereCondition = "WHERE c.sales_person = $1 or c.crm = $1";
+  //     let inputArray = [userId];
+  //     if (userId === 15 || userId === 9 || userId === 16 || userId === 17) {
+  //       whereCondition = "";
+  //       inputArray = [];
+  //     }
+
+  //     const query = `SELECT
+  //           c.*,
+  //           COALESCE(pending.total_pending_quantity, 0) AS total_pending_quantity,
+  //           CASE
+  //               WHEN c.credit_limit = 0 THEN 0
+  //               ELSE c.credit_limit - COALESCE(pending.total_pending_quantity, 0)
+  //           END AS remaining_credit_limit
+  //       FROM
+  //           public.customers c
+  //       LEFT JOIN LATERAL (
+  //           SELECT sum(quantity_mt) AS total_pending_quantity
+  //           FROM sales_orders so
+  //           WHERE
+  //               (so.client_name = c.company_name OR so.client_name = ANY(c.child_companies))
+  //               AND (so.payment_status IS NULL OR (so.payment_status->>'payment_status')::boolean = false)
+  //       ) pending ON true
+  //       ${whereCondition}
+  //       ORDER BY
+  //           c.id DESC;`;
+
+  //     const { rows } = await pool.query(query, inputArray);
+
+  //     // const crmIds = rows.map((item) => {
+  //     //   const {crm} = item;
+  //     //   if(crm === null){
+  //     //     continue;
+  //     //   }
+  //     //   return crm;
+  //     // });
+
+  //     const userIdsSet = new Set();
+  //     for (const item of rows) {
+  //       const { crm, sales_person } = item;
+  //       if (crm === null || sales_person === null) {
+  //         continue;
+  //       }
+  //       userIdsSet.add(crm);
+  //       userIdsSet.add(sales_person);
+  //     }
+
+  //     const userIds = [...userIdsSet];
+
+  //     const userDetails = await pool.query(
+  //       `select id, username from users where id in (${userIds.join(",")})`
+  //     );
+
+  //     return [rows, userDetails?.rows];
+  //   } catch (error) {
+  //     console.log("error in retrieving customer list: ", error);
+  //     throw error;
+  //   }
+  // }
+
   async retrieveAllCustomersList(userId) {
     try {
       let whereCondition = "WHERE c.sales_person = $1 or c.crm = $1";
       let inputArray = [userId];
+
       if (userId === 15 || userId === 9 || userId === 16 || userId === 17) {
         whereCondition = "";
         inputArray = [];
       }
 
-      const query = `SELECT 
-            c.*,
-            COALESCE(pending.total_pending_quantity, 0) AS total_pending_quantity,
-            CASE 
-                WHEN c.credit_limit = 0 THEN 0
-                ELSE c.credit_limit - COALESCE(pending.total_pending_quantity, 0)
-            END AS remaining_credit_limit
-        FROM 
-            public.customers c
-        LEFT JOIN LATERAL (
-            SELECT sum(quantity_mt) AS total_pending_quantity
-            FROM sales_orders so
-            WHERE 
-                (so.client_name = c.company_name OR so.client_name = ANY(c.child_companies))
-                AND (so.payment_status IS NULL OR (so.payment_status->>'payment_status')::boolean = false)
-        ) pending ON true
-        ${whereCondition}
-        ORDER BY 
-            c.id DESC;`;
+      const query = `
+      SELECT
+        c.*,
+        COALESCE(pending.total_pending_quantity, 0) AS total_pending_quantity,
+        CASE
+          WHEN c.credit_limit = 0 THEN 0
+          ELSE c.credit_limit - COALESCE(pending.total_pending_quantity, 0)
+        END AS remaining_credit_limit,
+        COALESCE(pending.pending_orders, '[]'::json) AS pending_orders
+      FROM public.customers c
+      LEFT JOIN LATERAL (
+        SELECT
+          SUM(so.quantity_mt) AS total_pending_quantity,
+          COALESCE(
+            json_agg(
+              json_build_object(
+                'client_name', so.client_name,
+                'quantity_mt', so.quantity_mt,
+                'expected_delivery_date', so.delivery_date::date
+              )
+              ORDER BY so.delivery_date NULLS LAST, so.id
+            ) FILTER (WHERE so.id IS NOT NULL),
+            '[]'::json
+          ) AS pending_orders
+        FROM sales_orders so
+        WHERE
+          (
+            so.client_name = c.company_name
+            OR so.client_name = ANY(c.child_companies)
+          )
+          AND (
+            so.payment_status IS NULL
+            OR (so.payment_status->>'payment_status')::boolean = false
+          )
+      ) pending ON true
+      ${whereCondition}
+      ORDER BY c.id DESC;
+    `;
 
       const { rows } = await pool.query(query, inputArray);
 
-      // const crmIds = rows.map((item) => {
-      //   const {crm} = item;
-      //   if(crm === null){
-      //     continue;
-      //   }
-      //   return crm;
-      // });
-
       const userIdsSet = new Set();
+
       for (const item of rows) {
         const { crm, sales_person } = item;
+
         if (crm === null || sales_person === null) {
           continue;
         }
+
         userIdsSet.add(crm);
         userIdsSet.add(sales_person);
       }
@@ -438,7 +546,7 @@ class O2dService {
       const userIds = [...userIdsSet];
 
       const userDetails = await pool.query(
-        `select id, username from users where id in (${userIds.join(",")})`
+        `SELECT id, username FROM users WHERE id IN (${userIds.join(",")})`
       );
 
       return [rows, userDetails?.rows];
@@ -2538,6 +2646,7 @@ if (Object.hasOwn(customerData, "temp_remaining_credit_limit")) {
         contact_person_number,
         priority_level,
         remark,
+        quality_confirmation_status,
       } = data;
 
       if (!description?.trim()) {
@@ -2562,14 +2671,13 @@ if (Object.hasOwn(customerData, "temp_remaining_credit_limit")) {
       if (!orderExists.rows.length) {
         throw new Error("Sales order not found");
       }
+      const existingQualityStatus = orderExists.rows[0].quality_confirmation_status;
 
-      const qualityConfirmationStatus = orderExists.rows[0].quality_confirmation_status;
+      const qualityConfirmationStatus = existingQualityStatus?.trim()
+        ? existingQualityStatus
+        : quality_confirmation_status;
 
-      // Complaint TAT calculation
       const isWithinTat = qualityConfirmationStatus?.trim().toLowerCase() === "no within tat";
-
-      // console.log("Quality Confirmation Status:", qualityConfirmationStatus);
-      console.log("Complaint Within TAT:", isWithinTat);
 
       const { rows } = await pool.query(
         `
@@ -2601,8 +2709,6 @@ if (Object.hasOwn(customerData, "temp_remaining_credit_limit")) {
           userId,
         ]
       );
-
-      console.log("Inserted Complaint TAT:", rows[0].is_within_tat);
 
       return rows[0];
     } catch (error) {
@@ -2713,6 +2819,246 @@ if (Object.hasOwn(customerData, "temp_remaining_credit_limit")) {
       return rows[0];
     } catch (error) {
       console.error("Error in updateComplaintDetailsForSaleOrder:", error);
+      throw error;
+    }
+  }
+
+  async addVehicleAndInvoiceDataToComplaint(
+    saleOrderId,
+    complaintId,
+    data = {},
+    files = {},
+    userId = null
+  ) {
+    try {
+      const existingComp = await pool.query(
+        `SELECT replacement_info FROM complaint_info WHERE complaint_id = $1 AND sale_order_id = $2`,
+        [complaintId, saleOrderId]
+      );
+      if (existingComp.rows.length === 0) {
+        throw Object.assign(new Error("Complaint not found for this sales order"), {
+          statusCode: 404,
+        });
+      }
+
+      const existing = existingComp.rows[0].replacement_info || {};
+      const nowIso = new Date().toISOString();
+      const s3Folder = (folderName) =>
+        `${config.branding.companyName}/complaints/${complaintId}/${folderName}`;
+
+      // Upload single-file fields in parallel
+      const uploadFields = async (fieldMap) => {
+        const entries = await Promise.all(
+          Object.entries(fieldMap).map(async ([fileKey, { targetKey, folderName }]) => {
+            const file = files?.[fileKey]?.[0];
+            return file ? [targetKey, await uploadFileToS3(file, s3Folder(folderName))] : null;
+          })
+        );
+        return Object.fromEntries(entries.filter(Boolean));
+      };
+
+      const patchObj = {};
+
+      // 1. Dispatch Information -> replacement_info.dispatch_info
+      if (data.dispatch_type) {
+        if (!data.delay_reason) {
+          throw Object.assign(new Error("delay_reason is required"), { statusCode: 400 });
+        }
+        const prevDispatch = existing.dispatch_info;
+        const history = prevDispatch?.dispatch_type
+          ? [...(prevDispatch.history || []), { ...prevDispatch, history: undefined }]
+          : prevDispatch?.history || [];
+
+        patchObj.dispatch_info = {
+          dispatch_type: data.dispatch_type,
+          dispatch_status: data.dispatch_status === "true" || data.dispatch_status === true,
+          delay_reason: data.delay_reason,
+          dispatch_at: data.dispatch_at || nowIso,
+          history,
+          updated_by: userId,
+          updated_at: nowIso,
+        };
+      }
+
+      // 2. Arrange Vehicles -> replacement_info.vehicle_arrangement
+      const vehicleUploads = await uploadFields({
+        all_bundles_image: {
+          targetKey: "all_bundles_image",
+          folderName: "all-bundles-image",
+        },
+        driver_and_vehicle_number_image: {
+          targetKey: "driver_and_vehicle_number_image",
+          folderName: "driver-and-vehicle-number",
+        },
+        driver_license_image: {
+          targetKey: "driver_license_image",
+          folderName: "driver-license",
+        },
+        empty_vehicle_image: {
+          targetKey: "empty_vehicle_image",
+          folderName: "empty-vehicle",
+        },
+      });
+
+      if (data.vehicle_no || Object.keys(vehicleUploads).length > 0) {
+        patchObj.vehicle_arrangement = {
+          ...(existing.vehicle_arrangement || {}),
+          ...(data.vehicle_no ? { vehicle_no: data.vehicle_no.trim() } : {}),
+          ...(data.actual_deliver_date ? { actual_deliver_date: data.actual_deliver_date } : {}),
+          ...vehicleUploads,
+          updated_by: userId,
+          updated_at: nowIso,
+        };
+      }
+
+      // 3. Dispatch & Invoice (including Bilty & Kanta Parchi) -> replacement_info.invoice_and_dispatch
+      const dispatchUploads = await uploadFields({
+        bilty_pdf: { targetKey: "bilty_url", folderName: "bilty-pdf" },
+        kanta_parchi: { targetKey: "kanta_parchi_url", folderName: "kanta-parchi-pdf" },
+        invoice_pdf: { targetKey: "invoice_url", folderName: "invoice-pdf" },
+      });
+      const hasInvoiceForm = Boolean(
+        data.invoice_no || data.actual_dispatch_date || dispatchUploads.invoice_url
+      );
+
+      if (
+        hasInvoiceForm &&
+        (!data.actual_dispatch_date || !data.invoice_no || !dispatchUploads.invoice_url)
+      ) {
+        throw Object.assign(
+          new Error("actual_dispatch_date, invoice_no, and invoice_pdf are required"),
+          { statusCode: 400 }
+        );
+      }
+
+      if (hasInvoiceForm || dispatchUploads.bilty_url || dispatchUploads.kanta_parchi_url) {
+        const completedAt = data.invoice_completed_at || nowIso;
+        const { invoice_url, ...docUrls } = dispatchUploads;
+
+        patchObj.invoice_and_dispatch = {
+          ...(existing.invoice_and_dispatch || {}),
+          ...docUrls,
+          ...(hasInvoiceForm
+            ? {
+                actual_dispatch_date: data.actual_dispatch_date,
+                invoice_completed_at: completedAt,
+                invoices: [
+                  {
+                    invoice: data.invoice_no.trim(),
+                    quantity_dispatched: parseFloat(data.quantity_dispatched) || 0,
+                    invoice_url,
+                    dispatch_timestamp: completedAt,
+                  },
+                ],
+              }
+            : {}),
+          updated_by: userId,
+          updated_at: nowIso,
+        };
+      }
+
+      // 4. Receiving Proof -> replacement_info.receiving_details
+      const receivingFiles = files?.receiving_proof_files || [];
+      const hasReceivingPayload =
+        receivingFiles.length > 0 ||
+        Boolean(files?.receiving_kanta_parchi?.[0]) ||
+        data.receiving_documents !== undefined ||
+        Boolean(data.receiving_kanta_parchi_url);
+
+      if (hasReceivingPayload) {
+        let existingReceivingUrls = [];
+        if (data.receiving_documents) {
+          try {
+            const parsed = JSON.parse(data.receiving_documents);
+            if (Array.isArray(parsed)) existingReceivingUrls = parsed;
+          } catch {
+            existingReceivingUrls = existing.receiving_details?.documents || [];
+          }
+        }
+
+        const [uploadedProofUrls, kantaUpload] = await Promise.all([
+          Promise.all(
+            receivingFiles.map((file) => uploadFileToS3(file, s3Folder("receiving-proof")))
+          ),
+          uploadFields({
+            receiving_kanta_parchi: {
+              targetKey: "receiving_kanta_parchi_url",
+              folderName: "receiving-kanta-parchi",
+            },
+          }),
+        ]);
+
+        patchObj.receiving_details = {
+          ...(existing.receiving_details || {}),
+          documents: [...existingReceivingUrls, ...uploadedProofUrls],
+          receiving_kanta_parchi_url:
+            kantaUpload.receiving_kanta_parchi_url ||
+            data.receiving_kanta_parchi_url ||
+            existing.receiving_details?.receiving_kanta_parchi_url ||
+            null,
+          completion_timestamp: data.receiving_completed_at || nowIso,
+          updated_by: userId,
+          updated_at: nowIso,
+        };
+      }
+
+      // 5. Delivery & Weight & Quality -> replacement_info.delivery_and_weight
+      if (data.delivery_status || data.weight_difference_in_kg !== undefined) {
+        const parsedWeight = parseFloat(data.weight_difference_in_kg);
+        if (isNaN(parsedWeight)) {
+          throw Object.assign(new Error("Valid weight_difference_in_kg is required"), {
+            statusCode: 400,
+          });
+        }
+        const prevDelivery = existing.delivery_and_weight || {};
+        patchObj.delivery_and_weight = {
+          ...prevDelivery,
+          delivery_status: data.delivery_status || prevDelivery.delivery_status || "Not Delivered",
+          weight_difference_in_kg: parsedWeight,
+          settlement: data.settlement || prevDelivery.settlement || "Settled",
+          actual_delivery_timestamp:
+            prevDelivery.actual_delivery_timestamp || data.actual_delivery_timestamp || nowIso,
+          actual_delivery_date:
+            prevDelivery.actual_delivery_date || data.actual_delivery_timestamp || nowIso,
+          quality_confirmation_status: data.quality_confirmation_status || null,
+          quality_confirmation_timestamp: data.quality_confirmation_timestamp || null,
+          updated_by: userId,
+          updated_at: nowIso,
+        };
+      }
+
+      // 6. Payment Information -> replacement_info.payment_status
+      if (data.payment_status !== undefined) {
+        const isPaid = data.payment_status === "true" || data.payment_status === true;
+        patchObj.payment_status = {
+          ...(existing.payment_status || {}),
+          payment_status: isPaid,
+          payment_status_marked_at: isPaid ? data.payment_status_marked_at || nowIso : null,
+          payment_done_at: data.payment_done_at || null,
+          under_one_lakh: data.under_one_lakh === "true" || data.under_one_lakh === true,
+          is_interest_note_issue:
+            data.is_interest_note_issue === "true" || data.is_interest_note_issue === true,
+          updated_by: userId,
+          updated_at: nowIso,
+        };
+      }
+
+      if (Object.keys(patchObj).length === 0) {
+        throw Object.assign(new Error("No replacement data provided"), { statusCode: 400 });
+      }
+
+      const result = await pool.query(
+        `UPDATE complaint_info
+       SET replacement_info = COALESCE(replacement_info, '{}'::jsonb) || $1::jsonb,
+           updated_at = NOW()
+       WHERE complaint_id = $2 AND sale_order_id = $3
+       RETURNING *;`,
+        [JSON.stringify(patchObj), complaintId, saleOrderId]
+      );
+
+      return result.rows[0];
+    } catch (error) {
+      console.error("Error in addVehicleAndInvoiceDataToComplaint:", error);
       throw error;
     }
   }
@@ -3134,91 +3480,91 @@ if (Object.hasOwn(customerData, "temp_remaining_credit_limit")) {
     }
   }
 
-async getCrmKpiTotalDispatchActualByDate() {
-  // const query = `
-  //   WITH raw_dispatch_events AS (
-  //     SELECT
-  //       so.id AS order_id,
-  //       so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
-  //       so.client_name,
-  //       so.created_at AS order_created_at,
-  //       NULLIF(BTRIM(event.item->>'dispatch_at'), '')::timestamp AS dispatch_at,
-  //       event.item->>'delay_reason' AS delay_reason
-  //     FROM public.sales_orders so
-  //     CROSS JOIN LATERAL jsonb_array_elements(
-  //       CASE
-  //         WHEN jsonb_typeof(so.dispatch_info->'history') = 'array'
-  //           THEN so.dispatch_info->'history'
-  //         ELSE '[]'::jsonb
-  //       END
-  //     ) AS event(item)
-  //     WHERE event.item->>'dispatch_type' = 'Dispatched'
-  //       AND event.item->>'dispatch_status' = 'true'
-  //       AND NULLIF(BTRIM(event.item->>'dispatch_at'), '') IS NOT NULL
+  async getCrmKpiTotalDispatchActualByDate() {
+    // const query = `
+    //   WITH raw_dispatch_events AS (
+    //     SELECT
+    //       so.id AS order_id,
+    //       so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
+    //       so.client_name,
+    //       so.created_at AS order_created_at,
+    //       NULLIF(BTRIM(event.item->>'dispatch_at'), '')::timestamp AS dispatch_at,
+    //       event.item->>'delay_reason' AS delay_reason
+    //     FROM public.sales_orders so
+    //     CROSS JOIN LATERAL jsonb_array_elements(
+    //       CASE
+    //         WHEN jsonb_typeof(so.dispatch_info->'history') = 'array'
+    //           THEN so.dispatch_info->'history'
+    //         ELSE '[]'::jsonb
+    //       END
+    //     ) AS event(item)
+    //     WHERE event.item->>'dispatch_type' = 'Dispatched'
+    //       AND event.item->>'dispatch_status' = 'true'
+    //       AND NULLIF(BTRIM(event.item->>'dispatch_at'), '') IS NOT NULL
 
-  //     UNION ALL
+    //     UNION ALL
 
-  //     SELECT
-  //       so.id AS order_id,
-  //       so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
-  //       so.client_name,
-  //       so.created_at AS order_created_at,
-  //       NULLIF(BTRIM(so.dispatch_info->>'dispatch_at'), '')::timestamp AS dispatch_at,
-  //       so.dispatch_info->>'delay_reason' AS delay_reason
-  //     FROM public.sales_orders so
-  //     WHERE so.dispatch_info->>'dispatch_type' = 'Dispatched'
-  //       AND so.dispatch_info->>'dispatch_status' = 'true'
-  //       AND NULLIF(BTRIM(so.dispatch_info->>'dispatch_at'), '') IS NOT NULL
-  //       AND CASE
-  //         WHEN jsonb_typeof(so.dispatch_info->'history') = 'array'
-  //           THEN jsonb_array_length(so.dispatch_info->'history') = 0
-  //         ELSE TRUE
-  //       END
-  //   ),
-  //   valid_events AS (
-  //     SELECT
-  //       order_id,
-  //       order_no,
-  //       client_name,
-  //       order_created_at,
-  //       dispatch_at::date AS dispatch_date,
-  //       dispatch_at,
-  //       delay_reason
-  //     FROM raw_dispatch_events
-  //     WHERE dispatch_at IS NOT NULL
-  //   ),
-  //   one_order_per_week AS (
-  //     SELECT DISTINCT ON (
-  //       order_id,
-  //       DATE_TRUNC('week', dispatch_date)::date
-  //     )
-  //       order_id,
-  //       order_no,
-  //       client_name,
-  //       order_created_at,
-  //       dispatch_date,
-  //       dispatch_at,
-  //       delay_reason
-  //     FROM valid_events
-  //     ORDER BY
-  //       order_id,
-  //       DATE_TRUNC('week', dispatch_date)::date,
-  //       dispatch_date,
-  //       dispatch_at
-  //   )
-  //   SELECT
-  //     dispatch_date::text AS date,
-  //     order_id,
-  //     order_no,
-  //     client_name,
-  //     order_created_at,
-  //     dispatch_at,
-  //     delay_reason
-  //   FROM one_order_per_week
-  //   ORDER BY dispatch_date, order_id;
-  // `;
+    //     SELECT
+    //       so.id AS order_id,
+    //       so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
+    //       so.client_name,
+    //       so.created_at AS order_created_at,
+    //       NULLIF(BTRIM(so.dispatch_info->>'dispatch_at'), '')::timestamp AS dispatch_at,
+    //       so.dispatch_info->>'delay_reason' AS delay_reason
+    //     FROM public.sales_orders so
+    //     WHERE so.dispatch_info->>'dispatch_type' = 'Dispatched'
+    //       AND so.dispatch_info->>'dispatch_status' = 'true'
+    //       AND NULLIF(BTRIM(so.dispatch_info->>'dispatch_at'), '') IS NOT NULL
+    //       AND CASE
+    //         WHEN jsonb_typeof(so.dispatch_info->'history') = 'array'
+    //           THEN jsonb_array_length(so.dispatch_info->'history') = 0
+    //         ELSE TRUE
+    //       END
+    //   ),
+    //   valid_events AS (
+    //     SELECT
+    //       order_id,
+    //       order_no,
+    //       client_name,
+    //       order_created_at,
+    //       dispatch_at::date AS dispatch_date,
+    //       dispatch_at,
+    //       delay_reason
+    //     FROM raw_dispatch_events
+    //     WHERE dispatch_at IS NOT NULL
+    //   ),
+    //   one_order_per_week AS (
+    //     SELECT DISTINCT ON (
+    //       order_id,
+    //       DATE_TRUNC('week', dispatch_date)::date
+    //     )
+    //       order_id,
+    //       order_no,
+    //       client_name,
+    //       order_created_at,
+    //       dispatch_date,
+    //       dispatch_at,
+    //       delay_reason
+    //     FROM valid_events
+    //     ORDER BY
+    //       order_id,
+    //       DATE_TRUNC('week', dispatch_date)::date,
+    //       dispatch_date,
+    //       dispatch_at
+    //   )
+    //   SELECT
+    //     dispatch_date::text AS date,
+    //     order_id,
+    //     order_no,
+    //     client_name,
+    //     order_created_at,
+    //     dispatch_at,
+    //     delay_reason
+    //   FROM one_order_per_week
+    //   ORDER BY dispatch_date, order_id;
+    // `;
 
-  const query = `
+    const query = `
   SELECT
     so.id AS order_id,
     so.sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
@@ -3236,77 +3582,79 @@ async getCrmKpiTotalDispatchActualByDate() {
   ORDER BY so.id;
 `;
 
-  try {
-    const { rows } = await pool.query(query);
-    const groups = new Map();
+    try {
+      const { rows } = await pool.query(query);
+      const groups = new Map();
 
-    // for (const row of rows) {
-    //   if (!groups.has(row.date)) {
-    //     groups.set(row.date, {
-    //       date: row.date,
-    //       actualOrders: 0,
-    //       onTimeOrders: 0,
-    //       clientDelayOrders: 0,
-    //       factoryDelayOrders: 0,
-    //       details: [],
-    //     });
-    //   }
+      // for (const row of rows) {
+      //   if (!groups.has(row.date)) {
+      //     groups.set(row.date, {
+      //       date: row.date,
+      //       actualOrders: 0,
+      //       onTimeOrders: 0,
+      //       clientDelayOrders: 0,
+      //       factoryDelayOrders: 0,
+      //       details: [],
+      //     });
+      //   }
 
-    //   const group = groups.get(row.date);
-    //   const reason = String(row.delay_reason || "").trim().toLowerCase();
+      //   const group = groups.get(row.date);
+      //   const reason = String(row.delay_reason || "").trim().toLowerCase();
 
-    //   group.actualOrders += 1;
-    //   if (reason === "on time") group.onTimeOrders += 1;
-    //   if (reason === "client") group.clientDelayOrders += 1;
-    //   if (reason === "factory") group.factoryDelayOrders += 1;
+      //   group.actualOrders += 1;
+      //   if (reason === "on time") group.onTimeOrders += 1;
+      //   if (reason === "client") group.clientDelayOrders += 1;
+      //   if (reason === "factory") group.factoryDelayOrders += 1;
 
-    //   group.details.push({
-    //     order_id: row.order_id,
-    //     order_no: row.order_no,
-    //     client_name: row.client_name,
-    //     created_at: row.order_created_at,
-    //     dispatch_at: row.dispatch_at,
-    //     delay_reason: row.delay_reason,
-    //   });
-    // }
+      //   group.details.push({
+      //     order_id: row.order_id,
+      //     order_no: row.order_no,
+      //     client_name: row.client_name,
+      //     created_at: row.order_created_at,
+      //     dispatch_at: row.dispatch_at,
+      //     delay_reason: row.delay_reason,
+      //   });
+      // }
 
-    for (const row of rows) {
-  const date = getISTComponents(row.actual_deliver_date)?.dateString;
+      for (const row of rows) {
+        const date = getISTComponents(row.actual_deliver_date)?.dateString;
 
-  if (!date) {
-    throw new Error(
-      `Invalid Dispatch / Transport actual date for sales order ${row.order_id}.`
-    );
-  }
+        if (!date) {
+          throw new Error(
+            `Invalid Dispatch / Transport actual date for sales order ${row.order_id}.`
+          );
+        }
 
-  if (!groups.has(date)) {
-    groups.set(date, {
-      date,
-      actualOrders: 0,
-      onTimeOrders: 0,
-      clientDelayOrders: 0,
-      factoryDelayOrders: 0,
-      details: [],
-    });
-  }
+        if (!groups.has(date)) {
+          groups.set(date, {
+            date,
+            actualOrders: 0,
+            onTimeOrders: 0,
+            clientDelayOrders: 0,
+            factoryDelayOrders: 0,
+            details: [],
+          });
+        }
 
-  const group = groups.get(date);
-  const reason = String(row.delay_reason || "").trim().toLowerCase();
+        const group = groups.get(date);
+        const reason = String(row.delay_reason || "")
+          .trim()
+          .toLowerCase();
 
-  group.actualOrders += 1;
-  if (reason === "on time") group.onTimeOrders += 1;
-  if (reason === "client") group.clientDelayOrders += 1;
-  if (reason === "factory") group.factoryDelayOrders += 1;
+        group.actualOrders += 1;
+        if (reason === "on time") group.onTimeOrders += 1;
+        if (reason === "client") group.clientDelayOrders += 1;
+        if (reason === "factory") group.factoryDelayOrders += 1;
 
-  group.details.push({
-    order_id: row.order_id,
-    order_no: row.order_no,
-    client_name: row.client_name,
-    created_at: row.order_created_at,
-    actual_deliver_date: row.actual_deliver_date,
-    delay_reason: row.delay_reason,
-  });
-}
+        group.details.push({
+          order_id: row.order_id,
+          order_no: row.order_no,
+          client_name: row.client_name,
+          created_at: row.order_created_at,
+          actual_deliver_date: row.actual_deliver_date,
+          delay_reason: row.delay_reason,
+        });
+      }
 
       return [...groups.values()];
     } catch (error) {
@@ -3379,86 +3727,8 @@ async getCrmKpiTotalDispatchActualByDate() {
     }
   }
 
-  // async getCrmKpiTotalPaymentCollectionActualByDate() {
-  //   const query = `
-  //   SELECT
-  //     id AS order_id,
-  //     sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
-  //     client_name,
-  //     created_at,
-  //     payment_status->>'payment_done_at' AS payment_done_at,
-  //     invoice_and_dispatch->>'actual_dispatch_date' AS actual_dispatch_date
-  //   FROM public.sales_orders
-  //   WHERE payment_status->>'payment_status' = 'true'
-  //     AND NULLIF(BTRIM(payment_status->>'payment_done_at'), '') IS NOT NULL
-  //      AND LOWER(BTRIM(COALESCE(rod_size, ''))) <> 'dross'
-  //   ORDER BY id;
-  // `;
-
-  //   try {
-  //     const { rows } = await pool.query(query);
-  //     const groups = new Map();
-
-  //     for (const row of rows) {
-  //       const paymentDate = getISTComponents(row.payment_done_at);
-
-  //       if (!paymentDate?.rawDate) {
-  //         throw new Error(`Invalid payment_done_at for sales order ${row.order_id}.`);
-  //       }
-
-  //       let plannedPaymentDate = null;
-  //       let onTime = false;
-
-  //       if (row.actual_dispatch_date) {
-  //         const plannedDeadline = addWorkingHours(row.actual_dispatch_date, 90);
-
-  //         if (!plannedDeadline) {
-  //           throw new Error(
-  //             `Could not calculate the planned payment deadline for sales order ${row.order_id}.`
-  //           );
-  //         }
-
-  //         plannedPaymentDate = getISTComponents(plannedDeadline)?.dateString || null;
-  //         onTime = paymentDate.rawDate <= plannedDeadline;
-  //       }
-
-  //       const date = paymentDate.dateString;
-
-  //       if (!groups.has(date)) {
-  //         groups.set(date, {
-  //           date,
-  //           actualPayments: 0,
-  //           onTimePayments: 0,
-  //           details: [],
-  //         });
-  //       }
-
-  //       const group = groups.get(date);
-  //       group.actualPayments += 1;
-  //       if (onTime) group.onTimePayments += 1;
-
-  //       group.details.push({
-  //         order_id: row.order_id,
-  //         order_no: row.order_no,
-  //         client_name: row.client_name,
-  //         created_at: row.created_at,
-  //         payment_done_at: row.payment_done_at,
-  //         actual_dispatch_date: row.actual_dispatch_date,
-  //         planned_payment_date: plannedPaymentDate,
-  //         on_time: onTime,
-  //       });
-  //     }
-
-  //     return [...groups.values()].sort((a, b) => a.date.localeCompare(b.date));
-  //   } catch (error) {
-  //     console.error("Error loading Payment Collection actual by date:", error);
-  //     throw error;
-  //   }
-  // }
-
-
-async getCrmKpiTotalPaymentCollectionActualByDate() {
-  const query = `
+  async getCrmKpiTotalPaymentCollectionActualByDate() {
+    const query = `
     SELECT
       id AS order_id,
       sale_order_generation->'sale_order_details'->>'orderno' AS order_no,
@@ -3475,84 +3745,71 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
     ORDER BY id;
   `;
 
-  try {
-    const { rows } = await pool.query(query);
-    const groups = new Map();
+    try {
+      const { rows } = await pool.query(query);
+      const groups = new Map();
 
-    for (const row of rows) {
-      const paymentDate = getISTComponents(row.payment_done_at);
+      for (const row of rows) {
+        const paymentDate = getISTComponents(row.payment_done_at);
 
-      if (!paymentDate?.rawDate) {
-        throw new Error(
-          `Invalid payment_done_at for sales order ${row.order_id}.`
-        );
-      }
-
-      let plannedPaymentDate = null;
-      let onTime = false;
-
-      if (row.actual_dispatch_date) {
-        const plannedDeadline = addWorkingHours(
-          row.actual_dispatch_date,
-          90
-        );
-
-        if (!plannedDeadline) {
-          throw new Error(
-            `Could not calculate the planned payment deadline for sales order ${row.order_id}.`
-          );
+        if (!paymentDate?.rawDate) {
+          throw new Error(`Invalid payment_done_at for sales order ${row.order_id}.`);
         }
 
-        plannedPaymentDate =
-          getISTComponents(plannedDeadline)?.dateString || null;
+        let plannedPaymentDate = null;
+        let onTime = false;
 
-        onTime = paymentDate.rawDate <= plannedDeadline;
-      }
+        if (row.actual_dispatch_date) {
+          const plannedDeadline = addWorkingHours(row.actual_dispatch_date, 90);
 
-      const date = paymentDate.dateString;
+          if (!plannedDeadline) {
+            throw new Error(
+              `Could not calculate the planned payment deadline for sales order ${row.order_id}.`
+            );
+          }
 
-      if (!groups.has(date)) {
-        groups.set(date, {
-          date,
-          actualPayments: 0,
-          onTimePayments: 0,
-          details: [],
+          plannedPaymentDate = getISTComponents(plannedDeadline)?.dateString || null;
+
+          onTime = paymentDate.rawDate <= plannedDeadline;
+        }
+
+        const date = paymentDate.dateString;
+
+        if (!groups.has(date)) {
+          groups.set(date, {
+            date,
+            actualPayments: 0,
+            onTimePayments: 0,
+            details: [],
+          });
+        }
+
+        const group = groups.get(date);
+
+        group.actualPayments += 1;
+
+        if (onTime) {
+          group.onTimePayments += 1;
+        }
+
+        group.details.push({
+          order_id: row.order_id,
+          order_no: row.order_no,
+          client_name: row.client_name,
+          created_at: row.created_at,
+          payment_done_at: row.payment_done_at,
+          actual_dispatch_date: row.actual_dispatch_date,
+          planned_payment_date: plannedPaymentDate,
+          on_time: onTime,
         });
       }
 
-      const group = groups.get(date);
-
-      group.actualPayments += 1;
-
-      if (onTime) {
-        group.onTimePayments += 1;
-      }
-
-      group.details.push({
-        order_id: row.order_id,
-        order_no: row.order_no,
-        client_name: row.client_name,
-        created_at: row.created_at,
-        payment_done_at: row.payment_done_at,
-        actual_dispatch_date: row.actual_dispatch_date,
-        planned_payment_date: plannedPaymentDate,
-        on_time: onTime,
-      });
+      return [...groups.values()].sort((a, b) => a.date.localeCompare(b.date));
+    } catch (error) {
+      console.error("Error loading Payment Collection actual by date:", error);
+      throw error;
     }
-
-    return [...groups.values()].sort((a, b) =>
-      a.date.localeCompare(b.date)
-    );
-
-  } catch (error) {
-    console.error(
-      "Error loading Payment Collection actual by date:",
-      error
-    );
-    throw error;
   }
-}
-
 
   async getCrmKpiComplaintCountsByDate() {
     const query = `
@@ -3606,7 +3863,11 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
       };
 
       for (const row of rows) {
-        const closingDays = row.closing_days === null ? null : Number(row.closing_days);
+        // const closingDays = row.closing_days === null ? null : Number(row.closing_days);
+        const closingDays =
+          row.status === "closed"
+            ? countComplaintWorkingDays(row.created_date, row.updated_date)
+            : null;
 
         if (closingDays !== null && !Number.isFinite(closingDays)) {
           throw new Error(`Invalid complaint closing duration for complaint ${row.complaint_id}.`);
@@ -3949,6 +4210,180 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
     } finally {
       client.release();
     }
+  }
+
+  async getCrmKpiWeekFreezes() {
+    const { rows } = await pool.query(`
+    SELECT
+      TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart",
+      snapshot
+    FROM public.crm_kpi_promises
+    WHERE snapshot IS NOT NULL
+    ORDER BY week_start;
+  `);
+
+    return rows;
+  }
+
+  async freezeCrmKpiWeeks(weeks, frozenBy) {
+    if (!Array.isArray(weeks) || weeks.length === 0) {
+      throw new BadRequestError("At least one completed week is required.");
+    }
+
+    if (frozenBy !== null && frozenBy !== undefined && !Number.isInteger(Number(frozenBy))) {
+      throw new BadRequestError("Invalid user ID.");
+    }
+
+    const client = await pool.connect();
+
+    try {
+      await client.query("BEGIN");
+
+      const { rows: currentWeekRows } = await client.query(`
+      SELECT TO_CHAR(
+        DATE_TRUNC('week', NOW() AT TIME ZONE 'Asia/Kolkata')::date,
+        'YYYY-MM-DD'
+      ) AS "currentWeekStart";
+    `);
+
+      const currentWeekStart = currentWeekRows[0].currentWeekStart;
+      const seen = new Set();
+
+      const records = weeks.map((entry) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+          throw new BadRequestError("Each week must be an object.");
+        }
+
+        const { weekStart, weekEnd, snapshot } = entry;
+
+        if (typeof weekStart !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+          throw new BadRequestError("weekStart must use YYYY-MM-DD.");
+        }
+
+        const start = new Date(`${weekStart}T00:00:00.000Z`);
+
+        if (
+          Number.isNaN(start.getTime()) ||
+          start.toISOString().slice(0, 10) !== weekStart ||
+          start.getUTCDay() !== 1
+        ) {
+          throw new BadRequestError("weekStart must be a valid Monday.");
+        }
+
+        const expectedEnd = new Date(start);
+        expectedEnd.setUTCDate(expectedEnd.getUTCDate() + 6);
+
+        if (typeof weekEnd !== "string" || expectedEnd.toISOString().slice(0, 10) !== weekEnd) {
+          throw new BadRequestError("weekEnd must be Sunday, six days after weekStart.");
+        }
+
+        if (weekStart >= currentWeekStart) {
+          throw new BadRequestError("Only completed weeks can be frozen.");
+        }
+
+        if (seen.has(weekStart)) {
+          throw new BadRequestError("Duplicate weekStart.");
+        }
+        seen.add(weekStart);
+
+        if (
+          !snapshot ||
+          typeof snapshot !== "object" ||
+          Array.isArray(snapshot) ||
+          snapshot.weekStart !== weekStart ||
+          snapshot.weekEnd !== weekEnd ||
+          !snapshot.week ||
+          !snapshot.metrics ||
+          !snapshot.promisedData
+        ) {
+          throw new BadRequestError("Invalid KPI snapshot.");
+        }
+
+        return { weekStart, snapshot };
+      });
+
+      for (const record of records) {
+        await client.query(
+          `
+    INSERT INTO public.crm_kpi_promises AS existing
+      (week_start, promised_data, snapshot, frozen_by, frozen_at)
+    VALUES ($1::date, '{}'::jsonb, $2::jsonb, $3, NOW())
+    ON CONFLICT (week_start)
+    DO UPDATE SET
+      snapshot = EXCLUDED.snapshot,
+      frozen_by = EXCLUDED.frozen_by,
+      frozen_at = EXCLUDED.frozen_at
+    WHERE existing.snapshot IS NULL;
+  `,
+          [
+            record.weekStart,
+            JSON.stringify(record.snapshot),
+            frozenBy == null ? null : Number(frozenBy),
+          ]
+        );
+      }
+
+      const weekStarts = records.map((record) => record.weekStart);
+
+      const { rows } = await client.query(
+        `
+        SELECT
+          TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart",
+          snapshot
+        FROM public.crm_kpi_promises
+        WHERE week_start = ANY($1::date[])
+        ORDER BY week_start;
+      `,
+        [weekStarts]
+      );
+
+      await client.query("COMMIT");
+      return rows;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async defreezeCrmKpiWeeks(weekStarts) {
+    if (!Array.isArray(weekStarts) || weekStarts.length === 0) {
+      throw new BadRequestError("At least one weekStart is required.");
+    }
+
+    for (const weekStart of weekStarts) {
+      if (typeof weekStart !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+        throw new BadRequestError("weekStart must use YYYY-MM-DD.");
+      }
+
+      const start = new Date(`${weekStart}T00:00:00.000Z`);
+
+      if (
+        Number.isNaN(start.getTime()) ||
+        start.toISOString().slice(0, 10) !== weekStart ||
+        start.getUTCDay() !== 1
+      ) {
+        throw new BadRequestError("Every weekStart must be a valid Monday.");
+      }
+    }
+
+    const { rows } = await pool.query(
+      `
+    UPDATE public.crm_kpi_promises
+    SET snapshot = NULL,
+        frozen_by = NULL,
+        frozen_at = NULL
+    WHERE week_start = ANY($1::date[])
+      AND snapshot IS NOT NULL
+      AND week_start <
+        DATE_TRUNC('week', NOW() AT TIME ZONE 'Asia/Kolkata')::date
+    RETURNING TO_CHAR(week_start, 'YYYY-MM-DD') AS "weekStart";
+  `,
+      [weekStarts]
+    );
+
+    return rows;
   }
 
   // async getCrmKpiComplaintCountsByDate() {
@@ -4631,13 +5066,23 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
 
   async getOverdueReportData(id, userId) {
     try {
-      const query = `SELECT osr.*, ci.complaint_status, ci.updated_at
-      FROM overdue_summary_report osr 
-      LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
-      WHERE osr.is_deleted = false 
-        AND osr.is_collected = false 
-        AND (ci.sale_order_id IS NULL OR ci.complaint_status = 'Closed')
-      ORDER BY osr.id DESC`;
+      const query = `SELECT
+          osr.*,
+          ci.complaint_status,
+          ci.updated_at,
+          so.receiving_details ->> 'completion_timestamp' AS receiving_completion_timestamp
+      FROM overdue_summary_report osr
+      LEFT JOIN complaint_info ci
+          ON osr.sale_order_id = ci.sale_order_id
+      LEFT JOIN sales_orders so
+          ON osr.sale_order_id = so.id
+      WHERE osr.is_deleted = false
+          AND osr.is_collected = false
+          AND (
+              ci.sale_order_id IS NULL
+              OR ci.complaint_status = 'Closed'
+          )
+      ORDER BY osr.id DESC;`;
 
       const { rows } = await pool.query(query, []);
 
@@ -4648,155 +5093,102 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
     }
   }
 
-  async getPaymentCollectedData(
-    id,
-    userId,
-    page = 1,
-    requestedPageSize = 25,
-    search = "",
-    status = "All",
-    invoiceDateFrom = "",
-    invoiceDateTo = "",
-    dueDateFrom = "",
-    dueDateTo = "",
-    overdueDaysMin = "",
-    overdueDaysMax = ""
-  ) {
+  async getPaymentCollectedData(userId, filters = {}) {
     try {
-      const requestedPage = Number(page);
-      const safePage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
-      const parsedPageSize = Number(requestedPageSize);
-      const pageSize =
-        Number.isInteger(parsedPageSize) && parsedPageSize >= 10 && parsedPageSize <= 100
-          ? parsedPageSize
-          : 25;
-      const offset = (safePage - 1) * pageSize;
-      const filterValues = [];
-      const filters = [
-        "osr.is_deleted = false",
-        "osr.is_collected = true",
-        "(ci.sale_order_id IS NULL OR ci.complaint_status = 'Closed')",
-      ];
-      const searchTerm = String(search).trim();
+      const {
+        page = 1,
+        pageSize = 25,
+        search = "",
+        invoiceDateFrom = "",
+        invoiceDateTo = "",
+      } = filters;
+
+      const safePage = Math.max(1, Number(page) || 1);
+      const safePageSize = Math.max(10, Math.min(100, Number(pageSize) || 25));
+      const offset = (safePage - 1) * safePageSize;
+
+      const conditions = ["osr.is_deleted = false", "osr.is_collected = true"];
+      const queryParams = [];
+
+      // Search filter
+      const searchTerm = String(search || "").trim();
       if (searchTerm) {
-        filterValues.push(`%${searchTerm}%`);
-        const searchParameter = `$${filterValues.length}`;
-        filters.push(`(
-          osr.client_name ILIKE ${searchParameter}
-          OR osr.invoice_no ILIKE ${searchParameter}
-          OR osr.sale_order_id::text ILIKE ${searchParameter}
-          OR osr.id::text ILIKE ${searchParameter}
-        )`);
-      }
-      if (String(invoiceDateFrom).trim()) {
-        filterValues.push(String(invoiceDateFrom).trim());
-        filters.push(`osr.invoice_date::date >= $${filterValues.length}::date`);
-      }
-      if (String(invoiceDateTo).trim()) {
-        filterValues.push(String(invoiceDateTo).trim());
-        filters.push(`osr.invoice_date::date <= $${filterValues.length}::date`);
-      }
-      const overdueStatusExpression = `CASE
-        WHEN osr.invoice_date IS NOT NULL
-          AND CURRENT_TIMESTAMP > GREATEST(
-            osr.invoice_date::timestamp + INTERVAL '10 days',
-            CASE
-              WHEN ci.complaint_status = 'Closed' AND ci.updated_at IS NOT NULL
-                THEN ci.updated_at + INTERVAL '10 days'
-              ELSE osr.invoice_date::timestamp + INTERVAL '10 days'
-            END
-          )
-          AND COALESCE(NULLIF(osr.balance::text, '')::numeric, 0) > 0
-          THEN 'Overdue'
-        ELSE 'Within TAT'
-      END`;
-      if (status && status !== "All") {
-        filterValues.push(status);
-        filters.push(`${overdueStatusExpression} = $${filterValues.length}`);
-      }
-      const dueDateExpression = `GREATEST(
-        osr.invoice_date::timestamp + INTERVAL '10 days',
-        CASE
-          WHEN ci.complaint_status = 'Closed' AND ci.updated_at IS NOT NULL
-            THEN ci.updated_at + INTERVAL '10 days'
-          ELSE osr.invoice_date::timestamp + INTERVAL '10 days'
-        END
-      )`;
-      if (String(dueDateFrom).trim()) {
-        filterValues.push(String(dueDateFrom).trim());
-        filters.push(`${dueDateExpression}::date >= $${filterValues.length}::date`);
-      }
-      if (String(dueDateTo).trim()) {
-        filterValues.push(String(dueDateTo).trim());
-        filters.push(`${dueDateExpression}::date <= $${filterValues.length}::date`);
-      }
-      const overdueDaysExpression = `GREATEST(
-        0,
-        FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - ${dueDateExpression})) / 86400)::integer
-      )`;
-      if (String(overdueDaysMin).trim()) {
-        filterValues.push(String(overdueDaysMin).trim());
-        filters.push(`${overdueDaysExpression} >= $${filterValues.length}::integer`);
-      }
-      if (String(overdueDaysMax).trim()) {
-        filterValues.push(String(overdueDaysMax).trim());
-        filters.push(`${overdueDaysExpression} <= $${filterValues.length}::integer`);
+        queryParams.push(`%${searchTerm}%`);
+        const pIdx = queryParams.length;
+        conditions.push(
+          `(osr.client_name ILIKE $${pIdx} OR osr.invoice_no ILIKE $${pIdx} OR osr.sale_order_id::text ILIKE $${pIdx})`
+        );
       }
 
-      const whereClause = filters.join(" AND ");
+      // Date range filter: check receiving_completion_timestamp (or invoice_date)
+      if (invoiceDateFrom) {
+        queryParams.push(invoiceDateFrom);
+        const pIdx = queryParams.length;
+        conditions.push(
+          `(COALESCE(so.receiving_details ->> 'completion_timestamp', osr.invoice_date::text)::date >= $${pIdx}::date)`
+        );
+      }
+      if (invoiceDateTo) {
+        queryParams.push(invoiceDateTo);
+        const pIdx = queryParams.length;
+        conditions.push(
+          `(COALESCE(so.receiving_details ->> 'completion_timestamp', osr.invoice_date::text)::date <= $${pIdx}::date)`
+        );
+      }
+
+      const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+      // 1. Data Query (includes LEFT JOIN sales_orders & receiving_completion_timestamp)
+      const dataQuery = `
+      SELECT
+        osr.*,
+        ci.complaint_status,
+        ci.updated_at AS complaint_updated_at,
+        so.receiving_details ->> 'completion_timestamp' AS receiving_completion_timestamp
+      FROM public.overdue_summary_report osr
+      LEFT JOIN public.complaint_info ci
+        ON osr.sale_order_id = ci.sale_order_id
+      LEFT JOIN public.sales_orders so
+        ON osr.sale_order_id = so.id
+      ${whereClause}
+      ORDER BY osr.id DESC
+      LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}
+    `;
+
+      // 2. Count & Summary Query
       const countQuery = `
-        SELECT COUNT(*) AS total_items
-        FROM overdue_summary_report osr
-        LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
-        WHERE ${whereClause}
-      `;
-      const limitParameter = filterValues.length + 1;
-      const ordersQuery = `
-        SELECT osr.*, ci.complaint_status, ci.updated_at
-        FROM overdue_summary_report osr
-        LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
-        WHERE ${whereClause}
-        ORDER BY osr.id DESC
-        LIMIT $${limitParameter} OFFSET $${limitParameter + 1}
-      `;
-      const summaryQuery = `
-        SELECT
-          COUNT(*) AS total_items,
-          COALESCE(SUM(
-            CASE
-              WHEN jsonb_array_length(COALESCE(osr.transactions, '[]'::jsonb)) > 0 THEN (
-                SELECT COALESCE(SUM(NULLIF(tx->>'amount', '')::numeric), 0)
-                FROM jsonb_array_elements(COALESCE(osr.transactions, '[]'::jsonb)) tx
-              )
-              ELSE COALESCE(NULLIF(osr.balance::text, '')::numeric, 0)
-            END
-          ), 0) AS total_collected_amount
-        FROM overdue_summary_report osr
-        LEFT JOIN complaint_info ci ON osr.sale_order_id = ci.sale_order_id
-        WHERE ${whereClause}
-      `;
+      SELECT
+        COUNT(*) AS total_items,
+        COALESCE(SUM(ABS(osr.balance)), 0) AS total_collected_amount
+      FROM public.overdue_summary_report osr
+      LEFT JOIN public.sales_orders so
+        ON osr.sale_order_id = so.id
+      ${whereClause}
+    `;
 
-      const [countResult, ordersResult, summaryResult] = await Promise.all([
-        pool.query(countQuery, filterValues),
-        pool.query(ordersQuery, [...filterValues, pageSize, offset]),
-        pool.query(summaryQuery, filterValues),
+      const [dataResult, countResult] = await Promise.all([
+        pool.query(dataQuery, [...queryParams, safePageSize, offset]),
+        pool.query(countQuery, queryParams),
       ]);
+
       const totalItems = Number(countResult.rows[0]?.total_items || 0);
+      const totalCollectedAmount = Number(countResult.rows[0]?.total_collected_amount || 0);
+
       return {
-        orders: ordersResult.rows,
+        orders: dataResult.rows,
         pagination: {
           page: safePage,
-          pageSize,
+          pageSize: safePageSize,
           totalItems,
-          totalPages: Math.ceil(totalItems / pageSize),
+          totalPages: Math.ceil(totalItems / safePageSize) || 1,
         },
         summary: {
-          totalItems: Number(summaryResult.rows[0]?.total_items || 0),
-          totalCollectedAmount: Number(summaryResult.rows[0]?.total_collected_amount || 0),
+          totalItems,
+          totalCollectedAmount,
         },
       };
     } catch (error) {
-      console.error("Error in getting overdue report data: ", error);
+      console.error("Error in getPaymentCollectedData: ", error);
       throw error;
     }
   }
@@ -5825,9 +6217,7 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
 
           const noteType = String(document_type || "").trim();
           const isCreditNote =
-            /credit/i.test(noteType) ||
-            /^cn\b/i.test(noteType) ||
-            /^c\/n\b/i.test(noteType);
+            /credit/i.test(noteType) || /^cn\b/i.test(noteType) || /^c\/n\b/i.test(noteType);
           const signedAmount = isCreditNote ? -noteAmount : noteAmount;
           const adjustment = {
             bill_type: isCreditNote ? "Credit Note" : "Debit Note",
@@ -6248,6 +6638,9 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
       }
       if (body.driver_license_image) {
         additionalVehicleData.driver_license_image = body.driver_license_image;
+      }
+      if (body.empty_vehicle_image) {
+        additionalVehicleData.empty_vehicle_image = body.empty_vehicle_image;
       }
       // if (body.loaded_proof_urls) additionalVehicleData.loaded_proof_urls = body.loaded_proof_urls;
 
@@ -6875,6 +7268,33 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
 
       const { rows } = await pool.query(query, values);
 
+const notificationFields = [
+  "actual_delivery_timestamp",
+  "delivery_status",
+  "weight_difference_in_kg",
+  "settlement",
+  "quality_confirmation_status",
+  "quality_confirmation_timestamp",
+];
+
+const hasRelevantChanges = notificationFields.some(
+  (field) => deliveryPayload[field] !== undefined
+);
+
+if (rows.length > 0 && hasRelevantChanges) {
+  const savedSettlement = rows[0].delivery_and_weight?.settlement;
+
+  const settlementLabel =
+    savedSettlement === "order cancel"
+      ? "Order Cancel"
+      : savedSettlement || "Not set";
+
+  await sendNotificationToAccountsTeam(
+    id,
+    `Delivery, weight or settlement updated for Order ID: ${id}. Selected Settlement: ${settlementLabel}.`,
+    "delivery_weight_quality_updated_notification_to_accounts"
+  );
+}
       return rows.length ? rows[0] : null;
     } catch (error) {
       console.error("error in updating delivery and weight information: ", error);
@@ -7218,41 +7638,38 @@ async getCrmKpiTotalPaymentCollectionActualByDate() {
       // 1. Fetch report recipients
       let recipients = [];
 
-      if (recipientEmailOverride?.trim()) {
-        recipients = [
+      if (process.env.COMPANY_NAME === "Vinayak Enterprises") {
+        // recipients.push(
+        //   {
+        //     email_id: "soumya@vinayak-enterprises.com",
+        //     username: "Soumya",
+        //     role: "Management",
+        //   },
+        //   {
+        //     email_id: "ea@vinayak-enterprises.com",
+        //     username: "Versha",
+        //     role: "Executive Assistant",
+        //   }
+        // );
+      } else if (process.env.COMPANY_NAME === "Mittalu Pvt Ltd") {
+        // Send mail from Mittalu DB
+        recipients.push(
           {
-            email_id: recipientEmailOverride.trim(),
-            username: "Admin",
-            role: "Developer",
+            email_id: "om.soumya@mitt-alu.com",
+            username: "Soumya",
+            role: "Management",
           },
-        ];
-      } else {
-        const recipientResult = await pool.query(`
-        SELECT id, username, role, TRIM(email_id) AS email_id
-        FROM public.users
-        WHERE role IN ('Admin', 'Executive Assistant')
-          AND (is_deleted IS NULL OR is_deleted = false)
-          AND NULLIF(TRIM(email_id), '') IS NOT NULL
-        ORDER BY id ASC;
-      `);
-
-        // Remove duplicate email addresses
-        const uniqueRecipients = new Map();
-
-        for (const user of recipientResult.rows) {
-          const userEmail = user.email_id;
-
-          if (!uniqueRecipients.has(userEmail)) {
-            uniqueRecipients.set(userEmail, user);
+          {
+            email_id: "ea@mitt-alu.com",
+            username: "Versha",
+            role: "Executive Assistant",
           }
-        }
+        );
+      }
 
-        recipients = [...uniqueRecipients.values()];
-
-        if (recipients.length === 0) {
-          console.log("No Admin or Executive Assistant found. Skipping email.");
-          return;
-        }
+      if (recipients.length === 0) {
+        console.log("No Admin or Executive Assistant found. Skipping email.");
+        return;
       }
 
       // 2. Fetch pending work for Vehicle Executive (Vikas)
