@@ -25,4 +25,16 @@ export const documentUpload = upload.fields([
   { name: "receiving-proof-files", maxCount: 20 },
 ]);
 
+export const vehicleAndInvoiceUpload = upload.fields([
+  { name: "all_bundles_image", maxCount: 1 },
+  { name: "driver_and_vehicle_number_image", maxCount: 1 },
+  { name: "driver_license_image", maxCount: 1 },
+  { name: "empty_vehicle_image", maxCount: 1 },
+  { name: "invoice_pdf", maxCount: 1 },
+  { name: "bilty_pdf", maxCount: 1 },
+  { name: "kanta_parchi", maxCount: 1 },
+  { name: "receiving_proof_files", maxCount: 10 },
+  { name: "receiving_kanta_parchi", maxCount: 1 },
+]);
+
 export const avatarUpload = upload.fields([{ name: "avatar_url", maxCount: 1 }]);

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import o2dController from "../controllers/o2d.controller.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
-import { documentUpload } from "../middlewares/upload.middleware.js";
+import { documentUpload, vehicleAndInvoiceUpload } from "../middlewares/upload.middleware.js";
 import multer from "multer";
 
 const storage = multer.memoryStorage();
@@ -193,6 +193,13 @@ router.put(
   "/sale-orders/:id/complaints/:complaintId",
   authMiddleware,
   o2dController.updateComplaintDetailsForSaleOrder
+);
+
+router.post(
+  "/sale-orders/:id/complaints/:complaintId",
+  authMiddleware,
+  vehicleAndInvoiceUpload,
+  o2dController.addVehicleAndInvoiceDataToComplaint
 );
 
 router.delete(
