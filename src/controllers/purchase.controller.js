@@ -409,17 +409,44 @@ class PurchaseController {
     }
   };
 
-  getReplacementMaterialData = async (req, res, next) => {
-    try {
-      const data = await purchaseService.getReplacementMaterialData(req.body);
-      return res.status(HTTP_STATUS.OK).json({
-        status: "success",
-        data: data,
-      });
-    } catch (err) {
-      next(err);
-    }
-  };
+  // getReplacementMaterialData = async (req, res, next) => {
+  //   try {
+  //     const data = await purchaseService.getReplacementMaterialData(req.body);
+  //     return res.status(HTTP_STATUS.OK).json({
+  //       status: "success",
+  //       data: data,
+  //     });
+  //   } catch (err) {
+  //     next(err);
+  //   }
+  // };
+
+  getDEOReplacementOrders = async (req, res, next) => {
+  try {
+    const data = await purchaseService.getDEOReplacementOrders();
+
+    return res.status(HTTP_STATUS.OK).json({
+      status: "success",
+      data,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+getDEOReplacementOrderHistory = async (req, res, next) => {
+  try {
+    const data = await purchaseService.getDEOReplacementOrderHistory();
+
+    return res.status(HTTP_STATUS.OK).json({
+      status: "success",
+      data,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 }
 
 export default new PurchaseController();

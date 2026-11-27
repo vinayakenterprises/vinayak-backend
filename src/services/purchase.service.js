@@ -1033,11 +1033,47 @@ COALESCE(
     }
   };
 
-  getReplacementMaterialData = async () => {
-    try {
-      const query = `
-      SELECT 
+  // getReplacementMaterialData = async () => {
+  //   try {
+  //     const query = `
+  //     SELECT 
+  //       m.id,
+  //       m.purchase_id,
+  //       m.rate,
+  //       m.status,
+  //       m.geo_tagged_images,
+  //       m.created_at,
+  //       m.material_received_qty_mt,
+  //       m.balance,
+  //       m.material_received_planned_date,
+  //       m.material_received_actual_date,
+  //       m.quality_information,
+  //       v.vendor_name,
+  //       p.vendor_id,
+  //       p.material,
+  //       p.purity,
+  //       p.purchase_type,
+  //       p.order_status
+  //     FROM public.material_received_information m
+  //     LEFT JOIN public.purchases p ON m.purchase_id = p.id
+  //     LEFT JOIN public.vendors_data v ON p.vendor_id = v.id
+  //     WHERE m.status = 'Replacement'
+  //     ORDER BY m.created_at DESC
+  //   `;
+  //     const { rows } = await pool.query(query);
+  //     return rows;
+  //   } catch (err) {
+  //     console.error("Error in fetching replacement material data:", err.message);
+  //     throw err;
+  //   }
+  // };
+
+getDEOReplacementOrders = async () => {
+  try {
+    const query = `
+      SELECT
         m.id,
+        m.id AS receiving_id,
         m.purchase_id,
         m.rate,
         m.status,
@@ -1048,8 +1084,9 @@ COALESCE(
         m.material_received_planned_date,
         m.material_received_actual_date,
         m.quality_information,
+        m.quality_information->>'parent_mrid' AS parent_mrid,
         v.vendor_name,
-        p.vendor_id,
+        v.id AS vendor_id,
         p.material,
         p.purity,
         p.purchase_type,
@@ -1058,15 +1095,59 @@ COALESCE(
       LEFT JOIN public.purchases p ON m.purchase_id = p.id
       LEFT JOIN public.vendors_data v ON p.vendor_id = v.id
       WHERE m.status = 'Replacement'
-      ORDER BY m.created_at DESC
+        AND (
+          m.quality_information->>'status' IS NULL
+          OR m.quality_information->>'status' = ''
+        )
+      ORDER BY m.created_at DESC, m.id DESC
     `;
-      const { rows } = await pool.query(query);
-      return rows;
-    } catch (err) {
-      console.error("Error in fetching replacement material data:", err.message);
-      throw err;
-    }
-  };
+
+    const { rows } = await pool.query(query);
+    return rows;
+  } catch (err) {
+    console.error("Error fetching DEO replacement orders:", err.message);
+    throw err;
+  }
+};
+
+getDEOReplacementOrderHistory = async () => {
+  try {
+    const query = `
+      SELECT
+        m.id,
+        m.id AS receiving_id,
+        m.purchase_id,
+        m.rate,
+        m.status,
+        m.geo_tagged_images,
+        m.created_at,
+        m.material_received_qty_mt,
+        m.balance,
+        m.material_received_planned_date,
+        m.material_received_actual_date,
+        m.quality_information,
+        m.quality_information->>'parent_mrid' AS parent_mrid,
+        v.vendor_name,
+        v.id AS vendor_id,
+        p.material,
+        p.purity,
+        p.purchase_type,
+        p.order_status
+      FROM public.material_received_information m
+      LEFT JOIN public.purchases p ON m.purchase_id = p.id
+      LEFT JOIN public.vendors_data v ON p.vendor_id = v.id
+      WHERE m.status = 'Replacement'
+        AND NULLIF(m.quality_information->>'status', '') IS NOT NULL
+      ORDER BY m.created_at DESC, m.id DESC
+    `;
+
+    const { rows } = await pool.query(query);
+    return rows;
+  } catch (err) {
+    console.error("Error fetching DEO replacement order history:", err.message);
+    throw err;
+  }
+};
 
   addMaterialReceiveEntry = async ({
     purchaseId,
