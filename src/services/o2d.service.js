@@ -574,7 +574,22 @@ class O2dService {
       status,
       child_companies,
       credit_limit,
+      temp_remaining_credit_limit,
     } = customerData;
+    let tempRemainingCreditLimit = null;
+    if (Object.hasOwn(customerData, "temp_remaining_credit_limit")) {
+      if (temp_remaining_credit_limit == null) {
+        throw new BadRequestError("Temporary remaining credit limit is required.");
+      }
+
+      const value = Number(temp_remaining_credit_limit);
+      if (!Number.isFinite(value)) {
+        throw new BadRequestError(
+          "Temporary remaining credit limit must be a valid number."
+        );
+      }
+      tempRemainingCreditLimit = value;
+    }
 
     // Updates based solely on primary key 'id'
     // COALESCE preserves existing DB values if a field isn't passed in the payload
@@ -591,8 +606,9 @@ class O2dService {
         status = COALESCE($8, status),
         child_companies = COALESCE($9, child_companies),
         credit_limit = COALESCE($10, credit_limit),
+        temp_remaining_credit_limit = COALESCE($11, temp_remaining_credit_limit),
         updated_at = now()
-      WHERE id = $11
+      WHERE id = $12
       RETURNING *;
     `;
 
@@ -609,6 +625,7 @@ class O2dService {
       credit_limit !== undefined && credit_limit !== "" && credit_limit !== null
         ? Number(credit_limit)
         : null,
+      tempRemainingCreditLimit,
       Number(id), // Primary key
     ];
 
@@ -842,7 +859,11 @@ class O2dService {
       }
 
       const clientCreditLimit = await pool.query(
-        `select credit_limit from customers where company_name = $1 or $1::text = any(child_companies)`,
+        `select
+          credit_limit,
+          COALESCE(temp_remaining_credit_limit, 0) AS temp_remaining_credit_limit
+        from customers
+        where company_name = $1 or $1::text = any(child_companies)`,
         [client_name]
       );
 
@@ -851,6 +872,9 @@ class O2dService {
       }
 
       const response = {};
+      response.temp_remaining_credit_limit = Number(
+        clientCreditLimit.rows[0].temp_remaining_credit_limit
+      );
 
       if (clientCreditLimit.rows[0].credit_limit === 0) {
         response.credit_limit = 0;
