@@ -63,4 +63,10 @@ router.post(
   purchaseController.submitQualityInspection
 );
 
+router.post(
+  "/get-replacement-material-data",
+  authMiddleware,
+  purchaseController.getReplacementMaterialData
+);
+
 export default router;

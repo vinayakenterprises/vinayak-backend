@@ -381,7 +381,7 @@ class PurchaseController {
             order_cancel === "1",
           replacement_raised: isReplacementRaised,
           replacement_raised_at: isReplacementRaised ? new Date().toISOString() : null,
-          replacement_type: isReplacementRaised ? (replacement_type || "Partial") : null,
+          replacement_type: isReplacementRaised ? replacement_type || "Partial" : null,
           replaced_quantity_mt:
             isReplacementRaised && replaced_quantity_mt !== undefined && replaced_quantity_mt !== ""
               ? parseFloat(replaced_quantity_mt)
@@ -403,6 +403,18 @@ class PurchaseController {
         status: "success",
         message: "Quality inspection submitted successfully",
         data: updatedRecord,
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getReplacementMaterialData = async (req, res, next) => {
+    try {
+      const data = await purchaseService.getReplacementMaterialData(req.body);
+      return res.status(HTTP_STATUS.OK).json({
+        status: "success",
+        data: data,
       });
     } catch (err) {
       next(err);
