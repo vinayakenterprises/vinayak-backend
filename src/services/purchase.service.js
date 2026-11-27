@@ -618,7 +618,7 @@ class PurchaseService {
         AND m.quality_information ? 'status' 
         AND m.quality_information->>'status' IS NOT NULL 
         AND m.quality_information->>'status' <> ''
-      )
+      ) AND NOT (m.quality_information ? 'child_mrid')
     `;
 
       // Fetch total count
@@ -738,7 +738,7 @@ class PurchaseService {
         OR NOT (m.quality_information ? 'status') 
         OR m.quality_information->>'status' IS NULL 
         OR m.quality_information->>'status' = ''
-      )
+      ) AND NOT (m.quality_information ? 'child_mrid')
     `;
 
       // Fetch total count
