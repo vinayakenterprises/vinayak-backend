@@ -584,9 +584,7 @@ class O2dService {
 
       const value = Number(temp_remaining_credit_limit);
       if (!Number.isFinite(value)) {
-        throw new BadRequestError(
-          "Temporary remaining credit limit must be a valid number."
-        );
+        throw new BadRequestError("Temporary remaining credit limit must be a valid number.");
       }
       tempRemainingCreditLimit = value;
     }
@@ -5199,9 +5197,126 @@ class O2dService {
     }
   }
 
+  // async updateOverdueSummaryReportInformation(id, userId, body) {
+  //   try {
+  //     const keys = Object.keys(body);
+  //     if (keys.length === 0) {
+  //       throw new Error("No fields provided to update.");
+  //     }
+
+  //     const collectionReasons = new Set([
+  //       "tds_settlement",
+  //       "material_return_credit_note",
+  //       "advance_payment_received",
+  //       "remaining_amount_settled",
+  //       "custom",
+  //     ]);
+  //     const collectionDetails = body.collection_details;
+  //     if (body.is_collected === true && !collectionDetails) {
+  //       const error = new Error("A completion basis is required to mark payment collected.");
+  //       error.statusCode = 400;
+  //       error.isOperational = true;
+  //       throw error;
+  //     }
+  //     if (collectionDetails !== undefined && collectionDetails !== null) {
+  //       if (
+  //         typeof collectionDetails !== "object" ||
+  //         Array.isArray(collectionDetails) ||
+  //         !collectionReasons.has(collectionDetails.reason)
+  //       ) {
+  //         const error = new Error("Invalid collection details or completion basis.");
+  //         error.statusCode = 400;
+  //         error.isOperational = true;
+  //         throw error;
+  //       }
+
+  //       const referenceReasons = new Set([
+  //         "tds_settlement",
+  //         "material_return_credit_note",
+  //         "advance_payment_received",
+  //         "remaining_amount_settled",
+  //         "custom",
+  //       ]);
+  //       if (
+  //         (collectionDetails.reference !== undefined &&
+  //           collectionDetails.reference !== null &&
+  //           (typeof collectionDetails.reference !== "string" ||
+  //             !referenceReasons.has(collectionDetails.reason))) ||
+  //         (collectionDetails.customReason !== undefined &&
+  //           collectionDetails.customReason !== null &&
+  //           (typeof collectionDetails.customReason !== "string" ||
+  //             collectionDetails.reason !== "custom"))
+  //       ) {
+  //         const error = new Error("Invalid collection reference or custom reason.");
+  //         error.statusCode = 400;
+  //         error.isOperational = true;
+  //         throw error;
+  //       }
+  //     }
+
+  //     const setClauses = [];
+  //     const values = [];
+  //     let paramIndex = 1;
+
+  //     const allowedFields = [
+  //       "sale_order_id",
+  //       "invoice_date",
+  //       "invoice_no",
+  //       "client_name",
+  //       "balance",
+  //       "is_deleted",
+  //       "is_collected",
+  //       "collection_details",
+  //     ];
+
+  //     for (const key of keys) {
+  //       if (allowedFields.includes(key)) {
+  //         if (key === "collection_details") {
+  //           setClauses.push(`${key} = $${paramIndex}::jsonb`);
+  //           values.push(body[key] === null ? null : JSON.stringify(body[key]));
+  //         } else {
+  //           setClauses.push(`${key} = $${paramIndex}`);
+  //           values.push(body[key]);
+  //         }
+  //         paramIndex++;
+  //       }
+  //     }
+
+  //     if (setClauses.length === 0) {
+  //       throw new Error("No valid fields provided to update.");
+  //     }
+
+  //     // Add the userId for updated_by securely using parameterization
+  //     setClauses.push(`updated_by = $${paramIndex}`);
+  //     values.push(userId);
+  //     paramIndex++;
+
+  //     // Use PostgreSQL's native NOW() function for the current timestamp
+  //     setClauses.push(`updated_at = NOW()`);
+
+  //     // Push the row id to the very end of the values array for the WHERE condition
+  //     values.push(id);
+
+  //     const query = `
+  //       UPDATE public.overdue_summary_report
+  //       SET ${setClauses.join(", ")}
+  //       WHERE id = $${paramIndex}
+  //       RETURNING *;
+  //     `;
+
+  //     // Executing the query matching your reference style
+  //     const { rows } = await pool.query(query, values);
+  //     return rows[0]; // Returning the single updated row
+  //   } catch (error) {
+  //     console.error("Error in updating overdue summary report information: ", error);
+  //     throw error;
+  //   }
+  // }
+
   async updateOverdueSummaryReportInformation(id, userId, body) {
     try {
       const keys = Object.keys(body);
+
       if (keys.length === 0) {
         throw new Error("No fields provided to update.");
       }
@@ -5213,13 +5328,16 @@ class O2dService {
         "remaining_amount_settled",
         "custom",
       ]);
+
       const collectionDetails = body.collection_details;
+
       if (body.is_collected === true && !collectionDetails) {
         const error = new Error("A completion basis is required to mark payment collected.");
         error.statusCode = 400;
         error.isOperational = true;
         throw error;
       }
+
       if (collectionDetails !== undefined && collectionDetails !== null) {
         if (
           typeof collectionDetails !== "object" ||
@@ -5232,18 +5350,10 @@ class O2dService {
           throw error;
         }
 
-        const referenceReasons = new Set([
-          "tds_settlement",
-          "material_return_credit_note",
-          "advance_payment_received",
-          "remaining_amount_settled",
-          "custom",
-        ]);
         if (
           (collectionDetails.reference !== undefined &&
             collectionDetails.reference !== null &&
-            (typeof collectionDetails.reference !== "string" ||
-              !referenceReasons.has(collectionDetails.reason))) ||
+            typeof collectionDetails.reference !== "string") ||
           (collectionDetails.customReason !== undefined &&
             collectionDetails.customReason !== null &&
             (typeof collectionDetails.customReason !== "string" ||
@@ -5259,6 +5369,8 @@ class O2dService {
       const setClauses = [];
       const values = [];
       let paramIndex = 1;
+
+      let balanceParamIndex = null;
 
       const allowedFields = [
         "sale_order_id",
@@ -5277,9 +5389,16 @@ class O2dService {
             setClauses.push(`${key} = $${paramIndex}::jsonb`);
             values.push(body[key] === null ? null : JSON.stringify(body[key]));
           } else {
-            setClauses.push(`${key} = $${paramIndex}`);
+            if (key === "balance") {
+              setClauses.push(`${key} = $${paramIndex}::numeric`);
+              balanceParamIndex = paramIndex;
+            } else {
+              setClauses.push(`${key} = $${paramIndex}`);
+            }
+
             values.push(body[key]);
           }
+
           paramIndex++;
         }
       }
@@ -5288,27 +5407,44 @@ class O2dService {
         throw new Error("No valid fields provided to update.");
       }
 
-      // Add the userId for updated_by securely using parameterization
+      // Add updated_by
+      const updatedByParamIndex = paramIndex;
+
       setClauses.push(`updated_by = $${paramIndex}`);
       values.push(userId);
       paramIndex++;
 
-      // Use PostgreSQL's native NOW() function for the current timestamp
+      // Add updated_at
       setClauses.push(`updated_at = NOW()`);
 
-      // Push the row id to the very end of the values array for the WHERE condition
+      // Add balance update history
+      if (balanceParamIndex !== null) {
+        setClauses.push(`
+        balance_update_history = COALESCE(balance_update_history, '[]'::jsonb) ||
+        jsonb_build_array(
+          jsonb_build_object(
+            'previous_balance', balance,
+            'current_balance', $${balanceParamIndex}::numeric,
+            'updated_by', $${updatedByParamIndex}::integer,
+            'updated_at', NOW()
+          )
+        )
+      `);
+      }
+
+      // Add row ID
       values.push(id);
 
       const query = `
-        UPDATE public.overdue_summary_report
-        SET ${setClauses.join(", ")}
-        WHERE id = $${paramIndex}
-        RETURNING *;
-      `;
+      UPDATE public.overdue_summary_report
+      SET ${setClauses.join(", ")}
+      WHERE id = $${paramIndex}
+      RETURNING *;
+    `;
 
-      // Executing the query matching your reference style
       const { rows } = await pool.query(query, values);
-      return rows[0]; // Returning the single updated row
+
+      return rows[0];
     } catch (error) {
       console.error("Error in updating overdue summary report information: ", error);
       throw error;
@@ -7274,33 +7410,31 @@ class O2dService {
 
       const { rows } = await pool.query(query, values);
 
-const notificationFields = [
-  "actual_delivery_timestamp",
-  "delivery_status",
-  "weight_difference_in_kg",
-  "settlement",
-  "quality_confirmation_status",
-  "quality_confirmation_timestamp",
-];
+      const notificationFields = [
+        "actual_delivery_timestamp",
+        "delivery_status",
+        "weight_difference_in_kg",
+        "settlement",
+        "quality_confirmation_status",
+        "quality_confirmation_timestamp",
+      ];
 
-const hasRelevantChanges = notificationFields.some(
-  (field) => deliveryPayload[field] !== undefined
-);
+      const hasRelevantChanges = notificationFields.some(
+        (field) => deliveryPayload[field] !== undefined
+      );
 
-if (rows.length > 0 && hasRelevantChanges) {
-  const savedSettlement = rows[0].delivery_and_weight?.settlement;
+      if (rows.length > 0 && hasRelevantChanges) {
+        const savedSettlement = rows[0].delivery_and_weight?.settlement;
 
-  const settlementLabel =
-    savedSettlement === "order cancel"
-      ? "Order Cancel"
-      : savedSettlement || "Not set";
+        const settlementLabel =
+          savedSettlement === "order cancel" ? "Order Cancel" : savedSettlement || "Not set";
 
-  await sendNotificationToAccountsTeam(
-    id,
-    `Delivery, weight or settlement updated for Order ID: ${id}. Selected Settlement: ${settlementLabel}.`,
-    "delivery_weight_quality_updated_notification_to_accounts"
-  );
-}
+        await sendNotificationToAccountsTeam(
+          id,
+          `Delivery, weight or settlement updated for Order ID: ${id}. Selected Settlement: ${settlementLabel}.`,
+          "delivery_weight_quality_updated_notification_to_accounts"
+        );
+      }
       return rows.length ? rows[0] : null;
     } catch (error) {
       console.error("error in updating delivery and weight information: ", error);
