@@ -279,11 +279,36 @@ class PurchaseController {
         status,
       } = req.body;
       const files = req.files || {};
+
+      const clientInvoiceFile = files.client_invoice?.[0];
+
+      if (!clientInvoiceFile) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          status: "error",
+          message: "Client Invoice PDF is required",
+        });
+      }
+
+      if (
+        clientInvoiceFile.mimetype !== "application/pdf" &&
+        !clientInvoiceFile.originalname?.toLowerCase().endsWith(".pdf")
+      ) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          status: "error",
+          message: "Client Invoice must be a PDF",
+        });
+      }
       // 1. Upload files to S3 using your uploadFileToS3 helper
       let kanta_parchi_url = null;
       let loaded_vehicle_image_url = null;
       let driver_photo_url = null;
       const companyName = process.env.COMPANY_NAME || "default-company";
+
+      const clientInvoiceUrl = await uploadFileToS3(
+        clientInvoiceFile,
+        `${companyName}/purchase-orders/${purchaseId}/deo/client-invoice`
+      );
+
       if (files.kanta_parchi?.[0]) {
         kanta_parchi_url = await uploadFileToS3(
           files.kanta_parchi[0],
@@ -308,6 +333,9 @@ class PurchaseController {
         kanta_parchi_url,
         loaded_vehicle_image_url,
         driver_photo_url,
+        documents: {
+          client_invoice: clientInvoiceUrl,
+        },
         material_receive_date_planned,
         material_receive_date_actual,
         material_received_qty,
@@ -422,31 +450,30 @@ class PurchaseController {
   // };
 
   getDEOReplacementOrders = async (req, res, next) => {
-  try {
-    const data = await purchaseService.getDEOReplacementOrders();
+    try {
+      const data = await purchaseService.getDEOReplacementOrders();
 
-    return res.status(HTTP_STATUS.OK).json({
-      status: "success",
-      data,
-    });
-  } catch (err) {
-    next(err);
-  }
-};
+      return res.status(HTTP_STATUS.OK).json({
+        status: "success",
+        data,
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
 
-getDEOReplacementOrderHistory = async (req, res, next) => {
-  try {
-    const data = await purchaseService.getDEOReplacementOrderHistory();
+  getDEOReplacementOrderHistory = async (req, res, next) => {
+    try {
+      const data = await purchaseService.getDEOReplacementOrderHistory();
 
-    return res.status(HTTP_STATUS.OK).json({
-      status: "success",
-      data,
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
+      return res.status(HTTP_STATUS.OK).json({
+        status: "success",
+        data,
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
 }
 
 export default new PurchaseController();
