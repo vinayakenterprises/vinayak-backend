@@ -100,7 +100,7 @@ class PurchaseService {
   // getPurchases = async () => {
   //   try {
   //     const query = `
-  //       SELECT 
+  //       SELECT
   //         p.id,
   //         p.purchase_type,
   //         p.vendor_id,
@@ -127,7 +127,7 @@ class PurchaseService {
   //     throw err;
   //   }
   // };
- getPurchases = async () => {
+  getPurchases = async () => {
     try {
       const query = `
         SELECT 
@@ -1036,7 +1036,7 @@ COALESCE(
   // getReplacementMaterialData = async () => {
   //   try {
   //     const query = `
-  //     SELECT 
+  //     SELECT
   //       m.id,
   //       m.purchase_id,
   //       m.rate,
@@ -1068,9 +1068,9 @@ COALESCE(
   //   }
   // };
 
-getDEOReplacementOrders = async () => {
-  try {
-    const query = `
+  getDEOReplacementOrders = async () => {
+    try {
+      const query = `
       SELECT
         m.id,
         m.id AS receiving_id,
@@ -1102,17 +1102,17 @@ getDEOReplacementOrders = async () => {
       ORDER BY m.created_at DESC, m.id DESC
     `;
 
-    const { rows } = await pool.query(query);
-    return rows;
-  } catch (err) {
-    console.error("Error fetching DEO replacement orders:", err.message);
-    throw err;
-  }
-};
+      const { rows } = await pool.query(query);
+      return rows;
+    } catch (err) {
+      console.error("Error fetching DEO replacement orders:", err.message);
+      throw err;
+    }
+  };
 
-getDEOReplacementOrderHistory = async () => {
-  try {
-    const query = `
+  getDEOReplacementOrderHistory = async () => {
+    try {
+      const query = `
       SELECT
         m.id,
         m.id AS receiving_id,
@@ -1141,13 +1141,13 @@ getDEOReplacementOrderHistory = async () => {
       ORDER BY m.created_at DESC, m.id DESC
     `;
 
-    const { rows } = await pool.query(query);
-    return rows;
-  } catch (err) {
-    console.error("Error fetching DEO replacement order history:", err.message);
-    throw err;
-  }
-};
+      const { rows } = await pool.query(query);
+      return rows;
+    } catch (err) {
+      console.error("Error fetching DEO replacement order history:", err.message);
+      throw err;
+    }
+  };
 
   addMaterialReceiveEntry = async ({
     purchaseId,
@@ -1160,6 +1160,7 @@ getDEOReplacementOrderHistory = async () => {
     rate,
     balance,
     status,
+    documents,
     user,
   }) => {
     const client = await pool.connect();
@@ -1190,35 +1191,70 @@ getDEOReplacementOrderHistory = async () => {
       const finalStatus = status || "Complete";
 
       // 3. Insert into public.material_received_information
+      // const insertQuery = `
+      //   INSERT INTO public.material_received_information (
+      //     purchase_id,
+      //     rate,
+      //     status,
+      //     geo_tagged_images,
+      //     material_received_qty_mt,
+      //     balance,
+      //     material_received_planned_date,
+      //     material_received_actual_date,
+      //     created_at
+      //   ) VALUES (
+      //     $1, $2, $3, $4, $5, $6,
+      //     COALESCE($7::timestamptz, CURRENT_TIMESTAMP),
+      //     COALESCE($8::timestamptz, CURRENT_TIMESTAMP),
+      //     CURRENT_TIMESTAMP
+      //   )
+      //   RETURNING *
+      // `;
+      // const insertValues = [
+      //   purchaseId,
+      //   parsedRate,
+      //   finalStatus,
+      //   JSON.stringify(geo_tagged_images),
+      //   parsedQty,
+      //   parsedBalance,
+      //   material_receive_date_planned || null,
+      //   material_receive_date_actual || null,
+      // ];
+      // await client.query(insertQuery, insertValues);
+
       const insertQuery = `
-        INSERT INTO public.material_received_information (
-          purchase_id,
-          rate,
-          status,
-          geo_tagged_images,
-          material_received_qty_mt,
-          balance,
-          material_received_planned_date,
-          material_received_actual_date,
-          created_at
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6,
-          COALESCE($7::timestamptz, CURRENT_TIMESTAMP),
-          COALESCE($8::timestamptz, CURRENT_TIMESTAMP),
-          CURRENT_TIMESTAMP
-        )
-        RETURNING *
-      `;
+   INSERT INTO public.material_received_information (
+    purchase_id,
+    rate,
+    status,
+    geo_tagged_images,
+    documents,
+    material_received_qty_mt,
+    balance,
+    material_received_planned_date,
+    material_received_actual_date,
+    created_at
+  ) VALUES (
+    $1, $2, $3, $4, $5, $6, $7,
+    COALESCE($8::timestamptz, CURRENT_TIMESTAMP),
+    COALESCE($9::timestamptz, CURRENT_TIMESTAMP),
+    CURRENT_TIMESTAMP
+  )
+  RETURNING *
+`;
+
       const insertValues = [
         purchaseId,
         parsedRate,
         finalStatus,
         JSON.stringify(geo_tagged_images),
+        JSON.stringify(documents || {}),
         parsedQty,
         parsedBalance,
         material_receive_date_planned || null,
         material_receive_date_actual || null,
       ];
+
       await client.query(insertQuery, insertValues);
 
       // 4. Update order status in public.purchases
@@ -1254,6 +1290,7 @@ getDEOReplacementOrderHistory = async () => {
           m.geo_tagged_images->>'loaded_vehicle_image_url' AS loaded_vehicle_image_url,
           m.geo_tagged_images->>'driver_photo_url' AS driver_photo_url,
           m.geo_tagged_images,
+          m.documents,
           m.quality_information,
           m.created_at
         FROM public.material_received_information m

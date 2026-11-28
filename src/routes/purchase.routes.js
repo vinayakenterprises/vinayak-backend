@@ -52,6 +52,7 @@ router.post(
     { name: "kanta_parchi", maxCount: 1 },
     { name: "loaded_vehicle_image", maxCount: 1 },
     { name: "driver_photo", maxCount: 1 },
+     { name: "client_invoice", maxCount: 1 },
   ]),
   purchaseController.addMaterialReceiveEntry
 );
