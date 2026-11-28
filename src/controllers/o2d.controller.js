@@ -2000,10 +2000,16 @@ class O2dController {
   getInvoiceGenerationRequestData = async (req, res, next) => {
     try {
       let userId = req.user?.id || null;
-      if (userId === 15) {
+      const includeAllInvoiceExecutives =
+        String(req.user?.role || "").toLowerCase() === "sale order executive" &&
+        String(req.user?.department || "").toLowerCase() === "accounts";
+      if (!includeAllInvoiceExecutives && userId === 15) {
         userId = 10;
       }
-      const order = await o2dService.getInvoiceGenerationRequestData(userId);
+      const order = await o2dService.getInvoiceGenerationRequestData(
+        userId,
+        includeAllInvoiceExecutives
+      );
       return res.status(200).json({
         status: "success",
         message: "Invoice generation request data retrieved successfully",

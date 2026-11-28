@@ -7531,15 +7531,24 @@ if (rows.length > 0 && hasRelevantChanges) {
     }
   }
 
-  async getInvoiceGenerationRequestData(userId) {
+  async getInvoiceGenerationRequestData(userId, includeAllInvoiceExecutives = false) {
     try {
+      const assignmentFilter = includeAllInvoiceExecutives
+        ? `EXISTS (
+            SELECT 1
+            FROM public.users invoice_user
+            WHERE invoice_user.id::text = so.invoice_and_dispatch->>'assign_to'
+              AND invoice_user.role = 'Invoice Executive'
+              AND invoice_user.department = 'Accounts'
+          )`
+        : "so.invoice_and_dispatch->>'assign_to' = $1";
       const query = `
-      SELECT * FROM public.sales_orders
-      WHERE invoice_and_dispatch->>'assign_to' = $1 
-        AND invoice_and_dispatch->>'invoice_completed_at' IS NULL
-      ORDER BY id DESC
+      SELECT so.* FROM public.sales_orders so
+      WHERE ${assignmentFilter}
+        AND so.invoice_and_dispatch->>'invoice_completed_at' IS NULL
+      ORDER BY so.id DESC
     `;
-      const { rows } = await pool.query(query, [userId]);
+      const { rows } = await pool.query(query, includeAllInvoiceExecutives ? [] : [userId]);
       return rows;
     } catch (error) {
       console.error("Error in getting invoice generation request data: ", error);
