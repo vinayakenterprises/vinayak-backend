@@ -63,10 +63,22 @@ router.post(
   purchaseController.submitQualityInspection
 );
 
+// router.post(
+//   "/get-replacement-material-data",
+//   authMiddleware,
+//   purchaseController.getReplacementMaterialData
+// );
+
 router.post(
-  "/get-replacement-material-data",
+  "/deo-replacement-orders",
   authMiddleware,
-  purchaseController.getReplacementMaterialData
+  purchaseController.getDEOReplacementOrders
+);
+
+router.post(
+  "/deo-replacement-order-history",
+  authMiddleware,
+  purchaseController.getDEOReplacementOrderHistory
 );
 
 export default router;
